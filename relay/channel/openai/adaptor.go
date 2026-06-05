@@ -629,6 +629,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	case relayconstant.RelayModeResponses:
 		if info.IsStream {
 			usage, err = OaiResponsesStreamHandler(c, info, resp)
+		} else if IsEventStreamResponse(resp) {
+			usage, err = OaiResponsesStreamBufferedHandler(c, info, resp)
 		} else {
 			usage, err = OaiResponsesHandler(c, info, resp)
 		}
@@ -637,6 +639,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	default:
 		if info.IsStream {
 			usage, err = OaiStreamHandler(c, info, resp)
+		} else if IsEventStreamResponse(resp) {
+			usage, err = OaiStreamBufferedHandler(c, info, resp)
 		} else {
 			usage, err = OpenaiHandler(c, info, resp)
 		}
