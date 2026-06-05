@@ -26,6 +26,7 @@ tiktoken_cache
 .gomodcache/
 .cache
 plans
+tmp/
 .claude
 .omx
 .cursor
