@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,12 +21,15 @@ import (
 func setupRelayPreconsumeTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
+
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.MemoryCacheEnabled = true
 
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
@@ -43,6 +47,9 @@ func setupRelayPreconsumeTestDB(t *testing.T) *gorm.DB {
 		if err == nil {
 			_ = sqlDB.Close()
 		}
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 	})
 
 	return db

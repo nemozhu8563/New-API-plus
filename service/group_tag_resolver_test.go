@@ -17,10 +17,10 @@ func setupGroupTagResolverTestDB(t *testing.T) *gorm.DB {
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.MemoryCacheEnabled = true
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
@@ -43,6 +43,7 @@ func setupGroupTagResolverTestDB(t *testing.T) *gorm.DB {
 		}
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 	})
 
 	return db

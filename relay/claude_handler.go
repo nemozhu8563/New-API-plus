@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -54,14 +54,17 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
-		(strings.HasPrefix(request.Model, "claude-opus-4-6") || strings.HasPrefix(request.Model, "claude-opus-4-7")) {
+		(strings.HasPrefix(request.Model, "claude-opus-4-6") ||
+			strings.HasPrefix(request.Model, "claude-opus-4-7") ||
+			strings.HasPrefix(request.Model, "claude-opus-4-8")) {
 		request.Model = baseModel
 		request.Thinking = &dto.Thinking{
 			Type: "adaptive",
 		}
 		request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		if strings.HasPrefix(request.Model, "claude-opus-4-7") {
-			// Opus 4.7 rejects non-default temperature/top_p/top_k with 400
+		if strings.HasPrefix(request.Model, "claude-opus-4-7") ||
+			strings.HasPrefix(request.Model, "claude-opus-4-8") {
+			// Opus 4.7/4.8 reject non-default temperature/top_p/top_k with 400
 			// and defaults display to "omitted"; restore the 4.6 visible summary.
 			request.Thinking.Display = "summarized"
 			request.Temperature = nil
@@ -75,8 +78,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		strings.HasSuffix(request.Model, "-thinking") {
 		if request.Thinking == nil {
 			baseModel := strings.TrimSuffix(request.Model, "-thinking")
-			if strings.HasPrefix(baseModel, "claude-opus-4-7") {
-				// Opus 4.7 rejects thinking.type="enabled"; use adaptive at high effort.
+			if strings.HasPrefix(baseModel, "claude-opus-4-7") ||
+				strings.HasPrefix(baseModel, "claude-opus-4-8") {
+				// Opus 4.7/4.8 reject thinking.type="enabled"; use adaptive at high effort.
 				request.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
 				request.OutputConfig = json.RawMessage(`{"effort":"high"}`)
 				request.Temperature = nil
@@ -146,9 +150,12 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return nil
 	}
 
-	requestBody, newAPIError := buildClaudeRequestBody(c, info, adaptor, request)
+	requestBody, requestBodyCloser, newAPIError := buildClaudeRequestBodyWithCloser(c, info, adaptor, request)
 	if newAPIError != nil {
 		return newAPIError
+	}
+	if requestBodyCloser != nil {
+		defer requestBodyCloser.Close()
 	}
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
@@ -170,7 +177,6 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
-	//log.Printf("usage: %v", usage)
 	if newAPIError != nil {
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
@@ -182,48 +188,57 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 }
 
 func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, *types.NewAPIError) {
+	body, _, newAPIError := buildClaudeRequestBodyWithCloser(c, info, adaptor, request)
+	return body, newAPIError
+}
+
+func buildClaudeRequestBodyWithCloser(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, io.Closer, *types.NewAPIError) {
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
-			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			return nil, nil, types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		return common.ReaderOnly(storage), nil
+		info.UpstreamRequestBodySize = storage.Size()
+		return common.ReaderOnly(storage), nil, nil
 	}
 
 	if applyClaudeAssistantPrefillCompatibility(request, info) {
 		tokens, err := service.EstimateRequestToken(c, request.GetTokenCountMeta(), info)
 		if err != nil {
-			return nil, types.NewError(err, types.ErrorCodeCountTokenFailed, types.ErrOptionWithSkipRetry())
+			return nil, nil, types.NewError(err, types.ErrorCodeCountTokenFailed, types.ErrOptionWithSkipRetry())
 		}
 		info.SetEstimatePromptTokens(tokens)
 	}
 
 	convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
 	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 	relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
 	jsonData, err := common.Marshal(convertedRequest)
 	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
 	// remove disabled fields for Claude API
 	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
 	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
 	// apply param override
 	if len(info.ParamOverride) > 0 {
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
-			return nil, newAPIErrorFromParamOverride(err)
+			return nil, nil, newAPIErrorFromParamOverride(err)
 		}
 	}
 
-	if common.DebugEnabled {
-		println("requestBody: ", string(jsonData))
+	logger.LogDebug(c, "requestBody: %s", jsonData)
+	body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+	if err != nil {
+		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
-	return bytes.NewBuffer(jsonData), nil
+	info.UpstreamRequestBodySize = size
+	return body, closer, nil
 }

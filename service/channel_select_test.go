@@ -53,7 +53,7 @@ func TestGetRandomSatisfiedChannelByResolutionStrictOverrideUsesTaggedPool(t *te
 	model.InitChannelCache()
 
 	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: true}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0)
+	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
 	if err != nil {
 		t.Fatalf("expected strict route selection to succeed, got error: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestGetRandomSatisfiedChannelByResolutionPrefersTaggedPoolBeforeGeneralFall
 	model.InitChannelCache()
 
 	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: false}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0)
+	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
 	if err != nil {
 		t.Fatalf("expected preferred route selection to succeed, got error: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestGetRandomSatisfiedChannelByResolutionFallsBackToGeneralPool(t *testing.
 	model.InitChannelCache()
 
 	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: false}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0)
+	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
 	if err != nil {
 		t.Fatalf("expected general fallback selection to succeed, got error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestGetRandomSatisfiedChannelByResolutionWithoutRouteTagUsesGeneralPool(t *
 	seedGroupTagResolverChannelWithPriority(t, db, 2, "ask-public", "shared-model", "", 10)
 	model.InitChannelCache()
 
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", &GroupBillingResolution{}, 0)
+	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", &GroupBillingResolution{}, 0, "")
 	if err != nil {
 		t.Fatalf("expected general selection to succeed, got error: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestCacheUpdateChannelStatusRemovesTaggedChannelFromCache(t *testing.T) {
 	if model.IsChannelEnabledForGroupModelTag("ask-public", "shared-model", "GPT", 1) {
 		t.Fatalf("expected disabled tagged channel to be removed from tag cache")
 	}
-	channel, err := model.GetRandomSatisfiedChannel("ask-public", "shared-model", "GPT", 0)
+	channel, err := model.GetRandomSatisfiedChannel("ask-public", "shared-model", "GPT", 0, "")
 	if err != nil {
 		t.Fatalf("expected no error after removing tagged channel from cache, got %v", err)
 	}

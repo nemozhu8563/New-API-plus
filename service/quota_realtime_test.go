@@ -50,12 +50,12 @@ func setupRealtimeQuotaTestDB(t *testing.T) *gorm.DB {
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
 
 	initModelColumnsForRealtimeQuotaTest(t)
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 
@@ -79,6 +79,7 @@ func setupRealtimeQuotaTestDB(t *testing.T) *gorm.DB {
 		}
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 	})
 
 	return db

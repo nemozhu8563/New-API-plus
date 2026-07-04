@@ -16,6 +16,7 @@ type RetryParam struct {
 	Ctx          *gin.Context
 	TokenGroup   string
 	ModelName    string
+	RequestPath  string
 	Retry        *int
 	resetNextTry bool
 }
@@ -52,9 +53,9 @@ func hasRouteTagCandidate(group string, modelName string, resolution *GroupBilli
 		common.StringsContains(model.GetEnabledTagsByGroupModel(group, modelName), resolution.RouteTag)
 }
 
-func GetRandomSatisfiedChannelByResolution(group string, modelName string, resolution *GroupBillingResolution, retry int) (*model.Channel, error) {
+func GetRandomSatisfiedChannelByResolution(group string, modelName string, resolution *GroupBillingResolution, retry int, requestPath string) (*model.Channel, error) {
 	if hasRouteTagCandidate(group, modelName, resolution) {
-		channel, err := model.GetRandomSatisfiedChannel(group, modelName, resolution.RouteTag, retry)
+		channel, err := model.GetRandomSatisfiedChannel(group, modelName, resolution.RouteTag, retry, requestPath)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +65,7 @@ func GetRandomSatisfiedChannelByResolution(group string, modelName string, resol
 	} else if resolution != nil && resolution.RouteTagStrict {
 		return nil, nil
 	}
-	return model.GetRandomSatisfiedChannel(group, modelName, "", retry)
+	return model.GetRandomSatisfiedChannel(group, modelName, "", retry, requestPath)
 }
 
 func IsChannelEnabledForResolution(group string, modelName string, resolution *GroupBillingResolution, channelID int) bool {
@@ -158,7 +159,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = GetRandomSatisfiedChannelByResolution(autoGroup, param.ModelName, resolution, priorityRetry)
+			channel, _ = GetRandomSatisfiedChannelByResolution(autoGroup, param.ModelName, resolution, priorityRetry, param.RequestPath)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -203,7 +204,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if resolveErr != nil {
 			return nil, param.TokenGroup, resolveErr
 		}
-		channel, err = GetRandomSatisfiedChannelByResolution(param.TokenGroup, param.ModelName, resolution, param.GetRetry())
+		channel, err = GetRandomSatisfiedChannelByResolution(param.TokenGroup, param.ModelName, resolution, param.GetRetry(), param.RequestPath)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

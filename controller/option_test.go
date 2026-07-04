@@ -20,9 +20,9 @@ func setupOptionControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -43,6 +43,7 @@ func setupOptionControllerTestDB(t *testing.T) *gorm.DB {
 		if err == nil {
 			_ = sqlDB.Close()
 		}
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 	})
 
 	return db
