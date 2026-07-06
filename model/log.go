@@ -325,6 +325,22 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	}
 }
 
+func GetRecentErrorLogsSince(startTimestamp int64, limit int) ([]*Log, error) {
+	if limit <= 0 {
+		limit = common.MaxRecentItems
+	}
+	tx := LOG_DB.Where("type = ? AND created_at >= ?", LogTypeError, startTimestamp)
+	order := "created_at desc, id desc"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("")
+	}
+	var logs []*Log
+	if err := tx.Order(order).Limit(limit).Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
 type RecordConsumeLogParams struct {
 	ChannelId        int                    `json:"channel_id"`
 	PromptTokens     int                    `json:"prompt_tokens"`
