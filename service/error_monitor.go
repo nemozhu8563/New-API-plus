@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,24 +55,27 @@ type ErrorMonitorRunSummary struct {
 }
 
 type ErrorMonitorGroupSummary struct {
-	Key         string `json:"key"`
-	Count       int    `json:"count"`
-	ChannelId   int    `json:"channel_id"`
-	ChannelName string `json:"channel_name,omitempty"`
-	ModelName   string `json:"model_name,omitempty"`
-	StatusCode  int    `json:"status_code"`
-	ErrorCode   string `json:"error_code,omitempty"`
-	Sent        bool   `json:"sent"`
-	Suppressed  bool   `json:"suppressed"`
+	Key          string      `json:"key"`
+	Count        int         `json:"count"`
+	ChannelId    int         `json:"channel_id"`
+	ChannelName  string      `json:"channel_name,omitempty"`
+	ModelName    string      `json:"model_name,omitempty"`
+	StatusCode   int         `json:"status_code"`
+	StatusCounts map[int]int `json:"status_counts,omitempty"`
+	ErrorCode    string      `json:"error_code,omitempty"`
+	Sent         bool        `json:"sent"`
+	Suppressed   bool        `json:"suppressed"`
 }
 
 type errorMonitorGroup struct {
 	ErrorMonitorGroupSummary
-	FirstAt       int64
-	LastAt        int64
-	ErrorType     string
-	ContentSample string
-	RequestIds    []string
+	FirstAt        int64
+	LastAt         int64
+	ErrorType      string
+	ContentSample  string
+	RequestIds     []string
+	StatusMatched  bool
+	KeywordMatched bool
 }
 
 type feishuTextContent struct {
@@ -196,41 +200,40 @@ func collectErrorMonitorGroups(logs []*model.Log, setting ErrorMonitorSetting) m
 	for _, log := range logs {
 		other, _ := common.StrToMap(log.Other)
 		statusCode, _ := mapIntValue(other, "status_code")
-		if len(setting.StatusCodes) > 0 {
-			if _, ok := setting.StatusCodes[statusCode]; !ok {
-				continue
-			}
-		}
 		errorCode := mapStringValue(other, "error_code")
-		if !matchesErrorMonitorKeywords(log.Content, errorCode, mapStringValue(other, "error_type"), setting.ContentKeywords) {
-			continue
-		}
+		errorType := mapStringValue(other, "error_type")
+		_, statusMatched := setting.StatusCodes[statusCode]
+		keywordMatched := len(setting.ContentKeywords) > 0 && matchesErrorMonitorKeywords(log.Content, errorCode, errorType, setting.ContentKeywords)
 
 		channelId := log.ChannelId
 		if channelId == 0 {
 			channelId, _ = mapIntValue(other, "channel_id")
 		}
 		channelName := mapStringValue(other, "channel_name")
-		key := fmt.Sprintf("%d|%s|%d|%s", channelId, log.ModelName, statusCode, errorCode)
+		key := fmt.Sprintf("%d|%s|%s|%s", channelId, log.ModelName, errorType, errorCode)
 		group := groups[key]
 		if group == nil {
 			group = &errorMonitorGroup{
 				ErrorMonitorGroupSummary: ErrorMonitorGroupSummary{
-					Key:         key,
-					ChannelId:   channelId,
-					ChannelName: channelName,
-					ModelName:   log.ModelName,
-					StatusCode:  statusCode,
-					ErrorCode:   errorCode,
+					Key:          key,
+					ChannelId:    channelId,
+					ChannelName:  channelName,
+					ModelName:    log.ModelName,
+					StatusCode:   statusCode,
+					StatusCounts: map[int]int{},
+					ErrorCode:    errorCode,
 				},
 				FirstAt:       log.CreatedAt,
 				LastAt:        log.CreatedAt,
-				ErrorType:     mapStringValue(other, "error_type"),
+				ErrorType:     errorType,
 				ContentSample: common.LocalLogPreview(log.Content),
 			}
 			groups[key] = group
 		}
 		group.Count++
+		group.StatusCounts[statusCode]++
+		group.StatusMatched = group.StatusMatched || statusMatched
+		group.KeywordMatched = group.KeywordMatched || keywordMatched
 		if log.CreatedAt < group.FirstAt {
 			group.FirstAt = log.CreatedAt
 		}
@@ -245,12 +248,34 @@ func collectErrorMonitorGroups(logs []*model.Log, setting ErrorMonitorSetting) m
 }
 
 func formatErrorMonitorAlert(group *errorMonitorGroup, setting ErrorMonitorSetting) string {
+	statusCodes := make([]int, 0, len(group.StatusCounts))
+	for statusCode := range group.StatusCounts {
+		statusCodes = append(statusCodes, statusCode)
+	}
+	sort.Ints(statusCodes)
+	statusParts := make([]string, 0, len(statusCodes))
+	for _, statusCode := range statusCodes {
+		statusParts = append(statusParts, fmt.Sprintf("%d×%d", statusCode, group.StatusCounts[statusCode]))
+	}
+
+	matchedBy := make([]string, 0, 2)
+	if group.StatusMatched {
+		matchedBy = append(matchedBy, "状态码")
+	}
+	if group.KeywordMatched {
+		matchedBy = append(matchedBy, "内容关键词")
+	}
+	matchDescription := "重复异常兜底"
+	if len(matchedBy) > 0 {
+		matchDescription = strings.Join(matchedBy, "、")
+	}
 	lines := []string{
 		"new-api 上游错误监控告警",
 		fmt.Sprintf("最近 %d 秒内同一组错误出现 %d 次，已达到阈值 %d。", setting.WindowSeconds, group.Count, setting.Threshold),
+		"匹配来源: " + matchDescription,
 		fmt.Sprintf("渠道: #%d %s", group.ChannelId, group.ChannelName),
 		fmt.Sprintf("模型: %s", group.ModelName),
-		fmt.Sprintf("状态码: %d", group.StatusCode),
+		"状态码: " + strings.Join(statusParts, ", "),
 		fmt.Sprintf("错误码: %s", group.ErrorCode),
 		fmt.Sprintf("错误类型: %s", group.ErrorType),
 		fmt.Sprintf("时间范围: %s - %s", formatAlertTime(group.FirstAt), formatAlertTime(group.LastAt)),

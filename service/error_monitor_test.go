@@ -84,14 +84,13 @@ func TestRunErrorMonitorOnceAlertsAndSuppressesWithinCooldown(t *testing.T) {
 	assert.Len(t, sent, 1)
 }
 
-func TestRunErrorMonitorOnceFiltersByStatusAndKeyword(t *testing.T) {
+func TestRunErrorMonitorOnceMatchesStatusOrKeyword(t *testing.T) {
 	truncate(t)
 	resetErrorMonitorCooldownForTest()
 
 	now := int64(1800000300)
-	seedErrorMonitorLog(t, now, 8, "gpt-test", 502, "status_code=502, Upstream request failed")
-	seedErrorMonitorLog(t, now, 8, "gpt-test", 400, "status_code=400, Invalid image_url base64")
-	seedErrorMonitorLog(t, now, 8, "gpt-test", 502, "status_code=502, other failure")
+	seedErrorMonitorLog(t, now, 8, "status-match", 502, "status_code=502, other failure")
+	seedErrorMonitorLog(t, now, 9, "keyword-match", 400, "status_code=400, Upstream request failed")
 
 	setting := ErrorMonitorSetting{
 		Enabled:          true,
@@ -109,12 +108,76 @@ func TestRunErrorMonitorOnceFiltersByStatusAndKeyword(t *testing.T) {
 		return nil
 	}, now)
 	require.NoError(t, err)
-	assert.Equal(t, 3, summary.Scanned)
-	assert.Equal(t, 1, summary.Matched)
+	assert.Equal(t, 2, summary.Scanned)
+	assert.Equal(t, 2, summary.Matched)
+	assert.Equal(t, 2, summary.Alerted)
+	require.Len(t, sent, 2)
+	alerts := strings.Join(sent, "\n")
+	assert.Contains(t, alerts, "状态码: 502")
+	assert.Contains(t, alerts, "状态码: 400")
+}
+
+func TestRunErrorMonitorOnceAlertsForRepeatedUnconfiguredError(t *testing.T) {
+	truncate(t)
+	resetErrorMonitorCooldownForTest()
+
+	now := int64(1800000450)
+	seedErrorMonitorLog(t, now, 10, "fallback-match", 429, "status_code=429, rate limit exceeded")
+	seedErrorMonitorLog(t, now-1, 10, "fallback-match", 429, "status_code=429, rate limit exceeded")
+
+	setting := ErrorMonitorSetting{
+		Enabled:          true,
+		WindowSeconds:    300,
+		Threshold:        2,
+		CooldownSeconds:  0,
+		MaxLogs:          20,
+		StatusCodes:      map[int]struct{}{502: {}},
+		ContentKeywords:  []string{"Upstream request failed"},
+		FeishuWebhookURL: "https://open.feishu.cn/test-webhook",
+	}
+	var sent []string
+	summary, err := runErrorMonitorOnce(context.Background(), setting, func(_ string, _ string, text string) error {
+		sent = append(sent, text)
+		return nil
+	}, now)
+	require.NoError(t, err)
+	assert.Equal(t, 2, summary.Scanned)
+	assert.Equal(t, 2, summary.Matched)
 	assert.Equal(t, 1, summary.Alerted)
 	require.Len(t, sent, 1)
-	assert.Contains(t, sent[0], "状态码: 502")
-	assert.NotContains(t, sent[0], "Invalid image_url base64")
+	assert.Contains(t, sent[0], "状态码: 429")
+}
+
+func TestRunErrorMonitorOnceGroupsStatusVariantsOfSameError(t *testing.T) {
+	truncate(t)
+	resetErrorMonitorCooldownForTest()
+
+	now := int64(1800000500)
+	seedErrorMonitorLog(t, now, 11, "gateway-variants", 521, "status_code=521, upstream unavailable")
+	seedErrorMonitorLog(t, now-1, 11, "gateway-variants", 521, "status_code=521, upstream unavailable")
+	seedErrorMonitorLog(t, now-2, 11, "gateway-variants", 524, "status_code=524, upstream timeout")
+	seedErrorMonitorLog(t, now-3, 11, "gateway-variants", 524, "status_code=524, upstream timeout")
+
+	setting := ErrorMonitorSetting{
+		Enabled:          true,
+		WindowSeconds:    300,
+		Threshold:        4,
+		CooldownSeconds:  0,
+		MaxLogs:          20,
+		StatusCodes:      map[int]struct{}{502: {}},
+		ContentKeywords:  []string{"Upstream request failed"},
+		FeishuWebhookURL: "https://open.feishu.cn/test-webhook",
+	}
+	var sent []string
+	summary, err := runErrorMonitorOnce(context.Background(), setting, func(_ string, _ string, text string) error {
+		sent = append(sent, text)
+		return nil
+	}, now)
+	require.NoError(t, err)
+	assert.Equal(t, 4, summary.Matched)
+	assert.Equal(t, 1, summary.Alerted)
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "状态码: 521×2, 524×2")
 }
 
 func TestRunErrorMonitorOnceReturnsNotificationError(t *testing.T) {
