@@ -1,11 +1,12 @@
 package claude
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func TestResponseOpenAI2ClaudeToolUseInputIsObject(t *testing.T) {
 					},
 				},
 			})
-			resp := service.ResponseOpenAI2Claude(&dto.OpenAITextResponse{
+			resp := relayconvert.ResponseOpenAI2Claude(&dto.OpenAITextResponse{
 				Id:    "chatcmpl_1",
 				Model: "gpt-test",
 				Choices: []dto.OpenAITextResponseChoice{
@@ -322,7 +323,7 @@ func TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m(
 	require.Equal(t, 0, openAIUsage.ClaudeCacheCreation1hTokens)
 }
 
-func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48HighUsesAdaptiveThinking(t *testing.T) {
+func TestOpenAIChatRequestToClaudeMessages_ClaudeOpus48HighUsesAdaptiveThinking(t *testing.T) {
 	request := dto.GeneralOpenAIRequest{
 		Model:       "claude-opus-4-8-high",
 		Temperature: commonPointer(0.7),
@@ -336,7 +337,7 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48HighUsesAdaptiveThinking(t *tes
 		},
 	}
 
-	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	claudeRequest, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, request)
 	require.NoError(t, err)
 	require.Equal(t, "claude-opus-4-8", claudeRequest.Model)
 	require.NotNil(t, claudeRequest.Thinking)
@@ -348,7 +349,7 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48HighUsesAdaptiveThinking(t *tes
 	require.Nil(t, claudeRequest.TopK)
 }
 
-func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(t *testing.T) {
+func TestOpenAIChatRequestToClaudeMessages_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(t *testing.T) {
 	request := dto.GeneralOpenAIRequest{
 		Model:       "claude-opus-4-8-thinking",
 		Temperature: commonPointer(0.7),
@@ -362,7 +363,7 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(
 		},
 	}
 
-	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	claudeRequest, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, request)
 	require.NoError(t, err)
 	require.Equal(t, "claude-opus-4-8", claudeRequest.Model)
 	require.NotNil(t, claudeRequest.Thinking)
@@ -372,4 +373,67 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(
 	require.Nil(t, claudeRequest.Temperature)
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
+}
+
+func TestOpenAIChatRequestToClaudeMessagesConvertsSupportedFiles(t *testing.T) {
+	tests := []struct {
+		name     string
+		fileName string
+		content  string
+		wantType string
+		wantText string
+	}{
+		{
+			name:     "text file becomes text content",
+			fileName: "notes.txt",
+			content:  "hello from a text file",
+			wantType: "text",
+			wantText: "hello from a text file",
+		},
+		{
+			name:     "pdf becomes document",
+			fileName: "report.pdf",
+			content:  "%PDF-1.7",
+			wantType: "document",
+		},
+		{
+			name:     "unsupported binary is omitted",
+			fileName: "payload.bin",
+			content:  "opaque binary",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := relayconvert.OpenAIChatRequestToClaudeMessages(nil, dto.GeneralOpenAIRequest{
+				Model: "claude-test",
+				Messages: []dto.Message{{
+					Role: "user",
+					Content: []any{map[string]any{
+						"type": dto.ContentTypeFile,
+						"file": map[string]any{
+							"filename":  tt.fileName,
+							"file_data": base64.StdEncoding.EncodeToString([]byte(tt.content)),
+						},
+					}},
+				}},
+			})
+			require.NoError(t, err)
+			require.Len(t, request.Messages, 1)
+
+			if tt.wantType == "" {
+				assert.Empty(t, request.Messages[0].Content)
+				return
+			}
+
+			content, ok := request.Messages[0].Content.([]dto.ClaudeMediaMessage)
+			require.True(t, ok)
+			require.Len(t, content, 1)
+			assert.Equal(t, tt.wantType, content[0].Type)
+			if tt.wantText != "" {
+				require.NotNil(t, content[0].Text)
+				assert.Equal(t, tt.wantText, *content[0].Text)
+			}
+		})
+	}
 }
