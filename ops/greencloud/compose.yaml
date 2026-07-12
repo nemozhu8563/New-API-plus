@@ -1,0 +1,82 @@
+name: new-api
+
+services:
+  new-api:
+    image: ${NEW_API_IMAGE:?set NEW_API_IMAGE in /srv/new-api/env/images.env}
+    container_name: new-api
+    restart: unless-stopped
+    command: --log-dir /app/logs
+    env_file:
+      - /srv/new-api/env/new-api.env
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - /srv/new-api/data/new-api:/data
+      - /srv/new-api/logs/new-api:/app/logs
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -q '\"success\":true'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: ${NEW_API_POSTGRES_IMAGE:?set NEW_API_POSTGRES_IMAGE in /srv/new-api/env/images.env}
+    container_name: new-api-postgres
+    restart: unless-stopped
+    env_file:
+      - /srv/new-api/env/new-api-postgres.env
+    volumes:
+      - /srv/new-api/data/new-api-postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: ${REDIS_IMAGE:?set REDIS_IMAGE in /srv/new-api/env/images.env}
+    container_name: new-api-redis
+    restart: unless-stopped
+    env_file:
+      - /srv/new-api/env/redis.env
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - /srv/new-api/data/redis:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cpacodexkeeper:
+    image: ${CPA_KEEPER_IMAGE:?set CPA_KEEPER_IMAGE in /srv/new-api/env/images.env}
+    container_name: cpacodexkeeper
+    restart: unless-stopped
+    env_file:
+      - /srv/new-api/env/cpacodexkeeper.env
+    volumes:
+      - /srv/new-api/data/cpacodexkeeper/runtime:/app/runtime
+      - /srv/new-api/logs/cpacodexkeeper:/app/logs
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks:
+      - backend
+
+networks:
+  backend:
+    name: new-api-backend
+    driver: bridge

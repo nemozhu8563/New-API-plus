@@ -1,0 +1,22 @@
+(new_api_proxy) {
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy 127.0.0.1:3000 {
+		flush_interval -1
+		transport http {
+			dial_timeout 30s
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+
+api.tryvalo.com {
+	import new_api_proxy
+}
+
+new.tryvalo.com {
+	import new_api_proxy
+}

@@ -8,6 +8,8 @@ Makefile
 docs
 .eslintcache
 .gocache
+/dist
+/.worktrees
 /web/node_modules
 /web/default/node_modules
 /web/default/dist
