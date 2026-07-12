@@ -3716,5 +3716,6 @@
   "用户选择分组": "Selected public group",
   "命中渠道标签": "Matched channel tag",
   "实际计费倍率": "Effective billing ratio",
-  "计费归属": "Billing attribution"
+  "计费归属": "Billing attribution",
+  "该记录由旧版本实例写入，缺少审计信息，建议将实例升级至最新版本以便记录服务器IP、回调IP、支付方式与系统版本等审计字段。": "Cet enregistrement a été écrit par une ancienne version de l'instance et ne contient pas d'informations d'audit. Veuillez mettre à jour l'instance vers la dernière version afin d'enregistrer les champs d'audit tels que l'IP du serveur, l'IP de rappel, le mode de paiement et la version du système."
 }

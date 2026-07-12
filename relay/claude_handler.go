@@ -150,12 +150,12 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return nil
 	}
 
-	requestBody, requestBodyCloser, newAPIError := buildClaudeRequestBodyWithCloser(c, info, adaptor, request)
+	requestBody, closer, newAPIError := buildClaudeRequestBody(c, info, adaptor, request)
 	if newAPIError != nil {
 		return newAPIError
 	}
-	if requestBodyCloser != nil {
-		defer requestBodyCloser.Close()
+	if closer != nil {
+		defer closer.Close()
 	}
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
@@ -187,12 +187,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	return nil
 }
 
-func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, *types.NewAPIError) {
-	body, _, newAPIError := buildClaudeRequestBodyWithCloser(c, info, adaptor, request)
-	return body, newAPIError
-}
-
-func buildClaudeRequestBodyWithCloser(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, io.Closer, *types.NewAPIError) {
+func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, io.Closer, *types.NewAPIError) {
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {

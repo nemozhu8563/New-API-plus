@@ -2,8 +2,10 @@ package relay
 
 import (
 	"math"
+	"net/http"
 	"testing"
 
+	openaichannel "github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/stretchr/testify/assert"
@@ -24,7 +26,8 @@ func TestIsResponsesEventStreamContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, isResponsesEventStreamContentType(tt.contentType))
+			resp := &http.Response{Header: http.Header{"Content-Type": []string{tt.contentType}}}
+			assert.Equal(t, tt.want, openaichannel.IsEventStreamResponse(resp))
 		})
 	}
 }

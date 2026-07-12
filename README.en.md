@@ -53,6 +53,7 @@
 > This is an open-source project developed based on [One API](https://github.com/songquanpeng/one-api)
 
 > [!IMPORTANT]
+> - This project is for personal learning purposes only, with no guarantee of stability or technical support.
 > - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private deployment scenarios.
 > - Users must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and must comply with upstream terms of service and applicable laws and regulations.
 > - Users should ensure their use complies with upstream terms of service and applicable laws and regulations.

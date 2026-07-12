@@ -6,7 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/gin-gonic/gin"
@@ -46,4 +48,91 @@ data: {"type":"response.completed","response":{"id":"resp_test","object":"respon
 	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
 	require.Contains(t, recorder.Body.String(), `"id":"resp_test"`)
 	require.NotContains(t, recorder.Body.String(), "event:")
+}
+
+type blockingReadCloser struct {
+	closed chan struct{}
+}
+
+func newBlockingReadCloser() *blockingReadCloser {
+	return &blockingReadCloser{closed: make(chan struct{})}
+}
+
+func (b *blockingReadCloser) Read(_ []byte) (int, error) {
+	<-b.closed
+	return 0, io.ErrClosedPipe
+}
+
+func (b *blockingReadCloser) Close() error {
+	select {
+	case <-b.closed:
+	default:
+		close(b.closed)
+	}
+	return nil
+}
+
+func TestScanBufferedEventStreamTimesOutBlockedUpstream(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 1
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	info := &relaycommon.RelayInfo{}
+	body := newBlockingReadCloser()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       body,
+	}
+
+	start := time.Now()
+	handlerCalled := false
+	err := scanBufferedEventStream(c, info, resp, func(string) error {
+		handlerCalled = true
+		return nil
+	})
+
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 3*time.Second)
+	require.NotNil(t, info.StreamStatus)
+	require.Equal(t, relaycommon.StreamEndReasonTimeout, info.StreamStatus.EndReason)
+	require.False(t, handlerCalled)
+}
+
+func TestOaiResponsesStreamBufferedHandlerPreservesCompletedResponseRawJSON(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	body := `data: {"type":"response.completed","response":{"id":"resp_raw","object":"response","created_at":1,"status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3},"unknown_top_level":{"kept":true}}}
+
+`
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+		},
+		Body: io.NopCloser(strings.NewReader(body)),
+	}
+
+	usage, err := OaiResponsesStreamBufferedHandler(c, &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-5.4"},
+	}, resp)
+
+	require.Nil(t, err)
+	require.Equal(t, 1, usage.PromptTokens)
+	require.Equal(t, 2, usage.CompletionTokens)
+	require.Equal(t, 3, usage.TotalTokens)
+	require.Contains(t, recorder.Body.String(), `"unknown_top_level":{"kept":true}`)
+	require.Contains(t, recorder.Body.String(), `"id":"resp_raw"`)
 }

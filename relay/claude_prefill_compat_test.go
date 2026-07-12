@@ -219,7 +219,10 @@ func TestBuildClaudeRequestBodyTransformsNonPassthroughWireBodyOnly(t *testing.T
 	originalEstimate := estimateClaudeTokensForTest(t, c, original, info)
 	info.SetEstimatePromptTokens(originalEstimate)
 
-	body, apiErr := buildClaudeRequestBody(c, info, &claude.Adaptor{}, request)
+	body, closer, apiErr := buildClaudeRequestBody(c, info, &claude.Adaptor{}, request)
+	if closer != nil {
+		defer closer.Close()
+	}
 
 	require.Nil(t, apiErr)
 	bodyBytes, err := io.ReadAll(body)
@@ -258,7 +261,10 @@ func TestBuildClaudeRequestBodyLeavesPassthroughBodyUnchanged(t *testing.T) {
 		},
 	}
 
-	body, apiErr := buildClaudeRequestBody(c, info, &claude.Adaptor{}, request)
+	body, closer, apiErr := buildClaudeRequestBody(c, info, &claude.Adaptor{}, request)
+	if closer != nil {
+		defer closer.Close()
+	}
 
 	require.Nil(t, apiErr)
 	bodyBytes, err := io.ReadAll(body)

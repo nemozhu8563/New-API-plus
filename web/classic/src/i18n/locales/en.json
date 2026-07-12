@@ -3853,6 +3853,7 @@
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "邀请奖励划转已禁用，管理员需先确认合规声明。": "Invitation reward transfer is disabled until compliance terms are confirmed.",
     "需要确认合规声明": "Compliance confirmation required",
-    "非零值需先确认合规声明": "Non-zero values require compliance confirmation first"
+    "非零值需先确认合规声明": "Non-zero values require compliance confirmation first",
+    "该记录由旧版本实例写入，缺少审计信息，建议将实例升级至最新版本以便记录服务器IP、回调IP、支付方式与系统版本等审计字段。": "This record was written by an older instance and lacks audit info. Please upgrade the instance to the latest version so that server IP, callback IP, payment method, and system version audit fields are recorded."
   }
 }
