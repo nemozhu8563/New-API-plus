@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/gin-gonic/gin"
@@ -135,4 +136,40 @@ func TestOaiResponsesStreamBufferedHandlerPreservesCompletedResponseRawJSON(t *t
 	require.Equal(t, 3, usage.TotalTokens)
 	require.Contains(t, recorder.Body.String(), `"unknown_top_level":{"kept":true}`)
 	require.Contains(t, recorder.Body.String(), `"id":"resp_raw"`)
+}
+
+func TestOaiResponsesStreamBufferedHandlerCountsCompletedImageOutputs(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	body := `data: {"type":"response.output_item.done","output_index":0,"item":{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"}}
+
+data: {"type":"response.completed","response":{"id":"resp_image","object":"response","created_at":1,"status":"completed","model":"gpt-5.4","output":[{"type":"image_generation_call","id":"img_1","status":"completed","result":"base64-a"}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}
+
+`
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+		},
+		Body: io.NopCloser(strings.NewReader(body)),
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-5.4"},
+	}
+
+	usage, err := OaiResponsesStreamBufferedHandler(c, info, resp)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, usage.TotalTokens)
+	require.NotNil(t, info.ResponsesUsageInfo)
+	require.NotNil(t, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration])
+	require.Equal(t, 1, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
 }

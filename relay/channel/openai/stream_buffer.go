@@ -716,6 +716,8 @@ type bufferedResponsesStream struct {
 	toolCallName         map[string]string
 	toolCallArgs         map[string]*strings.Builder
 	toolCallItemID       map[string]string
+	imageCounter         relaycommon.ImageGenerationCallCounter
+	imageCommitted       bool
 	sawData              bool
 }
 
@@ -788,7 +790,7 @@ func (b *bufferedResponsesStream) toolCallArgsString(callID string) string {
 	return builder.String()
 }
 
-func (b *bufferedResponsesStream) addEvent(c *gin.Context, info *relaycommon.RelayInfo, streamResp *dto.ResponsesStreamResponse) {
+func (b *bufferedResponsesStream) addEvent(info *relaycommon.RelayInfo, streamResp *dto.ResponsesStreamResponse) {
 	if streamResp == nil {
 		return
 	}
@@ -825,11 +827,20 @@ func (b *bufferedResponsesStream) addEvent(c *gin.Context, info *relaycommon.Rel
 				}
 			}
 			b.addToolCall(callID, name, argsDelta)
+			if streamResp.Type == dto.ResponsesOutputTypeItemDone {
+				info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
+			}
 		case dto.BuildInCallWebSearchCall:
-			if streamResp.Type == dto.ResponsesOutputTypeItemDone && info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
-				if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil {
-					webSearchTool.CallCount++
-				}
+			if streamResp.Type == dto.ResponsesOutputTypeItemDone {
+				info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+			}
+		case dto.BuildInCallFileSearchCall:
+			if streamResp.Type == dto.ResponsesOutputTypeItemDone {
+				info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
+			}
+		case dto.ResponsesOutputTypeImageGenerationCall:
+			if streamResp.Type == dto.ResponsesOutputTypeItemDone && !b.imageCommitted {
+				b.imageCounter.Observe(streamResp.Item, streamResp.OutputIndex)
 			}
 		}
 	case "response.function_call_arguments.delta":
@@ -839,17 +850,29 @@ func (b *bufferedResponsesStream) addEvent(c *gin.Context, info *relaycommon.Rel
 			callID = itemID
 		}
 		b.addToolCall(callID, "", streamResp.Delta)
-	case "response.completed":
+	case "response.completed", "response.done":
 		if streamResp.Response != nil {
 			b.completedResponse = streamResp.Response
 			b.applyUsage(streamResp.Response.Usage)
-			if streamResp.Response.HasImageGenerationCall() {
-				c.Set("image_generation_call", true)
-				c.Set("image_generation_call_quality", streamResp.Response.GetQuality())
-				c.Set("image_generation_call_size", streamResp.Response.GetSize())
+			if !b.imageCommitted {
+				if relaycommon.IsNonBillableResponsesStatus(streamResp.Response.Status) {
+					b.imageCounter.Reset()
+				} else {
+					for i := range streamResp.Response.Output {
+						idx := i
+						b.imageCounter.Observe(&streamResp.Response.Output[i], &idx)
+					}
+				}
+				b.imageCounter.Commit(info)
+				b.imageCommitted = true
 			}
 		}
-	case "response.error", "response.failed":
+	case "response.error", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+		if !b.imageCommitted {
+			b.imageCounter.Reset()
+			b.imageCounter.Commit(info)
+			b.imageCommitted = true
+		}
 		// Let the caller convert this into a relay error after unmarshalling.
 	default:
 	}
@@ -885,7 +908,7 @@ func bufferResponsesEventStream(c *gin.Context, info *relaycommon.RelayInfo, res
 		if err := common.UnmarshalJsonStr(data, &streamResp); err != nil {
 			return err
 		}
-		if streamResp.Type == "response.completed" {
+		if streamResp.Type == "response.completed" || streamResp.Type == "response.done" {
 			var rawEvent struct {
 				Response json.RawMessage `json:"response"`
 			}
@@ -904,7 +927,7 @@ func bufferResponsesEventStream(c *gin.Context, info *relaycommon.RelayInfo, res
 			}
 			return fmt.Errorf("responses stream error: %s", streamResp.Type)
 		}
-		buffered.addEvent(c, info, &streamResp)
+		buffered.addEvent(info, &streamResp)
 		return nil
 	})
 	if err != nil {

@@ -9,12 +9,8 @@ build
 *.db-journal
 logs
 node_modules/
-web/default/dist
-web/classic/dist
-web/node_modules
-web/classic/node_modules
-web/default/node_modules
 web/dist
+web/node_modules
 .env
 one-api
 new-api
@@ -33,7 +29,7 @@ tmp/
 
 electron/node_modules
 electron/dist
-data/
+/data/
 .gomodcache/
 .gocache-temp
 .gopath
