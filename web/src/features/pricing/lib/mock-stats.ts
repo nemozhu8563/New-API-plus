@@ -152,7 +152,6 @@ const APP_TEMPLATES: Array<
     name: 'Devika',
     description: 'Open-source AI software engineer',
     category: 'Coding',
-    url: 'https://github.com/stitionai/devika',
   },
   {
     name: 'Cherry Studio',
