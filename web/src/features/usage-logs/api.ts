@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { buildQueryParams } from './lib/utils'
 import type {
   GetLogsParams,
   GetLogsResponse,
@@ -26,12 +25,23 @@ import type {
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  LogCategory,
   UserInfo,
 } from './types'
 
 // ============================================================================
 // Generic API Helpers
 // ============================================================================
+
+function buildQueryParams(params: Record<string, unknown>): URLSearchParams {
+  const queryParams = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      queryParams.append(key, String(value))
+    }
+  }
+  return queryParams
+}
 
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
@@ -110,3 +120,85 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+// ============================================================================
+// CSV Export
+// ============================================================================
+
+const exportEndpoints: Record<LogCategory, string> = {
+  common: '/api/log',
+  drawing: '/api/mj',
+  task: '/api/task',
+}
+
+export interface UsageLogsCSVExport {
+  blob: Blob
+  filename: string
+}
+
+function getExportFilename(
+  contentDisposition: string | undefined,
+  logCategory: LogCategory
+): string {
+  const encodedFilename = contentDisposition?.match(
+    /filename\*=UTF-8''([^;]+)/i
+  )
+  if (encodedFilename?.[1]) {
+    return decodeURIComponent(encodedFilename[1])
+  }
+
+  const plainFilename = contentDisposition?.match(
+    /filename=(?:"([^"]+)"|([^;]+))/i
+  )
+  const filename = plainFilename?.[1] || plainFilename?.[2]?.trim()
+  if (filename) return filename
+
+  return `usage-logs-${logCategory}-${new Date().toISOString().slice(0, 10)}.csv`
+}
+
+async function getBlobErrorMessage(error: unknown): Promise<string | null> {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return null
+  }
+
+  const response = error.response as { data?: unknown } | undefined
+  const data = response?.data
+  if (!(data instanceof Blob)) return null
+
+  try {
+    const payload = JSON.parse(await data.text()) as { message?: unknown }
+    return typeof payload.message === 'string' ? payload.message : null
+  } catch {
+    return null
+  }
+}
+
+export async function exportUsageLogsCSV(config: {
+  logCategory: LogCategory
+  isAdmin: boolean
+  params: Record<string, unknown>
+}): Promise<UsageLogsCSVExport> {
+  const basePath = exportEndpoints[config.logCategory]
+  const path = config.isAdmin ? `${basePath}/export` : `${basePath}/self/export`
+
+  try {
+    const response = await api.get<Blob>(path, {
+      params: config.params,
+      responseType: 'blob',
+      disableDuplicate: true,
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    })
+    return {
+      blob: response.data,
+      filename: getExportFilename(
+        response.headers['content-disposition'],
+        config.logCategory
+      ),
+    }
+  } catch (error) {
+    const message = await getBlobErrorMessage(error)
+    if (message) throw new Error(message)
+    throw error
+  }
+}

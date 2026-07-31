@@ -1,5 +1,11 @@
 package model
 
+import (
+	"context"
+
+	"gorm.io/gorm"
+)
+
 type Midjourney struct {
 	Id          int    `json:"id"`
 	Code        int    `json:"code"`
@@ -33,42 +39,11 @@ type TaskQueryParams struct {
 	EndTimestamp   string
 }
 
-func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
-	var tasks []*Midjourney
-	var err error
-
-	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId)
-
-	if queryParams.MjID != "" {
-		query = query.Where("mj_id = ?", queryParams.MjID)
-	}
-	if queryParams.StartTimestamp != "" {
-		// 假设您已将前端传来的时间戳转换为数据库所需的时间格式，并处理了时间戳的验证和解析
-		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
-	}
-	if queryParams.EndTimestamp != "" {
-		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
-	}
-
-	// 获取数据
-	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
-	if err != nil {
-		return nil
-	}
-
-	return tasks
-}
-
-func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
-	var tasks []*Midjourney
-	var err error
-
-	// 初始化查询构建器
-	query := DB
-
-	// 添加过滤条件
-	if queryParams.ChannelID != "" {
+func buildMidjourneyQuery(userId *int, queryParams TaskQueryParams) *gorm.DB {
+	query := DB.Model(&Midjourney{})
+	if userId != nil {
+		query = query.Where("user_id = ?", *userId)
+	} else if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
 	if queryParams.MjID != "" {
@@ -80,13 +55,24 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 	if queryParams.EndTimestamp != "" {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	return query
+}
 
-	// 获取数据
-	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
-	if err != nil {
+func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
+	var tasks []*Midjourney
+	query := buildMidjourneyQuery(&userId, queryParams)
+	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error; err != nil {
 		return nil
 	}
+	return tasks
+}
 
+func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
+	var tasks []*Midjourney
+	query := buildMidjourneyQuery(nil, queryParams)
+	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error; err != nil {
+		return nil
+	}
 	return tasks
 }
 
@@ -198,19 +184,7 @@ func MjBulkUpdateByTaskIds(taskIDs []int, params map[string]any) error {
 // CountAllTasks returns total midjourney tasks for admin query
 func CountAllTasks(queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{})
-	if queryParams.ChannelID != "" {
-		query = query.Where("channel_id = ?", queryParams.ChannelID)
-	}
-	if queryParams.MjID != "" {
-		query = query.Where("mj_id = ?", queryParams.MjID)
-	}
-	if queryParams.StartTimestamp != "" {
-		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
-	}
-	if queryParams.EndTimestamp != "" {
-		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
-	}
+	query := buildMidjourneyQuery(nil, queryParams)
 	_ = query.Count(&total).Error
 	return total
 }
@@ -218,16 +192,49 @@ func CountAllTasks(queryParams TaskQueryParams) int64 {
 // CountAllUserTask returns total midjourney tasks for user
 func CountAllUserTask(userId int, queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{}).Where("user_id = ?", userId)
-	if queryParams.MjID != "" {
-		query = query.Where("mj_id = ?", queryParams.MjID)
-	}
-	if queryParams.StartTimestamp != "" {
-		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
-	}
-	if queryParams.EndTimestamp != "" {
-		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
-	}
+	query := buildMidjourneyQuery(&userId, queryParams)
 	_ = query.Count(&total).Error
 	return total
+}
+
+func CountAllMidjourneyForExport(queryParams TaskQueryParams) (int64, error) {
+	var total int64
+	err := buildMidjourneyQuery(nil, queryParams).Count(&total).Error
+	return total, err
+}
+
+func CountUserMidjourneyForExport(userId int, queryParams TaskQueryParams) (int64, error) {
+	var total int64
+	err := buildMidjourneyQuery(&userId, queryParams).Count(&total).Error
+	return total, err
+}
+
+func streamMidjourneyForExport(ctx context.Context, query *gorm.DB, yield func(*Midjourney) error) error {
+	rows, err := query.WithContext(ctx).
+		Order("id desc").
+		Limit(int(UsageLogExportLimit)).
+		Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var task Midjourney
+		if err := query.ScanRows(rows, &task); err != nil {
+			return err
+		}
+		if err := yield(&task); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+func StreamAllMidjourneyForExport(ctx context.Context, queryParams TaskQueryParams, yield func(*Midjourney) error) error {
+	return streamMidjourneyForExport(ctx, buildMidjourneyQuery(nil, queryParams), yield)
+}
+
+func StreamUserMidjourneyForExport(ctx context.Context, userId int, queryParams TaskQueryParams, yield func(*Midjourney) error) error {
+	return streamMidjourneyForExport(ctx, buildMidjourneyQuery(&userId, queryParams), yield)
 }

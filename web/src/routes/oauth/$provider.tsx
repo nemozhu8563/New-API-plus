@@ -39,6 +39,7 @@ import {
   startOAuthBindResponseDeadline,
 } from '@/features/auth/lib/oauth-bind-window'
 import { api, applyAuthBundle, isAuthBundle } from '@/lib/api'
+import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
@@ -159,7 +160,10 @@ function OAuthCallback() {
       }
     }
 
-    const safeNavigate = (target: unknown, fallback = '/dashboard') => {
+    const safeNavigate = (
+      target: unknown,
+      fallback: string = DEFAULT_CONSOLE_ROUTE
+    ) => {
       const href =
         sanitizeAuthRedirect(target, window.location.origin) ?? fallback
       void navigate({ href, replace: true })

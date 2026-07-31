@@ -42,7 +42,7 @@ type SystemBrandProps = {
 /**
  * System brand component
  * Displays current system logo + name.
- * - inline: compact pill in the top app bar; clicking navigates to home (/)
+ * - inline: compact pill in the top app bar; clicking opens the dashboard.
  * - sidebar: stacked card in the sidebar header (display only)
  */
 export function SystemBrand(props: SystemBrandProps) {
@@ -58,8 +58,9 @@ export function SystemBrand(props: SystemBrandProps) {
   if (variant === 'inline') {
     return (
       <Link
-        to='/'
-        aria-label={t('Go to home')}
+        to='/dashboard/$section'
+        params={{ section: 'overview' }}
+        aria-label={t('Dashboard')}
         className={cn(
           'text-foreground inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-sm font-medium transition-colors outline-none select-none',
           'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'

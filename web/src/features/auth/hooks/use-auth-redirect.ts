@@ -24,6 +24,7 @@ import {
   sanitizeAuthRedirect,
 } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle } from '@/lib/api'
+import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
 import type { AuthBundle } from '@/stores/auth-store'
 
 /**
@@ -48,7 +49,8 @@ export function useAuthRedirect() {
     }
 
     const targetPath =
-      sanitizeAuthRedirect(redirectTo, window.location.origin) ?? '/dashboard'
+      sanitizeAuthRedirect(redirectTo, window.location.origin) ??
+      DEFAULT_CONSOLE_ROUTE
     navigate({ href: targetPath, replace: true })
   }
 

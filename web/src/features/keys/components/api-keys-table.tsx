@@ -32,8 +32,10 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -101,6 +103,7 @@ function ApiKeysMobileList({
   isLoading: boolean
 }) {
   const { t } = useTranslation()
+  const { setOpen } = useApiKeys()
   const rows = table.getRowModel().rows
 
   if (isLoading) return <ApiKeysMobileSkeleton />
@@ -120,6 +123,11 @@ function ApiKeysMobileList({
               )}
             </EmptyDescription>
           </EmptyHeader>
+          <EmptyContent>
+            <Button size='sm' onClick={() => setOpen('create')}>
+              {t('Create API Key')}
+            </Button>
+          </EmptyContent>
         </Empty>
       </div>
     )
@@ -188,7 +196,7 @@ function ApiKeysMobileList({
 
 export function ApiKeysTable() {
   const { t } = useTranslation()
-  const { refreshTrigger } = useApiKeys()
+  const { refreshTrigger, setOpen } = useApiKeys()
   const [now, setNow] = useState(() => Date.now())
   const columns = useApiKeysColumns(now)
 
@@ -303,6 +311,11 @@ export function ApiKeysTable() {
       emptyDescription={t(
         'No API keys available. Create your first API key to get started.'
       )}
+      emptyAction={
+        <Button size='sm' onClick={() => setOpen('create')}>
+          {t('Create API Key')}
+        </Button>
+      }
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
       toolbarProps={{

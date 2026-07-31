@@ -298,6 +298,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+		logRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllLogsCSV)
+		logRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserLogsCSV)
 
 		systemTaskRoute := apiRouter.Group("/system-task")
 		systemTaskRoute.Use(middleware.RootAuth())
@@ -344,11 +346,15 @@ func SetApiRouter(router *gin.Engine) {
 		mjRoute := apiRouter.Group("/mj")
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
 		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
+		mjRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllMidjourneyCSV)
+		mjRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserMidjourneyCSV)
 
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
+			taskRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllTaskCSV)
+			taskRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserTaskCSV)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")

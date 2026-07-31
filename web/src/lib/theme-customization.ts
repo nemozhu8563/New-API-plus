@@ -123,6 +123,14 @@ export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
   contentLayout: 'full',
 }
 
+export const FIXED_THEME_CUSTOMIZATION: ThemeCustomization = {
+  preset: 'anthropic',
+  font: 'sans',
+  radius: 'lg',
+  scale: 'lg',
+  contentLayout: 'full',
+}
+
 export const THEME_PRESET_VALUES = new Set(
   THEME_PRESETS.map((p) => p.value)
 ) as ReadonlySet<ThemePreset>

@@ -32,14 +32,14 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
+      <div className='w-full space-y-7'>
+        <div className='space-y-2.5'>
+          <h2 className='text-3xl font-semibold tracking-[-0.03em] text-pretty'>
             {t('Sign in')}
           </h2>
           {!status?.self_use_mode_enabled &&
             status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-left text-sm sm:text-base'>
+              <p className='text-muted-foreground text-sm'>
                 {t("Don't have an account?")}{' '}
                 <Link
                   to='/sign-up'
