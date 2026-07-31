@@ -1,5 +1,7 @@
 # GreenCloud 迁移执行手册（2026-07-11）
 
+> 当前状态（2026-07-31）：GCP `sub2api-prod`、`/opt/new-api-test` 及其 Cloud Build 发布链路已完全弃用。当前唯一有效的测试、发布和回滚目标是 GreenCloud；本文下方关于 GCP 的内容仅保留为迁移历史，不得照此执行。
+
 ## 目标与边界
 
 将 `new-api`、宿主机版 CLIProxyAPI（CPA）和 CPA keeper 从 GCP 迁至 GreenCloud；镜像只在本地构建为 `linux/amd64`，以不可变镜像包上传到 GreenCloud。CPA 不对公网开放，只有 `new-api` 可以通过私有 Docker 桥接访问它。
@@ -11,13 +13,8 @@
 - Cutover ID：`new-api-cutover-20260712T001659Z`
 - 最终数据库验收：`users|channels|tokens|options|logs = 29|15|86|47|400780`。
 - GreenCloud 的 `new-api`、PostgreSQL、Redis 均 healthy；CPA 与其 Docker 私有 bridge 均保持启用，CPA 不对公网开放。
-- GCP 写入已停止：`new-api` 与 `cpacodexkeeper` 为 stopped，`cliproxyapi.service` 为 inactive。GCP 保留至少 7 天，作为只读回滚源。
-- 回滚命令（仅在确认需要回退时执行）：
-
-  ```bash
-  sudo systemctl start cliproxyapi.service
-  sudo docker start new-api cpacodexkeeper
-  ```
+- GCP 写入已停止：`new-api` 与 `cpacodexkeeper` 为 stopped，`cliproxyapi.service` 为 inactive。2026-07-31 起 GCP 服务器完全弃用，不再作为运行、测试或回滚目标。
+- 原 GCP 启动命令仅为历史记录，已失效且禁止执行。当前应用回滚只能切回 GreenCloud 上一份已验证镜像。
 
 `tryvalo.com` 与 `www.tryvalo.com` 继续由 Cloudflare Tunnel `greencloud-new-api-rehearsal` 转发到 GreenCloud 的 `http://127.0.0.1:3000`。为避开橙云长请求的源站响应时限，`api.tryvalo.com` 与 `new.tryvalo.com` 已于 2026-07-12 10:06（Asia/Shanghai）从 Tunnel CNAME 改为直接 A 记录 `173.249.203.66`，并设置为 `仅 DNS`（灰云）。
 
@@ -59,7 +56,7 @@ flowchart LR
   Client --> Caddy["Caddy 直连 TLS\napi.tryvalo.com / new.tryvalo.com"]
   CF --> NA
   Caddy --> NA
-  GCP["GCP 回滚源\n写入已停止"]
+  GCP["GCP 历史环境\n已完全弃用"]
   subgraph GreenCloud["GreenCloud 生产"]
     NA["new-api\n127.0.0.1:3000"] --> DB["PostgreSQL"]
     NA --> R["Redis"]
@@ -106,17 +103,17 @@ ufw insert 1 allow in on "$bridge" from "$subnet" to "$docker0_ip" port 8317 pro
 ## 最终生产迁移窗口
 
 1. 用户确认正式 Cloudflare hostname、维护窗口、切流顺序和通知范围。已存在的 `greencloud.tryvalo.com` 仅可作 rehearsal；此确认前不得改动正式 hostname、DNS、WAF、Access 或 Turnstile。
-2. 在 GCP 停止新的业务写入；记录开始时间、GCP 服务/容器状态、Cloudflare 当前配置和回滚负责人。
+2. 确认已弃用的 GCP 不再接受业务写入；记录 GreenCloud 服务状态、Cloudflare 当前配置和回滚负责人。
 3. 重新导出七个最终包：CPA 文件、CPA PostgreSQL、keeper runtime、keeper 配置、`new-api` 配置、`new-api` PostgreSQL、Redis RDB。每个包先落到源端磁盘、生成 SHA-256、再用 age 加密。
-4. 通过文件传输而非终端输出传送包：优先在 GCP 与 GreenCloud 之间使用 `rsync --partial --append-verify`；若两机无法直连，上传到受控对象存储后校验 SHA-256 再下载。禁止把 dump 流经聊天、复制粘贴或会被截断的命令输出。
+4. 通过文件传输而非终端输出传送包；优先使用 `rsync --partial --append-verify`，若两端无法直连则上传到受控对象存储后校验 SHA-256 再下载。禁止把 dump 流经聊天、复制粘贴或会被截断的命令输出。
 5. GreenCloud 验证每个密文 SHA-256；解密/恢复前再次核对包名、时间戳和 cutover ID。恢复 PostgreSQL、Redis、CPA 状态及 keeper runtime，再执行本手册的 rehearsal 校验。
 6. 先启动 CPA、私有 bridge、PostgreSQL、Redis、`new-api`；keeper 仅在 dry-run 和 Feishu 通知策略明确后启用。
 7. 通过本机管理入口完成管理员登录、CPA channel 解密、`/v1/models`、普通非流式请求、SSE 请求与账单日志的端到端验证。只记录状态码、请求 ID 和计数，不记录 token、DSN 或完整日志。
-8. 所有验证通过且用户再次确认后，才将正式 Cloudflare hostname/DNS 灰度切到 GreenCloud；不得把测试 hostname 当作生产切换。观察期间 GCP 保留为回滚目标。
+8. 所有验证通过且用户再次确认后，才将正式 Cloudflare hostname/DNS 灰度切到 GreenCloud；不得把测试 hostname 当作生产切换。回滚目标为 GreenCloud 上一份已验证镜像，不再回退到 GCP。
 
 ## 回滚与收尾
 
-- 切流失败：恢复原 Cloudflare 指向，不在 GreenCloud 继续接受生产写入；GCP 无需数据回灌即可继续服务。
+- 切流失败：恢复原 Cloudflare 指向，或切回 GreenCloud 上一份已验证镜像；不在未验收的 GreenCloud 实例继续接受生产写入。
 - 切流后出现数据/账单不一致：立即停止 GreenCloud 写入，回退 Cloudflare，保留 GreenCloud 日志与数据库快照供核对。
-- GCP 至少保留 7 天回滚期，且在数据、账单、SSE、Cloudflare 安全策略和 keeper 行为均验收前不得删除。
-- 先前 GCP 共享 PostgreSQL/Redis 口令曾出现在不应出现的操作输出中；生产切流完成后应单独执行口令轮换，并更新所有依赖服务。
+- GCP 已完全弃用，不再承担回滚期或服务职责；任何遗留快照、镜像和凭据均不得作为当前运行依赖。
+- 先前 GCP 共享 PostgreSQL/Redis 口令曾出现在不应出现的操作输出中；这些凭据属于历史遗留，必须保持失效并完成轮换。

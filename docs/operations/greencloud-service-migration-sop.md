@@ -1,5 +1,7 @@
 # GreenCloud 服务迁移 SOP（new-api / CPA）
 
+> 当前目标（2026-07-31）：GreenCloud 是唯一有效的运行、测试、发布和回滚环境。GCP `sub2api-prod` 及其旧测试部署链路已完全弃用，不得用于部署、回滚或健康检查；历史迁移资料仅作审计记录。
+
 > 版本：v1（2026-07-12）
 > 适用范围：将 `new-api`、PostgreSQL、Redis、宿主机 CLIProxyAPI（CPA）及可选 CPA keeper 迁入或迁出 GreenCloud；也适用于 GreenCloud 上的常规 `new-api` 镜像发布。
 > 当前生产基线与实际端口请先读：[GreenCloud 迁移执行手册](2026-07-11-greencloud-migration-runbook.md)。本 SOP 是流程，不替代现场核验。

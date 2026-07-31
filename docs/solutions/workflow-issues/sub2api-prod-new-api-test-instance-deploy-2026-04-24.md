@@ -20,6 +20,8 @@ root_cause: missing_tooling
 resolution_type: workflow_improvement
 ---
 
+> 历史记录（已弃用，2026-07-31）：`sub2api-prod`、`/opt/new-api-test` 和本文的 GCP 测试部署流程已完全停用。不得执行其中的 `gcloud`、GCE、服务器端构建或旧 Compose 命令；当前测试发布请遵循 [GreenCloud 服务迁移 SOP](../../operations/greencloud-service-migration-sop.md)。
+
 # Deploy a parallel new-api test instance on sub2api-prod by reusing PostgreSQL and Redis
 
 ## Context

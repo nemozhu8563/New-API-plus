@@ -19,6 +19,8 @@ root_cause: incomplete_setup
 resolution_type: workflow_improvement
 ---
 
+> 历史记录（已弃用，2026-07-31）：本文的 `sub2api-prod` / GCP 测试实例和部署命令已完全停用，仅保留为旧问题证据。当前测试发布请遵循 [GreenCloud 服务迁移 SOP](../../operations/greencloud-service-migration-sop.md)。
+
 # Stale new-api test frontend can hide the tiered billing UI even when the code supports it
 
 ## Context

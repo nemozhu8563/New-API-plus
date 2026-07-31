@@ -20,6 +20,8 @@ root_cause: missing_tooling
 resolution_type: workflow_improvement
 ---
 
+> 历史记录（已弃用，2026-07-31）：本文描述的 GCP Cloud Build / Artifact Registry 发布路径已完全停用。不得执行其中的 `gcloud`、`sub2api-prod` 或 GCP 镜像发布命令；当前部署请遵循 [GreenCloud 服务迁移 SOP](../../operations/greencloud-service-migration-sop.md)。
+
 # Use Cloud Build and Artifact Registry when new-api must be pushed to GCloud without building on the target server
 
 ## Context
