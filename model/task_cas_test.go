@@ -57,6 +57,12 @@ func TestMain(m *testing.M) {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&Redemption{},
+		&AffiliateAgent{},
+		&AffiliateFirstRewardClaim{},
+		&AffiliateCommission{},
+		&AffiliateConversion{},
+		&AffiliateWithdrawal{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

@@ -25,6 +25,8 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { AffiliateDetailsDialog } from './components/dialogs/affiliate-details-dialog'
+import { AffiliateWithdrawalDialog } from './components/dialogs/affiliate-withdrawal-dialog'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
@@ -73,6 +75,10 @@ export function Wallet(props: WalletProps) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [cashbackConvertDialogOpen, setCashbackConvertDialogOpen] =
+    useState(false)
+  const [affiliateDetailsOpen, setAffiliateDetailsOpen] = useState(false)
+  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
@@ -99,9 +105,14 @@ export function Wallet(props: WalletProps) {
   } = usePayment()
   const {
     affiliateLink,
+    summary: affiliateSummary,
     loading: affiliateLoading,
     transferQuota,
     transferring,
+    convertCashback,
+    requestWithdrawal,
+    converting,
+    withdrawing,
   } = useAffiliate()
   const { redeeming, redeemCode } = useRedemption()
   const { processing: creemProcessing, processCreemPayment } = useCreemPayment()
@@ -231,6 +242,14 @@ export function Wallet(props: WalletProps) {
     return success
   }
 
+  const handleCashbackConversion = async (amount: number) => {
+    const success = await convertCashback(amount)
+    if (success) {
+      await fetchUser()
+    }
+    return success
+  }
+
   // Handle Creem product selection
   const handleCreemProductSelect = (product: CreemProduct) => {
     setSelectedCreemProduct(product)
@@ -341,8 +360,12 @@ export function Wallet(props: WalletProps) {
 
             <AffiliateRewardsCard
               user={user}
+              summary={affiliateSummary}
               affiliateLink={affiliateLink}
-              onTransfer={() => setTransferDialogOpen(true)}
+              onViewDetails={() => setAffiliateDetailsOpen(true)}
+              onConvertCashback={() => setCashbackConvertDialogOpen(true)}
+              onRequestWithdrawal={() => setWithdrawalDialogOpen(true)}
+              onTransferLegacyRewards={() => setTransferDialogOpen(true)}
               complianceConfirmed={
                 topupInfo?.payment_compliance_confirmed !== false
               }
@@ -371,6 +394,29 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleTransfer}
         availableQuota={user?.aff_quota ?? 0}
         transferring={transferring}
+      />
+
+      <TransferDialog
+        open={cashbackConvertDialogOpen}
+        onOpenChange={setCashbackConvertDialogOpen}
+        onConfirm={handleCashbackConversion}
+        availableQuota={affiliateSummary?.available_quota ?? 0}
+        transferring={converting}
+        minimumQuota={1}
+      />
+
+      <AffiliateWithdrawalDialog
+        open={withdrawalDialogOpen}
+        onOpenChange={setWithdrawalDialogOpen}
+        onConfirm={requestWithdrawal}
+        availableQuota={affiliateSummary?.available_quota ?? 0}
+        submitting={withdrawing}
+      />
+
+      <AffiliateDetailsDialog
+        open={affiliateDetailsOpen}
+        onOpenChange={setAffiliateDetailsOpen}
+        summary={affiliateSummary}
       />
 
       <BillingHistoryDialog

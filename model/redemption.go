@@ -159,6 +159,9 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
+		if redemption.Quota <= 0 || redemption.Quota > common.MaxQuota {
+			return errors.New("兑换码额度无效")
+		}
 		// Compare-and-swap on status: only the transaction that flips
 		// enabled -> used may credit quota, so a concurrent redeem of the
 		// same code loses here even without a row lock (e.g. on SQLite).
@@ -175,7 +178,16 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		userResult := tx.Model(&User{}).
+			Where("id = ? AND quota <= ?", userId, common.MaxQuota-redemption.Quota).
+			Update("quota", gorm.Expr("quota + ?", redemption.Quota))
+		if userResult.Error != nil {
+			return userResult.Error
+		}
+		if userResult.RowsAffected != 1 {
+			return errors.New("用户不存在或余额将超过系统上限")
+		}
+		return createAffiliateCommissionForRedemptionTx(tx, redemption, userId)
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())

@@ -40,6 +40,7 @@ interface TransferDialogProps {
   onConfirm: (amount: number) => Promise<boolean>
   availableQuota: number
   transferring: boolean
+  minimumQuota?: number
 }
 
 export function TransferDialog({
@@ -48,14 +49,17 @@ export function TransferDialog({
   onConfirm,
   availableQuota,
   transferring,
+  minimumQuota: minimumQuotaOverride,
 }: TransferDialogProps) {
   const { t } = useTranslation()
   const currencyConfig = useSystemConfigStore((state) => state.config.currency)
-  const minimumQuota = Math.ceil(
-    currencyConfig.quotaPerUnit > 0
-      ? currencyConfig.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  )
+  const minimumQuota =
+    minimumQuotaOverride ??
+    Math.ceil(
+      currencyConfig.quotaPerUnit > 0
+        ? currencyConfig.quotaPerUnit
+        : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+    )
   const minimumAmount = quotaUnitsToDollars(minimumQuota)
   const maximumAmount = quotaUnitsToDollars(availableQuota)
   const [amount, setAmount] = useState(minimumAmount)
@@ -135,7 +139,7 @@ export function TransferDialog({
             onChange={(e) => setAmount(Number(e.target.value))}
             min={minimumAmount}
             max={maximumAmount}
-            step={minimumAmount}
+            step={minimumQuotaOverride ? 'any' : minimumAmount}
             className='font-mono text-lg'
           />
           <p className='text-muted-foreground text-xs'>
