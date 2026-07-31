@@ -141,6 +141,7 @@ export const STATIC_I18N_KEYS = [
   'Expired time cannot be earlier than current time',
   'Quota must be a positive number',
   'Successfully created {{count}} redemption codes',
+  'Export selected codes',
 
   // Home page (constants-driven labels)
   'Cost Tracking',

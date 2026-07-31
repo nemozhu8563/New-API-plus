@@ -1158,6 +1158,7 @@
     "Copy Request Header": "Копировать заголовок запроса",
     "Copy secret key": "Скопировать секретный ключ",
     "Copy selected codes": "Копировать выбранные коды",
+    "Export selected codes": "Экспортировать выбранные коды",
     "Copy selected keys": "Копировать выбранные ключи",
     "Copy selected models": "Копировать выбранные модели",
     "Copy selected models separated by commas (e.g. a,b)": "Копировать выбранные модели через запятую (например, a,b)",

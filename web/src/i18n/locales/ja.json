@@ -1158,6 +1158,7 @@
     "Copy Request Header": "リクエストヘッダーをコピー",
     "Copy secret key": "シークレットキーをコピー",
     "Copy selected codes": "選択したコードをコピー",
+    "Export selected codes": "選択したコードをエクスポート",
     "Copy selected keys": "選択したキーをコピー",
     "Copy selected models": "選択したモデルをコピー",
     "Copy selected models separated by commas (e.g. a,b)": "選択したモデルをカンマ区切りでコピー（例: a,b）",

@@ -17,11 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
+import { Download } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
 import { DataTableBulkActions as BulkActionsToolbar } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
 
 import type { Redemption } from '../types'
 
@@ -43,6 +45,21 @@ export function DataTableBulkActions<TData>({
     return selectedCodes.join('\n')
   }, [selectedRows])
 
+  const handleExport = () => {
+    const codes = selectedRows
+      .map((row) => (row.original as Redemption).key)
+      .join('\r\n')
+    const blob = new Blob([`\ufeff${codes}`], {
+      type: 'text/plain;charset=utf-8;',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `redemption-codes-${new Date().toISOString().slice(0, 10)}.txt`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
   return (
     <BulkActionsToolbar table={table} entityName={t('redemption code')}>
       <CopyButton
@@ -54,6 +71,16 @@ export function DataTableBulkActions<TData>({
         successTooltip={t('Codes copied!')}
         aria-label={t('Copy selected codes')}
       />
+      <Button
+        variant='outline'
+        size='icon'
+        className='size-8'
+        onClick={handleExport}
+        title={t('Export selected codes')}
+        aria-label={t('Export selected codes')}
+      >
+        <Download />
+      </Button>
     </BulkActionsToolbar>
   )
 }

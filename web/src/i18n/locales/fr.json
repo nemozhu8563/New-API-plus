@@ -1158,6 +1158,7 @@
     "Copy Request Header": "Copier un en-tête de requête",
     "Copy secret key": "Copier la clé secrète",
     "Copy selected codes": "Copier les codes sélectionnés",
+    "Export selected codes": "Exporter les codes sélectionnés",
     "Copy selected keys": "Copier les clés sélectionnées",
     "Copy selected models": "Copier les modèles sélectionnés",
     "Copy selected models separated by commas (e.g. a,b)": "Copier les modèles sélectionnés séparés par des virgules (par ex. a,b)",

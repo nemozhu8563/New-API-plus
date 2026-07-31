@@ -1158,6 +1158,7 @@
     "Copy Request Header": "复制请求头",
     "Copy secret key": "复制密钥",
     "Copy selected codes": "复制选定的代码",
+    "Export selected codes": "导出选中的代码",
     "Copy selected keys": "复制选定的密钥",
     "Copy selected models": "复制已选模型",
     "Copy selected models separated by commas (e.g. a,b)": "复制已选模型，使用英文逗号隔开（例如 a,b）",
