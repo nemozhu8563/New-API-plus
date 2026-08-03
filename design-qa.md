@@ -50,4 +50,17 @@ Screenshots are stored in `artifacts/ui-core-qa/`.
 - Full `bun run lint` reports existing unrelated errors outside this change.
 - `bun run format:check` reports only the unchanged `src/features/usage-logs/components/usage-logs-mobile-card.tsx`.
 
+## Tryvalo Brand Asset QA
+
+- Replaced the default Web, favicon, Electron application, Windows tray, and macOS template icons with the selected Tryvalo mark.
+- Preserved the runtime `/api/status` branding contract; the browser QA supplied `system_name: "Tryvalo"` and `logo: "/logo.png"` through a local request mock instead of hard-coding product identity.
+- Compared the selected source artwork with the exported 180 x 180 Web asset and the rendered sign-in page. The black `T`, central negative-space `V`, blue left plane, and terracotta right plane remain recognizable without the source artwork's excess canvas.
+- The 180 x 180 Web source renders cleanly at 40.3125 px in the desktop and mobile brand positions. A separate 20 x 20 downsample retained distinct silhouette and color planes.
+- The runtime favicon resolves to `/logo.png`; the static `favicon.ico` is available as the initial-load fallback.
+- Validated the sign-in route at 1272 x 868 and 390 x 844. The logo stays aligned with the Tryvalo wordmark, does not overflow, and remains legible against the cream background.
+- No new console error appeared after the mocked Tryvalo status response loaded. Earlier `/api/status` failures came from running the frontend without a local backend.
+- Screenshots are stored in `artifacts/tryvalo-brand-qa/`; trailing empty viewport space was cropped from the saved captures.
+- `bun run build:check`: passed.
+- Built `dist/logo.png` and `dist/favicon.ico` matched their `public/` sources by SHA-256.
+
 final result: passed
