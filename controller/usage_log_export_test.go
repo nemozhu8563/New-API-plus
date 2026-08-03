@@ -120,7 +120,7 @@ func TestExportUserLogsCSVUsesSelfScopeAndSanitizesSensitiveFields(t *testing.T)
 	assert.Equal(t, fmt.Sprint(matching.Id), records[1][0])
 	assert.NotContains(t, strings.Join(records[1], ","), "admin_info")
 	assert.NotContains(t, strings.Join(records[1], ","), "audit_info")
-	assert.NotContains(t, strings.Join(records[1], ","), "stream_status")
+	assert.Contains(t, strings.Join(records[1], ","), "stream_status")
 	assert.Contains(t, strings.Join(records[1], ","), "model_price")
 	assert.Contains(t, records[1], "'=HYPERLINK(\"https://example.invalid\",\"matching\")")
 }
