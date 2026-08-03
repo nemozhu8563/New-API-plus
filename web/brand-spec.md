@@ -26,8 +26,8 @@
 
 - The system logo and display name continue to come from `/api/status`; custom
   deployments keep their configured identity.
-- References to `new-api`, `QuantumNous`, licensing, package metadata, and
-  project attribution are protected and must not be removed or replaced.
+- Package metadata and runtime module paths remain unchanged unless a separate
+  migration explicitly updates their consumers.
 - Preserve authenticated routes, deep links, form behavior, API contracts,
   analytics hooks, i18n, keyboard behavior, and real data.
 

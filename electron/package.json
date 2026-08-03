@@ -18,11 +18,6 @@
     "openai",
     "claude"
   ],
-  "author": "QuantumNous",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/QuantumNous/new-api"
-  },
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "39.8.5",
@@ -61,10 +56,6 @@
           "to": "bin/new-api"
         },
         {
-          "from": "../LICENSE",
-          "to": "licenses/LICENSE"
-        },
-        {
           "from": "../NOTICE",
           "to": "licenses/NOTICE"
         },
@@ -92,10 +83,6 @@
         {
           "from": "../new-api.exe",
           "to": "bin/new-api.exe"
-        },
-        {
-          "from": "../LICENSE",
-          "to": "licenses/LICENSE"
         },
         {
           "from": "../NOTICE",
@@ -126,10 +113,6 @@
         {
           "from": "../new-api",
           "to": "bin/new-api"
-        },
-        {
-          "from": "../LICENSE",
-          "to": "licenses/LICENSE"
         },
         {
           "from": "../NOTICE",
