@@ -4,6 +4,11 @@ import type {
   FieldPath,
   FieldValues,
 } from 'react-hook-form'
+import { z } from 'zod'
+
+export function positiveIntegerSchema(message: string) {
+  return z.number().int(message).positive(message)
+}
 
 /**
  * Props produced by {@link safeNumberFieldProps} for a native

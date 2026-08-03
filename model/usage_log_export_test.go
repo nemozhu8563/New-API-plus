@@ -87,7 +87,7 @@ func TestStreamUserLogsForExportAppliesFiltersAndSanitizesSensitiveData(t *testi
 	assert.Contains(t, other, "model_price")
 	assert.NotContains(t, other, "admin_info")
 	assert.NotContains(t, other, "audit_info")
-	assert.NotContains(t, other, "stream_status")
+	assert.Contains(t, other, "stream_status")
 }
 
 func TestMidjourneyExportUsesTheSameScopeAndFiltersAsTheList(t *testing.T) {
