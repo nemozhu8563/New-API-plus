@@ -11,10 +11,8 @@
     "lint": "oxlint -c .oxlintrc.json .",
     "lint:fix": "oxlint -c .oxlintrc.json . --fix",
     "preview": "rsbuild preview",
-    "format:check": "node scripts/format-with-protected-headers.mjs --check",
-    "format": "node scripts/format-with-protected-headers.mjs --write",
-    "copyright:check": "node scripts/add-copyright.mjs --check",
-    "copyright": "node scripts/add-copyright.mjs",
+    "format:check": "oxfmt -c .oxfmtrc.json --ignore-path .gitignore --check .",
+    "format": "oxfmt -c .oxfmtrc.json --ignore-path .gitignore --write .",
     "i18n:sync": "node scripts/sync-i18n.mjs",
     "knip": "knip"
   },
