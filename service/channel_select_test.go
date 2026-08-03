@@ -11,6 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -206,4 +208,38 @@ func TestCacheUpdateChannelStatusRemovesTaggedChannelFromCache(t *testing.T) {
 	if channel != nil {
 		t.Fatalf("expected tagged selection to return nil after cache removal, got %#v", channel)
 	}
+}
+
+func TestCacheGetRandomSatisfiedChannelSkipsOpenCircuitAndUsesNextPriority(t *testing.T) {
+	db := setupGroupTagResolverTestDB(t)
+	withResolverSettingsReset(t)
+	setupChannelCircuitBreakerTest(t)
+
+	seedGroupTagResolverChannelWithPriority(t, db, 18, "default", "shared-model", "", 10)
+	seedGroupTagResolverChannelWithPriority(t, db, 28, "default", "shared-model", "", 5)
+	seedGroupTagResolverChannelWithPriority(t, db, 29, "default", "shared-model", "", 0)
+	model.InitChannelCache()
+
+	assert.False(t, RecordChannelCircuitFailure(18, 524).Tripped)
+	assert.True(t, RecordChannelCircuitFailure(18, 524).Tripped)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	retryParam := &RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "default",
+		ModelName:  "shared-model",
+		Retry:      common.GetPointer(2),
+	}
+	retryParam.ForceSelectionRetryOnce(0)
+	channel, _, err := CacheGetRandomSatisfiedChannel(retryParam)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 28, channel.Id)
+	assert.Equal(t, 2, retryParam.GetRetry())
+	assert.True(t, IsChannelCircuitBypass(ctx))
+
+	channel, _, err = CacheGetRandomSatisfiedChannel(retryParam)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 29, channel.Id)
 }

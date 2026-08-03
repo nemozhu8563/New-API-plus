@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
@@ -44,6 +26,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import i18n from '@/i18n/config'
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 
 import {
@@ -66,6 +49,56 @@ const numericString = z.string().refine((value) => {
 const channelTestModes = ['scheduled_all', 'passive_recovery'] as const
 type ChannelTestMode = (typeof channelTestModes)[number]
 
+type ParsedChannelIDs = {
+  ids: number[]
+  invalidTokens: string[]
+  duplicateIDs: number[]
+}
+
+function parseChannelIDs(value: string): ParsedChannelIDs {
+  const tokens = value
+    .replaceAll('，', ',')
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+  const ids: number[] = []
+  const invalidTokens: string[] = []
+  const duplicateIDs: number[] = []
+  const seen = new Set<number>()
+
+  for (const token of tokens) {
+    if (!/^\d+$/.test(token)) {
+      invalidTokens.push(token)
+      continue
+    }
+    const id = Number(token)
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      invalidTokens.push(token)
+      continue
+    }
+    if (seen.has(id)) {
+      duplicateIDs.push(id)
+      continue
+    }
+    seen.add(id)
+    ids.push(id)
+  }
+
+  return { ids, invalidTokens, duplicateIDs }
+}
+
+function channelIDsOptionToInput(value: string) {
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return ''
+    return parsed
+      .filter((id): id is number => Number.isSafeInteger(id) && id > 0)
+      .join(',')
+  } catch {
+    return ''
+  }
+}
+
 const routingReliabilitySchema = z
   .object({
     RetryTimes: z.coerce.number().min(0).max(10),
@@ -82,6 +115,15 @@ const routingReliabilitySchema = z
         .int()
         .min(1, 'Interval must be at least 1 minute'),
       channel_test_mode: z.enum(channelTestModes),
+    }),
+    channel_circuit_breaker_setting: z.object({
+      enabled: z.boolean(),
+      channel_ids: z.string(),
+      failure_status_codes: z.string(),
+      failure_threshold: z.coerce.number().int().min(2).max(100),
+      window_seconds: z.coerce.number().int().min(1).max(3600),
+      open_seconds: z.coerce.number().int().min(1).max(86400),
+      emergency_failover: z.boolean(),
     }),
   })
   .superRefine((values, ctx) => {
@@ -110,6 +152,43 @@ const routingReliabilitySchema = z
         )}`,
       })
     }
+
+    const channelIDs = parseChannelIDs(
+      values.channel_circuit_breaker_setting.channel_ids
+    )
+    if (channelIDs.invalidTokens.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channel_circuit_breaker_setting', 'channel_ids'],
+        message: i18n.t('Channel IDs must be positive integers'),
+      })
+    } else if (channelIDs.duplicateIDs.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channel_circuit_breaker_setting', 'channel_ids'],
+        message: i18n.t('Channel IDs must not contain duplicates'),
+      })
+    } else if (
+      values.channel_circuit_breaker_setting.enabled &&
+      channelIDs.ids.length === 0
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channel_circuit_breaker_setting', 'channel_ids'],
+        message: i18n.t('Configure at least one channel ID before enabling'),
+      })
+    }
+
+    const circuitStatuses = parseHttpStatusCodeRules(
+      values.channel_circuit_breaker_setting.failure_status_codes
+    )
+    if (!circuitStatuses.ok || circuitStatuses.ranges.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channel_circuit_breaker_setting', 'failure_status_codes'],
+        message: i18n.t('Enter at least one valid failure status code'),
+      })
+    }
   })
 
 type RoutingReliabilityFormValues = z.output<typeof routingReliabilitySchema>
@@ -127,6 +206,13 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_mode': ChannelTestMode
+    'channel_circuit_breaker_setting.enabled': boolean
+    'channel_circuit_breaker_setting.channel_ids': string
+    'channel_circuit_breaker_setting.failure_status_codes': string
+    'channel_circuit_breaker_setting.failure_threshold': number
+    'channel_circuit_breaker_setting.window_seconds': number
+    'channel_circuit_breaker_setting.open_seconds': number
+    'channel_circuit_breaker_setting.emergency_failover': boolean
   }
 }
 
@@ -145,6 +231,13 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+  'channel_circuit_breaker_setting.enabled': boolean
+  'channel_circuit_breaker_setting.channel_ids': string
+  'channel_circuit_breaker_setting.failure_status_codes': string
+  'channel_circuit_breaker_setting.failure_threshold': number
+  'channel_circuit_breaker_setting.window_seconds': number
+  'channel_circuit_breaker_setting.open_seconds': number
+  'channel_circuit_breaker_setting.emergency_failover': boolean
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -172,6 +265,22 @@ const buildFormDefaults = (
       defaults['monitor_setting.channel_test_mode']
     ),
   },
+  channel_circuit_breaker_setting: {
+    enabled: defaults['channel_circuit_breaker_setting.enabled'] ?? false,
+    channel_ids: channelIDsOptionToInput(
+      defaults['channel_circuit_breaker_setting.channel_ids'] ?? '[]'
+    ),
+    failure_status_codes:
+      defaults['channel_circuit_breaker_setting.failure_status_codes'] ?? '524',
+    failure_threshold:
+      defaults['channel_circuit_breaker_setting.failure_threshold'] ?? 2,
+    window_seconds:
+      defaults['channel_circuit_breaker_setting.window_seconds'] ?? 60,
+    open_seconds:
+      defaults['channel_circuit_breaker_setting.open_seconds'] ?? 600,
+    emergency_failover:
+      defaults['channel_circuit_breaker_setting.emergency_failover'] ?? true,
+  },
 })
 
 const normalizeDefaults = (
@@ -197,6 +306,27 @@ const normalizeDefaults = (
   'monitor_setting.channel_test_mode': normalizeChannelTestMode(
     defaults['monitor_setting.channel_test_mode']
   ),
+  'channel_circuit_breaker_setting.enabled':
+    defaults['channel_circuit_breaker_setting.enabled'] ?? false,
+  'channel_circuit_breaker_setting.channel_ids': JSON.stringify(
+    parseChannelIDs(
+      channelIDsOptionToInput(
+        defaults['channel_circuit_breaker_setting.channel_ids'] ?? '[]'
+      )
+    ).ids
+  ),
+  'channel_circuit_breaker_setting.failure_status_codes':
+    parseHttpStatusCodeRules(
+      defaults['channel_circuit_breaker_setting.failure_status_codes'] ?? '524'
+    ).normalized,
+  'channel_circuit_breaker_setting.failure_threshold':
+    defaults['channel_circuit_breaker_setting.failure_threshold'] ?? 2,
+  'channel_circuit_breaker_setting.window_seconds':
+    defaults['channel_circuit_breaker_setting.window_seconds'] ?? 60,
+  'channel_circuit_breaker_setting.open_seconds':
+    defaults['channel_circuit_breaker_setting.open_seconds'] ?? 600,
+  'channel_circuit_breaker_setting.emergency_failover':
+    defaults['channel_circuit_breaker_setting.emergency_failover'] ?? true,
 })
 
 const normalizeFormValues = (
@@ -220,6 +350,23 @@ const normalizeFormValues = (
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
   'monitor_setting.channel_test_mode': values.monitor_setting.channel_test_mode,
+  'channel_circuit_breaker_setting.channel_ids': JSON.stringify(
+    parseChannelIDs(values.channel_circuit_breaker_setting.channel_ids).ids
+  ),
+  'channel_circuit_breaker_setting.failure_status_codes':
+    parseHttpStatusCodeRules(
+      values.channel_circuit_breaker_setting.failure_status_codes
+    ).normalized,
+  'channel_circuit_breaker_setting.failure_threshold':
+    values.channel_circuit_breaker_setting.failure_threshold,
+  'channel_circuit_breaker_setting.window_seconds':
+    values.channel_circuit_breaker_setting.window_seconds,
+  'channel_circuit_breaker_setting.open_seconds':
+    values.channel_circuit_breaker_setting.open_seconds,
+  'channel_circuit_breaker_setting.emergency_failover':
+    values.channel_circuit_breaker_setting.emergency_failover,
+  'channel_circuit_breaker_setting.enabled':
+    values.channel_circuit_breaker_setting.enabled,
 })
 
 export function RoutingReliabilitySection({
@@ -249,6 +396,9 @@ export function RoutingReliabilitySection({
 
   const autoDisableStatusCodes = form.watch('AutomaticDisableStatusCodes')
   const autoRetryStatusCodes = form.watch('AutomaticRetryStatusCodes')
+  const circuitFailureStatusCodes = form.watch(
+    'channel_circuit_breaker_setting.failure_status_codes'
+  )
   const channelTestMode = form.watch('monitor_setting.channel_test_mode')
   const autoDisableParsed = useMemo(
     () => parseHttpStatusCodeRules(autoDisableStatusCodes),
@@ -258,12 +408,24 @@ export function RoutingReliabilitySection({
     () => parseHttpStatusCodeRules(autoRetryStatusCodes),
     [autoRetryStatusCodes]
   )
+  const circuitFailureParsed = useMemo(
+    () => parseHttpStatusCodeRules(circuitFailureStatusCodes),
+    [circuitFailureStatusCodes]
+  )
 
   const onSubmit = async (values: RoutingReliabilityFormValues) => {
     const normalized = normalizeFormValues(values)
     const updates = (
       Object.keys(normalized) as Array<keyof NormalizedRoutingReliabilityValues>
-    ).filter((key) => normalized[key] !== baselineRef.current[key])
+    )
+      .filter((key) => normalized[key] !== baselineRef.current[key])
+      .sort((left, right) => {
+        const enabledKey = 'channel_circuit_breaker_setting.enabled'
+        if (left !== enabledKey && right !== enabledKey) return 0
+        const enabling = normalized[enabledKey]
+        if (left === enabledKey) return enabling ? 1 : -1
+        return enabling ? -1 : 1
+      })
 
     if (updates.length === 0) {
       toast.info(t('No changes to save'))
@@ -341,6 +503,196 @@ export function RoutingReliabilitySection({
                             {t('Normalized:')} {autoRetryParsed.normalized}
                           </span>
                         )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>
+                {t('Short-window circuit breaker')}
+              </h4>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Temporarily skip configured channels after repeated transient failures.'
+                )}
+              </p>
+            </div>
+
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Enable circuit breaker')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Only the channel IDs listed below participate in short-window failure counting.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.emergency_failover'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Immediate fallback')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Immediately try another channel when the current request opens the circuit.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.channel_ids'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Protected channel IDs')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='18,28'
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Enter unique positive channel IDs separated by commas.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.failure_status_codes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Circuit failure status codes')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='524'
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Only matching upstream status codes count toward opening the circuit.'
+                      )}{' '}
+                      {circuitFailureParsed.ok &&
+                        circuitFailureParsed.normalized &&
+                        circuitFailureParsed.normalized !==
+                          field.value.trim() && (
+                          <span className='text-muted-foreground'>
+                            {t('Normalized:')} {circuitFailureParsed.normalized}
+                          </span>
+                        )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.failure_threshold'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failure threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={2}
+                        max={100}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Number of matching failures required to open the circuit (2-100)'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.window_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failure window (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={3600}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Failure counting window in seconds (1-3600)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='channel_circuit_breaker_setting.open_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Circuit open time (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={86400}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'How long the channel is skipped after the circuit opens (1-86400 seconds)'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

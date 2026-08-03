@@ -211,7 +211,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	emergencyAttemptsRemaining := 0
+	for retryParam.GetRetry() <= common.RetryTimes || emergencyAttemptsRemaining > 0 {
+		if emergencyAttemptsRemaining > 0 {
+			emergencyAttemptsRemaining--
+		}
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel := initialChannel
 		initialChannel = nil
@@ -251,6 +255,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		if newAPIError == nil {
+			service.RecordChannelCircuitSuccess(channel.Id)
 			relayInfo.LastError = nil
 			return
 		}
@@ -260,9 +265,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		decision := service.RecordChannelCircuitFailure(channel.Id, newAPIError.StatusCode)
+		if service.ShouldEmergencyChannelCircuitFailover(c, decision) {
+			service.MarkChannelCircuitFailover(c)
+			emergencyAttemptsRemaining = 1
+			retryParam.ForceSelectionRetryOnce(0)
+			retryParam.ResetRetryNextTry()
+			logger.LogWarn(c, fmt.Sprintf("channel circuit breaker opened for channel #%d; retrying once with fallback channel", channel.Id))
+		} else if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
 		}
+		retryParam.IncreaseRetry()
 	}
 
 	useChannel := c.GetStringSlice("use_channel")
@@ -387,7 +400,8 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+	managedByCircuitBreaker := service.IsChannelCircuitManagedFailure(channelError.ChannelId, err.StatusCode)
+	if !managedByCircuitBreaker && service.ShouldDisableChannel(err) && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
 		})

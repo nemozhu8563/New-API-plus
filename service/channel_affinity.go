@@ -711,7 +711,7 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interfa
 }
 
 func RecordChannelAffinity(c *gin.Context, channelID int) {
-	if channelID <= 0 {
+	if channelID <= 0 || IsChannelCircuitFailover(c) || IsChannelCircuitBypass(c) {
 		return
 	}
 	setting := operation_setting.GetChannelAffinitySetting()

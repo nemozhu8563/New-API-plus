@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { ChannelAffinitySection } from '../general/channel-affinity'
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
@@ -85,6 +67,20 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.auto_test_channel_minutes'],
           'monitor_setting.channel_test_mode':
             settings['monitor_setting.channel_test_mode'],
+          'channel_circuit_breaker_setting.enabled':
+            settings['channel_circuit_breaker_setting.enabled'],
+          'channel_circuit_breaker_setting.channel_ids':
+            settings['channel_circuit_breaker_setting.channel_ids'],
+          'channel_circuit_breaker_setting.failure_status_codes':
+            settings['channel_circuit_breaker_setting.failure_status_codes'],
+          'channel_circuit_breaker_setting.failure_threshold':
+            settings['channel_circuit_breaker_setting.failure_threshold'],
+          'channel_circuit_breaker_setting.window_seconds':
+            settings['channel_circuit_breaker_setting.window_seconds'],
+          'channel_circuit_breaker_setting.open_seconds':
+            settings['channel_circuit_breaker_setting.open_seconds'],
+          'channel_circuit_breaker_setting.emergency_failover':
+            settings['channel_circuit_breaker_setting.emergency_failover'],
         }}
       />
     ),

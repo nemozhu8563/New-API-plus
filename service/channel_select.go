@@ -13,12 +13,13 @@ import (
 )
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	Retry        *int
-	resetNextTry bool
+	Ctx                    *gin.Context
+	TokenGroup             string
+	ModelName              string
+	RequestPath            string
+	Retry                  *int
+	resetNextTry           bool
+	selectionRetryOverride *int
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -47,6 +48,19 @@ func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
 }
 
+func (p *RetryParam) ForceSelectionRetryOnce(retry int) {
+	p.selectionRetryOverride = &retry
+}
+
+func (p *RetryParam) consumeSelectionRetry() int {
+	if p.selectionRetryOverride == nil {
+		return p.GetRetry()
+	}
+	retry := *p.selectionRetryOverride
+	p.selectionRetryOverride = nil
+	return retry
+}
+
 func hasRouteTagCandidate(group string, modelName string, resolution *GroupBillingResolution) bool {
 	return resolution != nil &&
 		resolution.RouteTag != "" &&
@@ -54,8 +68,12 @@ func hasRouteTagCandidate(group string, modelName string, resolution *GroupBilli
 }
 
 func GetRandomSatisfiedChannelByResolution(group string, modelName string, resolution *GroupBillingResolution, retry int, requestPath string) (*model.Channel, error) {
+	return GetRandomSatisfiedChannelByResolutionExcluding(group, modelName, resolution, retry, requestPath, nil)
+}
+
+func GetRandomSatisfiedChannelByResolutionExcluding(group string, modelName string, resolution *GroupBillingResolution, retry int, requestPath string, excluded map[int]struct{}) (*model.Channel, error) {
 	if hasRouteTagCandidate(group, modelName, resolution) {
-		channel, err := model.GetRandomSatisfiedChannel(group, modelName, resolution.RouteTag, retry, requestPath)
+		channel, err := model.GetRandomSatisfiedChannelExcluding(group, modelName, resolution.RouteTag, retry, requestPath, excluded)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +83,7 @@ func GetRandomSatisfiedChannelByResolution(group string, modelName string, resol
 	} else if resolution != nil && resolution.RouteTagStrict {
 		return nil, nil
 	}
-	return model.GetRandomSatisfiedChannel(group, modelName, "", retry, requestPath)
+	return model.GetRandomSatisfiedChannelExcluding(group, modelName, "", retry, requestPath, excluded)
 }
 
 func IsChannelEnabledForResolution(group string, modelName string, resolution *GroupBillingResolution, channelID int) bool {
@@ -118,6 +136,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	selectionRetry := param.consumeSelectionRetry()
+	excludedChannels := GetOpenChannelCircuitIDs()
+	if len(excludedChannels) > 0 {
+		MarkChannelCircuitBypass(param.Ctx)
+	}
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
@@ -151,7 +174,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			resolvedAnyGroup = true
 			// Calculate priorityRetry for current group
 			// 计算当前分组的 priorityRetry
-			priorityRetry := param.GetRetry()
+			priorityRetry := selectionRetry
 			// If moved to a new group, reset priorityRetry and update startRetryIndex
 			// 如果切换到新分组，重置 priorityRetry 并更新 startRetryIndex
 			if i > startGroupIndex {
@@ -159,7 +182,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = GetRandomSatisfiedChannelByResolution(autoGroup, param.ModelName, resolution, priorityRetry, param.RequestPath)
+			channel, _ = GetRandomSatisfiedChannelByResolutionExcluding(autoGroup, param.ModelName, resolution, priorityRetry, param.RequestPath, excludedChannels)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -204,7 +227,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if resolveErr != nil {
 			return nil, param.TokenGroup, resolveErr
 		}
-		channel, err = GetRandomSatisfiedChannelByResolution(param.TokenGroup, param.ModelName, resolution, param.GetRetry(), param.RequestPath)
+		channel, err = GetRandomSatisfiedChannelByResolutionExcluding(param.TokenGroup, param.ModelName, resolution, selectionRetry, param.RequestPath, excludedChannels)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
