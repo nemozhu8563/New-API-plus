@@ -28,11 +28,8 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import {
-  useApiInfo,
-  useDashboardContentVisibility,
-} from '../../hooks/use-status-data'
-import type { ApiInfoItem } from '../../types'
+import { useDashboardStatus } from '../../hooks/use-status-data'
+import { resolvePrimaryApiAddress } from '../../lib/api-info'
 import { AnnouncementsPanel } from './announcements-panel'
 import { FAQPanel } from './faq-panel'
 import { SummaryCards } from './summary-cards'
@@ -65,10 +62,6 @@ interface SetupStep {
 function getCurrentOrigin(): string {
   if (typeof window === 'undefined') return ''
   return window.location.origin
-}
-
-function getPrimaryApiAddress(items: ApiInfoItem[]): string {
-  return items[0]?.url?.trim() || `${getCurrentOrigin()}/v1`
 }
 
 function normalizeRequestEndpoint(sourceUrl?: string): string {
@@ -126,17 +119,16 @@ function QuickActionButton({ action }: { action: QuickAction }) {
 }
 
 function ConnectionOverview(props: {
-  apiInfoItems: ApiInfoItem[]
+  apiAddress: string
   keyItem: ApiKey | null
   keysLoading: boolean
   actions: QuickAction[]
 }) {
   const { t } = useTranslation()
   const { copyToClipboard } = useCopyToClipboard({ notify: false })
-  const apiAddress = getPrimaryApiAddress(props.apiInfoItems)
 
   const handleCopyAddress = async () => {
-    const copied = await copyToClipboard(apiAddress)
+    const copied = await copyToClipboard(props.apiAddress)
     if (copied) {
       toast.success(t('Copied to clipboard'))
     } else {
@@ -217,13 +209,12 @@ function ConnectionOverview(props: {
             </div>
             <p
               className='mt-3 truncate font-mono text-sm font-semibold'
-              title={apiAddress}
+              title={props.apiAddress}
             >
-              {apiAddress}
+              {props.apiAddress}
             </p>
             <p className='text-muted-foreground mt-1 text-xs'>
-              {props.apiInfoItems[0]?.description ||
-                t('Use this base URL in your API client')}
+              {t('Use this base URL in your API client')}
             </p>
           </div>
 
@@ -396,12 +387,13 @@ function SetupGuide(props: {
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const { items: apiInfoItems } = useApiInfo()
   const {
+    serverAddress,
     announcements: showAnnouncementsPanel,
     faq: showFAQPanel,
     uptimeKuma: showUptimePanel,
-  } = useDashboardContentVisibility()
+  } = useDashboardStatus()
+  const apiAddress = resolvePrimaryApiAddress(serverAddress, getCurrentOrigin())
 
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
@@ -502,7 +494,7 @@ export function OverviewDashboard() {
       <SummaryCards />
 
       <ConnectionOverview
-        apiInfoItems={apiInfoItems}
+        apiAddress={apiAddress}
         keyItem={preferredKey}
         keysLoading={apiKeysQuery.isLoading}
         actions={quickActions}
@@ -513,7 +505,7 @@ export function OverviewDashboard() {
           steps={setupSteps}
           keyItem={preferredKey}
           model={modelsQuery.data?.[0] ?? 'gpt-4o-mini'}
-          endpoint={normalizeRequestEndpoint(apiInfoItems[0]?.url)}
+          endpoint={normalizeRequestEndpoint(apiAddress)}
         />
       )}
 

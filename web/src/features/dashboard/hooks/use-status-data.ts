@@ -1,6 +1,6 @@
 import { useStatus } from '@/hooks/use-status'
 
-import type { AnnouncementItem, ApiInfoItem, FAQItem } from '../types'
+import type { AnnouncementItem, FAQItem } from '../types'
 
 /**
  * Get specific list from status data
@@ -14,13 +14,6 @@ export function useStatusData<T = unknown>(
   const items = (enabled ? status?.[dataKey] || [] : []) as T[]
 
   return { items, loading }
-}
-
-/**
- * Get API info list
- */
-export function useApiInfo() {
-  return useStatusData<ApiInfoItem>('api_info_enabled', 'api_info')
 }
 
 /**
@@ -41,14 +34,19 @@ export function useFAQ() {
 }
 
 /**
- * Get dashboard content panel visibility
+ * Get dashboard status-derived display data
  */
-export function useDashboardContentVisibility() {
+export function useDashboardStatus() {
   const { status } = useStatus()
   const hasStatus = Boolean(status)
+  const serverAddress =
+    status?.server_address ??
+    status?.serverAddress ??
+    status?.data?.server_address ??
+    status?.data?.serverAddress
 
   return {
-    apiInfo: hasStatus && status?.api_info_enabled !== false,
+    serverAddress: typeof serverAddress === 'string' ? serverAddress : '',
     announcements: hasStatus && status?.announcements_enabled !== false,
     faq: hasStatus && status?.faq_enabled !== false,
     uptimeKuma: hasStatus && status?.uptime_kuma_enabled !== false,

@@ -1,5 +1,19 @@
 import type { PingStatus } from '@/features/dashboard/types'
 
+export function resolvePrimaryApiAddress(
+  serverAddress: unknown,
+  currentOrigin: string
+): string {
+  const configuredAddress =
+    typeof serverAddress === 'string' ? serverAddress.trim() : ''
+  const baseAddress = (configuredAddress || currentOrigin.trim()).replace(
+    /\/+$/,
+    ''
+  )
+
+  return baseAddress.endsWith('/v1') ? baseAddress : `${baseAddress}/v1`
+}
+
 /**
  * Get color class for latency status
  */
@@ -28,7 +42,7 @@ export async function testUrlLatency(url: string): Promise<PingStatus> {
     const latency = Math.round(endTime - startTime)
 
     return { latency, testing: false, error: false }
-  } catch (_error) {
+  } catch {
     return { latency: null, testing: false, error: true }
   }
 }
