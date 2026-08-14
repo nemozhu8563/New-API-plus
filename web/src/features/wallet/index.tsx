@@ -29,6 +29,7 @@ import {
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
+  isStripeOnlyTopUp,
   dispatchSelectedPayment,
 } from './lib'
 import type {
@@ -85,6 +86,7 @@ export function Wallet(props: WalletProps) {
     calculatePaymentAmount,
     processPayment,
   } = usePayment()
+  const stripeOnlyTopUp = isStripeOnlyTopUp(topupInfo)
   const {
     affiliateLink,
     summary: affiliateSummary,
@@ -204,6 +206,10 @@ export function Wallet(props: WalletProps) {
     }
   }
 
+  const handleStripeCheckout = async () => {
+    await processPayment(topupAmount, PAYMENT_TYPES.STRIPE)
+  }
+
   // Handle redemption
   const handleRedeem = async () => {
     if (!redemptionCode) return
@@ -308,6 +314,8 @@ export function Wallet(props: WalletProps) {
                   onTopupAmountChange={handleTopupAmountChange}
                   paymentAmount={paymentAmount}
                   calculating={calculating}
+                  stripeProcessing={processing}
+                  onStripeCheckout={handleStripeCheckout}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
                   redemptionCode={redemptionCode}
@@ -357,18 +365,20 @@ export function Wallet(props: WalletProps) {
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      <PaymentConfirmDialog
-        open={confirmDialogOpen}
-        onOpenChange={setConfirmDialogOpen}
-        onConfirm={handlePaymentConfirm}
-        topupAmount={topupAmount}
-        paymentAmount={paymentAmount}
-        paymentMethod={selectedPaymentMethod}
-        calculating={calculating}
-        processing={processing || waffoProcessing || pancakeProcessing}
-        discountRate={getDiscountRate()}
-        usdExchangeRate={effectiveUsdExchangeRate}
-      />
+      {!stripeOnlyTopUp && (
+        <PaymentConfirmDialog
+          open={confirmDialogOpen}
+          onOpenChange={setConfirmDialogOpen}
+          onConfirm={handlePaymentConfirm}
+          topupAmount={topupAmount}
+          paymentAmount={paymentAmount}
+          paymentMethod={selectedPaymentMethod}
+          calculating={calculating}
+          processing={processing || waffoProcessing || pancakeProcessing}
+          discountRate={getDiscountRate()}
+          usdExchangeRate={effectiveUsdExchangeRate}
+        />
+      )}
 
       <TransferDialog
         open={transferDialogOpen}

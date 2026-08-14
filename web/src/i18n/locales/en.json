@@ -5151,6 +5151,7 @@
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.",
     "Use external tools to extend capabilities": "Use external tools to extend capabilities",
+    "Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.": "Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.",
     "Use one available reset credit for this channel. The reset request is sent only after confirmation.": "Use one available reset credit for this channel. The reset request is sent only after confirmation.",
     "Use one available reset credit to refresh the current Codex usage windows.": "Use one available reset credit to refresh the current Codex usage windows.",
     "Use our unified OpenAI-compatible endpoint in your applications": "Use our unified OpenAI-compatible endpoint in your applications",
@@ -5477,6 +5478,14 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Choose a credit package": "Choose a credit package",
+    "Credits added": "Credits added",
+    "Decrease quantity": "Decrease quantity",
+    "Each package includes {{credits}} ({{price}})": "Each package includes {{credits}} ({{price}})",
+    "Increase quantity": "Increase quantity",
+    "Order summary": "Order summary",
+    "Pay securely with Stripe": "Pay securely with Stripe",
+    "Purchase quantity": "Purchase quantity"
   }
 }

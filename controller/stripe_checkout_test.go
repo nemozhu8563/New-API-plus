@@ -61,6 +61,76 @@ func TestGenStripeLinkUsesContextIdempotencyAndMetadata(t *testing.T) {
 	require.Len(t, captured.Expand, 1)
 	assert.Equal(t, "payment_intent.latest_charge", *captured.Expand[0])
 	assert.Equal(t, string(stripe.CheckoutSessionModePayment), *captured.Mode)
+	require.Len(t, captured.LineItems, 1)
+	require.NotNil(t, captured.LineItems[0].Quantity)
+	assert.Equal(t, int64(3), *captured.LineItems[0].Quantity)
+}
+
+func TestStripeTopUpPricingUsesTwentyCNYCreditPackages(t *testing.T) {
+	testCases := []struct {
+		name              string
+		amount            int64
+		expectedQuantity  int64
+		expectedTotalCNY  int64
+		expectedErrorText string
+	}{
+		{name: "one package", amount: 20, expectedQuantity: 1, expectedTotalCNY: 2000},
+		{name: "four packages", amount: 80, expectedQuantity: 4, expectedTotalCNY: 8000},
+		{name: "below one package", amount: 10, expectedErrorText: "充值额度不能小于 20"},
+		{name: "not a whole package", amount: 30, expectedErrorText: "充值额度必须是 20 的整数倍"},
+		{name: "above maximum", amount: 10020, expectedErrorText: "充值额度不能大于 10000"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			quantity, totalCNY, err := stripeTopUpPricing(testCase.amount)
+			if testCase.expectedErrorText != "" {
+				require.EqualError(t, err, testCase.expectedErrorText)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expectedQuantity, quantity)
+			assert.Equal(t, testCase.expectedTotalCNY, totalCNY)
+		})
+	}
+}
+
+func TestValidateStripeTopUpPriceRequiresExactTwentyCNYOneTimeContract(t *testing.T) {
+	validPrice := &stripe.Price{
+		ID: "price_local_topup", Active: true, Type: stripe.PriceTypeOneTime,
+		BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY,
+		UnitAmount: stripeTopUpUnitAmountMinor,
+	}
+
+	require.NoError(t, validateStripeTopUpPrice(validPrice, "price_local_topup", false))
+	require.Error(t, validateStripeTopUpPrice(nil, "price_local_topup", false))
+
+	testCases := []struct {
+		name   string
+		mutate func(*stripe.Price)
+	}{
+		{name: "inactive", mutate: func(price *stripe.Price) { price.Active = false }},
+		{name: "recurring", mutate: func(price *stripe.Price) {
+			price.Type = stripe.PriceTypeRecurring
+			price.Recurring = &stripe.PriceRecurring{}
+		}},
+		{name: "tiered", mutate: func(price *stripe.Price) { price.BillingScheme = stripe.PriceBillingSchemeTiered }},
+		{name: "custom amount", mutate: func(price *stripe.Price) { price.CustomUnitAmount = &stripe.PriceCustomUnitAmount{} }},
+		{name: "transformed quantity", mutate: func(price *stripe.Price) { price.TransformQuantity = &stripe.PriceTransformQuantity{} }},
+		{name: "amount", mutate: func(price *stripe.Price) { price.UnitAmount++ }},
+		{name: "currency", mutate: func(price *stripe.Price) { price.Currency = stripe.CurrencyUSD }},
+		{name: "price id", mutate: func(price *stripe.Price) { price.ID = "price_other" }},
+		{name: "livemode", mutate: func(price *stripe.Price) { price.Livemode = true }},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			priceCopy := *validPrice
+			testCase.mutate(&priceCopy)
+			require.Error(t, validateStripeTopUpPrice(&priceCopy, "price_local_topup", false))
+		})
+	}
 }
 
 func TestGenStripeLinkRejectsUntrustedRedirectURLsBeforeStripeRequest(t *testing.T) {
@@ -204,8 +274,6 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
-	originalMinTopUp := setting.StripeMinTopUp
-	originalUnitPrice := setting.StripeUnitPrice
 	originalCreate := createStripeCheckoutSession
 	originalRetrievePrice := retrieveStripePrice
 	originalGinMode := gin.Mode()
@@ -217,8 +285,6 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 		setting.StripeApiSecret = originalAPISecret
 		setting.StripeWebhookSecret = originalWebhookSecret
 		setting.StripePriceId = originalPriceID
-		setting.StripeMinTopUp = originalMinTopUp
-		setting.StripeUnitPrice = originalUnitPrice
 		createStripeCheckoutSession = originalCreate
 		retrieveStripePrice = originalRetrievePrice
 		gin.SetMode(originalGinMode)
@@ -249,9 +315,14 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 	setting.StripeApiSecret = "rk_test_placeholder"
 	setting.StripeWebhookSecret = "whsec_placeholder"
 	setting.StripePriceId = "price_topup_placeholder"
-	setting.StripeMinTopUp = 1
-	setting.StripeUnitPrice = 1
 	retrieveStripePrice = func(_ context.Context, priceId string) (*stripe.Price, error) {
+		if priceId == setting.StripePriceId {
+			return &stripe.Price{
+				ID: priceId, Active: true, Type: stripe.PriceTypeOneTime,
+				BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY,
+				UnitAmount: stripeTopUpUnitAmountMinor,
+			}, nil
+		}
 		return &stripe.Price{
 			ID: priceId, Active: true, Type: stripe.PriceTypeRecurring,
 			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyUSD, UnitAmount: 1200,
@@ -293,8 +364,8 @@ func TestStripeTopUpEndpointsRequirePaymentCompliance(t *testing.T) {
 		handler gin.HandlerFunc
 		body    string
 	}{
-		{name: "amount quote", handler: RequestStripeAmount, body: `{"amount":1}`},
-		{name: "checkout", handler: RequestStripePay, body: `{"amount":1,"payment_method":"stripe"}`},
+		{name: "amount quote", handler: RequestStripeAmount, body: `{"amount":20}`},
+		{name: "checkout", handler: RequestStripePay, body: `{"amount":20,"payment_method":"stripe"}`},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -320,8 +391,8 @@ func TestStripeTopUpEndpointsRequireCompleteConfiguration(t *testing.T) {
 		handler gin.HandlerFunc
 		body    string
 	}{
-		{name: "amount quote", handler: RequestStripeAmount, body: `{"amount":1}`},
-		{name: "checkout", handler: RequestStripePay, body: `{"amount":1,"payment_method":"stripe"}`},
+		{name: "amount quote", handler: RequestStripeAmount, body: `{"amount":20}`},
+		{name: "checkout", handler: RequestStripePay, body: `{"amount":20,"payment_method":"stripe"}`},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -394,9 +465,20 @@ func TestStripeAmountQuoteRejectsTopUpAboveMaximum(t *testing.T) {
 	user := &model.User{Id: 1008, Username: "stripe_topup_maximum", Group: "default", Status: common.UserStatusEnabled}
 	require.NoError(t, db.Create(user).Error)
 
-	response := invokeStripeCheckoutHandler(t, RequestStripeAmount, user.Id, `{"amount":10001}`)
+	response := invokeStripeCheckoutHandler(t, RequestStripeAmount, user.Id, `{"amount":10020}`)
 
-	assert.Equal(t, "充值数量不能大于 10000", response["data"])
+	assert.Equal(t, "充值额度不能大于 10000", response["data"])
+}
+
+func TestStripeAmountQuoteRejectsNonPackageAmount(t *testing.T) {
+	db := setupStripeCheckoutHandlerTest(t)
+	user := &model.User{Id: 1011, Username: "stripe_topup_package_boundary", Group: "default", Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(user).Error)
+
+	response := invokeStripeCheckoutHandler(t, RequestStripeAmount, user.Id, `{"amount":30}`)
+
+	assert.Equal(t, "error", response["message"])
+	assert.Equal(t, "充值额度必须是 20 的整数倍", response["data"])
 }
 
 func TestStripeTopUpCheckoutFailureLeavesFailedLocalOrder(t *testing.T) {
@@ -407,7 +489,7 @@ func TestStripeTopUpCheckoutFailureLeavesFailedLocalOrder(t *testing.T) {
 		return nil, errors.New("local checkout failure")
 	}
 
-	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":1,"payment_method":"stripe"}`)
+	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":20,"payment_method":"stripe"}`)
 
 	assert.Equal(t, "error", response["message"])
 	var topUps []model.TopUp
@@ -417,26 +499,61 @@ func TestStripeTopUpCheckoutFailureLeavesFailedLocalOrder(t *testing.T) {
 	assert.Empty(t, topUps[0].ProviderOrderId)
 }
 
+func TestStripeTopUpCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *testing.T) {
+	db := setupStripeCheckoutHandlerTest(t)
+	user := &model.User{Id: 1012, Username: "stripe_topup_price_mismatch", Group: "default", Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(user).Error)
+	retrieveStripePrice = func(_ context.Context, priceId string) (*stripe.Price, error) {
+		return &stripe.Price{
+			ID: priceId, Active: true, Type: stripe.PriceTypeOneTime,
+			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyUSD,
+			UnitAmount: stripeTopUpUnitAmountMinor,
+		}, nil
+	}
+	createCalled := false
+	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		createCalled = true
+		return nil, errors.New("should not create Checkout")
+	}
+
+	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":20,"payment_method":"stripe"}`)
+
+	assert.Equal(t, "Stripe 充值价格配置与本地套餐不匹配", response["data"])
+	assert.False(t, createCalled)
+	var topUps int64
+	require.NoError(t, db.Model(&model.TopUp{}).Count(&topUps).Error)
+	assert.Zero(t, topUps)
+}
+
 func TestStripeTopUpCheckoutSuccessBindsImmutableSnapshot(t *testing.T) {
 	db := setupStripeCheckoutHandlerTest(t)
 	user := &model.User{Id: 1003, Username: "stripe_topup_success", Group: "default", Status: common.UserStatusEnabled}
 	require.NoError(t, db.Create(user).Error)
-	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+	var captured *stripe.CheckoutSessionCreateParams
+	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		captured = params
 		return &stripe.CheckoutSession{
 			ID: "cs_topup_success", URL: "https://checkout.stripe.test/topup-success",
-			AmountTotal: 100, Currency: stripe.CurrencyUSD, Customer: &stripe.Customer{ID: "cus_topup_success"},
+			AmountTotal: 8000, Currency: stripe.CurrencyCNY, Customer: &stripe.Customer{ID: "cus_topup_success"},
 		}, nil
 	}
 
-	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":1,"payment_method":"stripe"}`)
+	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":80,"payment_method":"stripe"}`)
 
 	assert.Equal(t, "success", response["message"])
+	require.NotNil(t, captured)
+	require.Len(t, captured.LineItems, 1)
+	require.NotNil(t, captured.LineItems[0].Quantity)
+	assert.Equal(t, int64(4), *captured.LineItems[0].Quantity)
 	var topUp model.TopUp
 	require.NoError(t, db.First(&topUp).Error)
+	assert.Equal(t, int64(80), topUp.Amount)
+	assert.Equal(t, float64(80), topUp.Money)
+	assert.Equal(t, int64(80*common.QuotaPerUnit), topUp.CreditedQuota)
 	assert.Equal(t, "cs_topup_success", topUp.ProviderOrderId)
 	assert.Equal(t, "cus_topup_success", topUp.ProviderCustomerId)
-	assert.Equal(t, int64(100), topUp.ExpectedAmountMinor)
-	assert.Equal(t, "USD", topUp.ExpectedCurrency)
+	assert.Equal(t, int64(8000), topUp.ExpectedAmountMinor)
+	assert.Equal(t, "CNY", topUp.ExpectedCurrency)
 	assert.False(t, topUp.ProviderLivemode)
 }
 

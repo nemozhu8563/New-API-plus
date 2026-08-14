@@ -6,6 +6,7 @@ import { Window } from 'happy-dom'
 import { PAYMENT_TYPES } from '../../constants'
 import {
   dispatchSelectedPayment,
+  isStripeOnlyTopUp,
   isStripeSubscriptionEnabled,
   isStripePayment,
   isWaffoPayment,
@@ -37,6 +38,38 @@ describe('Stripe subscription availability', () => {
         discount: {},
       }),
       true
+    )
+  })
+})
+
+describe('Stripe-only topup availability', () => {
+  test('ignores stale configured methods when Stripe is the only enabled provider', () => {
+    assert.equal(
+      isStripeOnlyTopUp({
+        enable_online_topup: false,
+        enable_stripe_topup: true,
+        pay_methods: [{ name: 'Stale card', type: 'card' }],
+        min_topup: 1,
+        stripe_min_topup: 20,
+        amount_options: [],
+        discount: {},
+      }),
+      true
+    )
+  })
+
+  test('keeps the multi-provider flow when another provider is enabled', () => {
+    assert.equal(
+      isStripeOnlyTopUp({
+        enable_online_topup: true,
+        enable_stripe_topup: true,
+        pay_methods: [{ name: 'Stripe', type: 'stripe' }],
+        min_topup: 1,
+        stripe_min_topup: 20,
+        amount_options: [],
+        discount: {},
+      }),
+      false
     )
   })
 })

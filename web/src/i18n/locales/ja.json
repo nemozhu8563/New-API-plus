@@ -5151,6 +5151,7 @@
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "クライアントの正確なモデル名をカンマ区切りで入力します。プレフィックスやワイルドカードは使えません。",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "gpt-4o のような完全一致のモデル名、または re:^gemini- のように re: で始まる正規表現ルールを使えます。",
     "Use external tools to extend capabilities": "外部ツールを利用して機能を拡張",
+    "Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.": "単価¥20の1回限りのCNY Priceを使用してください。1単位につき$20 USDが残高に加算されます。",
     "Use one available reset credit for this channel. The reset request is sent only after confirmation.": "このチャンネルで利用可能なリセット回数を1回使用します。確認後にのみリセット要求を送信します。",
     "Use one available reset credit to refresh the current Codex usage windows.": "利用可能なリセット回数を1回使用して、現在の Codex 使用量ウィンドウを更新します。",
     "Use our unified OpenAI-compatible endpoint in your applications": "アプリケーションでOpenAI互換の統一エンドポイントを使用",
@@ -5477,6 +5478,14 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Choose a credit package": "クレジットパッケージを選択",
+    "Credits added": "追加クレジット",
+    "Decrease quantity": "数量を減らす",
+    "Each package includes {{credits}} ({{price}})": "1パッケージに {{credits}}（{{price}}）が含まれます",
+    "Increase quantity": "数量を増やす",
+    "Order summary": "注文概要",
+    "Pay securely with Stripe": "Stripeで安全に支払う",
+    "Purchase quantity": "購入数量"
   }
 }

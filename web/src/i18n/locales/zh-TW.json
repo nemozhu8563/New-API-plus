@@ -5151,6 +5151,7 @@
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "填寫客戶端請求裡的精確 model 名，多個用英文逗號分隔。不支援前綴或萬用字元。",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "可以填寫 gpt-4o 這類精確模型名，也可以填寫 re:^gemini- 這類以 re: 開頭的正則規則。",
     "Use external tools to extend capabilities": "透過外部工具擴展能力",
+    "Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.": "使用一次性 CNY Price，單價為 ¥20；每份到帳 $20 USD。",
     "Use one available reset credit for this channel. The reset request is sent only after confirmation.": "將為目前渠道使用 1 次可用重置次數。只有確認後才會發送重置請求。",
     "Use one available reset credit to refresh the current Codex usage windows.": "使用 1 次可用重置次數，重新整理目前 Codex 用量窗口。",
     "Use our unified OpenAI-compatible endpoint in your applications": "在套用中使用我們兼容 OpenAI 的統一接口",
@@ -5477,6 +5478,14 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Choose a credit package": "選擇額度套餐",
+    "Credits added": "到帳額度",
+    "Decrease quantity": "減少份數",
+    "Each package includes {{credits}} ({{price}})": "每份包含 {{credits}}（{{price}}）",
+    "Increase quantity": "增加份數",
+    "Order summary": "訂單摘要",
+    "Pay securely with Stripe": "使用 Stripe 安全付款",
+    "Purchase quantity": "購買份數"
   }
 }

@@ -135,17 +135,26 @@ func TestGetTopUpInfoNormalizesConfiguredStripeMethods(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Data    struct {
-			EnableStripeTopUp bool                `json:"enable_stripe_topup"`
-			PayMethods        []map[string]string `json:"pay_methods"`
+			EnableStripeTopUp   bool                `json:"enable_stripe_topup"`
+			StripeMinTopUp      int64               `json:"stripe_min_topup"`
+			StripeTopUpUnit     int64               `json:"stripe_topup_unit"`
+			StripeTopUpCurrency string              `json:"stripe_topup_currency"`
+			StripeMaxTopUp      int64               `json:"stripe_max_topup"`
+			PayMethods          []map[string]string `json:"pay_methods"`
 		} `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	require.True(t, response.Data.EnableStripeTopUp)
+	assert.Equal(t, int64(20), response.Data.StripeMinTopUp)
+	assert.Equal(t, int64(20), response.Data.StripeTopUpUnit)
+	assert.Equal(t, "CNY", response.Data.StripeTopUpCurrency)
+	assert.Equal(t, int64(10000), response.Data.StripeMaxTopUp)
 	stripeMethods := 0
 	for _, method := range response.Data.PayMethods {
 		if strings.EqualFold(strings.TrimSpace(method["type"]), model.PaymentMethodStripe) {
 			stripeMethods++
+			assert.Equal(t, "20", method["min_topup"])
 		}
 	}
 	assert.Equal(t, 1, stripeMethods)

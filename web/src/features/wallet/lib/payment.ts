@@ -144,6 +144,16 @@ export function isStripeSubscriptionEnabled(
   return !!topupInfo?.enable_stripe_subscription
 }
 
+export function isStripeOnlyTopUp(topupInfo: TopupInfo | null): boolean {
+  return !!(
+    topupInfo?.enable_stripe_topup &&
+    !topupInfo.enable_online_topup &&
+    !topupInfo.enable_creem_topup &&
+    !topupInfo.enable_waffo_topup &&
+    !topupInfo.enable_waffo_pancake_topup
+  )
+}
+
 /**
  * Get minimum topup amount from topup info
  */

@@ -24,6 +24,7 @@ import {
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
+  isStripeOnlyTopUp,
   calculatePresetPricing,
 } from '../lib'
 import type {
@@ -34,6 +35,7 @@ import type {
   WaffoPayMethod,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+import { StripeTopupSection } from './stripe-topup-section'
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -44,6 +46,8 @@ interface RechargeFormCardProps {
   onTopupAmountChange: (amount: number) => void
   paymentAmount: number
   calculating: boolean
+  stripeProcessing?: boolean
+  onStripeCheckout?: () => void | Promise<void>
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
   redemptionCode: string
@@ -74,6 +78,8 @@ export function RechargeFormCard({
   onTopupAmountChange,
   paymentAmount,
   calculating,
+  stripeProcessing,
+  onStripeCheckout,
   onPaymentMethodSelect,
   paymentLoading,
   redemptionCode,
@@ -124,6 +130,7 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const stripeOnly = isStripeOnlyTopUp(topupInfo)
 
   if (loading) {
     return (
@@ -179,7 +186,11 @@ export function RechargeFormCard({
   return (
     <TitledCard
       title={t('Add Funds')}
-      description={t('Choose an amount and payment method')}
+      description={
+        stripeOnly
+          ? t('Choose a credit package')
+          : t('Choose an amount and payment method')
+      }
       icon={<WalletCards className='h-4 w-4' />}
       iconTone='success'
       disableHoverEffect
@@ -201,7 +212,17 @@ export function RechargeFormCard({
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>
-          {hasConfigurableTopup && (
+          {stripeOnly && onStripeCheckout && (
+            <StripeTopupSection
+              topupAmount={topupAmount}
+              unit={topupInfo?.stripe_topup_unit}
+              maxAmount={topupInfo?.stripe_max_topup}
+              processing={!!stripeProcessing}
+              onAmountChange={onTopupAmountChange}
+              onCheckout={onStripeCheckout}
+            />
+          )}
+          {!stripeOnly && hasConfigurableTopup && (
             <>
               {presetAmounts.length > 0 && (
                 <div className='space-y-2.5 sm:space-y-3'>

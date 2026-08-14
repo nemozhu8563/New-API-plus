@@ -114,6 +114,12 @@ export interface TopupInfo {
   min_topup: number
   /** Minimum topup amount for Stripe */
   stripe_min_topup: number
+  /** Credits and CNY charged by one fixed Stripe package */
+  stripe_topup_unit?: number
+  /** Currency charged by Stripe topups */
+  stripe_topup_currency?: string
+  /** Maximum credits allowed in one Stripe checkout */
+  stripe_max_topup?: number
   /** Preset amount options */
   amount_options: number[]
   /** Discount rates by amount */

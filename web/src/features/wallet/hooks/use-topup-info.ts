@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 
 import { getTopupInfo } from '../api'
 import {
+  DEFAULT_STRIPE_MAX_TOPUP,
+  DEFAULT_STRIPE_TOPUP_CURRENCY,
+  DEFAULT_STRIPE_TOPUP_UNIT,
+} from '../constants'
+import {
   generatePresetAmounts,
   mergePresetAmounts,
   getMinTopupAmount,
@@ -164,6 +169,19 @@ export function useTopupInfo() {
 
       const processedData: TopupInfo = {
         ...response.data,
+        stripe_topup_unit:
+          Number(response.data.stripe_topup_unit) > 0
+            ? Number(response.data.stripe_topup_unit)
+            : DEFAULT_STRIPE_TOPUP_UNIT,
+        stripe_topup_currency:
+          typeof response.data.stripe_topup_currency === 'string' &&
+          response.data.stripe_topup_currency.trim()
+            ? response.data.stripe_topup_currency.trim().toUpperCase()
+            : DEFAULT_STRIPE_TOPUP_CURRENCY,
+        stripe_max_topup:
+          Number(response.data.stripe_max_topup) >= DEFAULT_STRIPE_TOPUP_UNIT
+            ? Number(response.data.stripe_max_topup)
+            : DEFAULT_STRIPE_MAX_TOPUP,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,
           response.data.stripe_min_topup

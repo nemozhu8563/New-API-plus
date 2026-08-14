@@ -46,3 +46,8 @@ export const DEFAULT_DISCOUNT_RATE = 1.0
  * Default minimum topup amount
  */
 export const DEFAULT_MIN_TOPUP = 1
+
+export const DEFAULT_STRIPE_TOPUP_UNIT = 20
+export const DEFAULT_STRIPE_TOPUP_CURRENCY = 'CNY'
+export const DEFAULT_STRIPE_MAX_TOPUP = 10000
+export const STRIPE_TOPUP_PRESET_MULTIPLIERS = [1, 5, 10, 15, 25, 50]

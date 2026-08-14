@@ -5151,6 +5151,7 @@
     "Use exact client model names, separated by commas. Prefixes and wildcards are not supported.": "Nhập tên model chính xác từ yêu cầu client, ngăn cách bằng dấu phẩy. Không hỗ trợ tiền tố hoặc ký tự đại diện.",
     "Use exact model names such as gpt-4o, or regex rules prefixed with re: such as re:^gemini-.": "Dùng tên model chính xác như gpt-4o, hoặc quy tắc regex có tiền tố re: như re:^gemini-.",
     "Use external tools to extend capabilities": "Sử dụng công cụ ngoài để mở rộng khả năng",
+    "Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.": "Dùng Price CNY một lần với đơn giá ¥20. Mỗi đơn vị cộng $20 USD vào số dư.",
     "Use one available reset credit for this channel. The reset request is sent only after confirmation.": "Sử dụng một lượt đặt lại khả dụng cho kênh này. Yêu cầu chỉ được gửi sau khi xác nhận.",
     "Use one available reset credit to refresh the current Codex usage windows.": "Sử dụng một lượt đặt lại khả dụng để làm mới các cửa sổ mức dùng Codex hiện tại.",
     "Use our unified OpenAI-compatible endpoint in your applications": "Sử dụng endpoint thống nhất tương thích OpenAI trong ứng dụng của bạn",
@@ -5477,6 +5478,14 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Choose a credit package": "Chọn gói tín dụng",
+    "Credits added": "Tín dụng được cộng",
+    "Decrease quantity": "Giảm số lượng",
+    "Each package includes {{credits}} ({{price}})": "Mỗi gói bao gồm {{credits}} ({{price}})",
+    "Increase quantity": "Tăng số lượng",
+    "Order summary": "Tóm tắt đơn hàng",
+    "Pay securely with Stripe": "Thanh toán an toàn với Stripe",
+    "Purchase quantity": "Số lượng mua"
   }
 }

@@ -32,7 +32,16 @@ func GetTopUpInfo(c *gin.Context) {
 	} else {
 		stripeEnabled := isStripeTopUpEnabled()
 		for _, method := range operation_setting.PayMethods {
-			if strings.EqualFold(strings.TrimSpace(method["type"]), model.PaymentMethodStripe) && !stripeEnabled {
+			if strings.EqualFold(strings.TrimSpace(method["type"]), model.PaymentMethodStripe) {
+				if !stripeEnabled {
+					continue
+				}
+				stripeMethod := make(map[string]string, len(method))
+				for key, value := range method {
+					stripeMethod[key] = value
+				}
+				stripeMethod["min_topup"] = strconv.FormatInt(stripeTopUpCreditUnit, 10)
+				payMethods = append(payMethods, stripeMethod)
 				continue
 			}
 			payMethods = append(payMethods, method)
@@ -55,7 +64,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "#635BFF",
-				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
+				"min_topup": strconv.FormatInt(stripeTopUpCreditUnit, 10),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -123,7 +132,10 @@ func GetTopUpInfo(c *gin.Context) {
 		"creem_products":          setting.CreemProducts,
 		"pay_methods":             payMethods,
 		"min_topup":               operation_setting.MinTopUp,
-		"stripe_min_topup":        setting.StripeMinTopUp,
+		"stripe_min_topup":        stripeTopUpCreditUnit,
+		"stripe_topup_unit":       stripeTopUpCreditUnit,
+		"stripe_topup_currency":   stripeTopUpCurrency,
+		"stripe_max_topup":        stripeMaxTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
