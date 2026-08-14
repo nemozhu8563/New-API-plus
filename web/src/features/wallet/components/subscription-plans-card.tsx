@@ -41,6 +41,7 @@ import type {
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { isStripeSubscriptionEnabled } from '../lib/payment'
 import type { PaymentMethod, TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
@@ -97,7 +98,7 @@ export function SubscriptionPlansCard({
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
 
-  const enableStripe = !!topupInfo?.enable_stripe_topup
+  const enableStripe = isStripeSubscriptionEnabled(topupInfo)
   const enableCreem = !!topupInfo?.enable_creem_topup
   const enableWaffoPancake = !!topupInfo?.enable_waffo_pancake_topup
   const enableOnlineTopUp = !!topupInfo?.enable_online_topup

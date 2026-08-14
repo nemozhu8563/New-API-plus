@@ -85,6 +85,38 @@ func TestSubscriptionGroupTransitionsPreserveAuthVersionAndSessions(t *testing.T
 	assert.Equal(t, "default", cached.Group)
 }
 
+func TestSubscriptionGroupTransitionWaitsForAnyActiveSubscription(t *testing.T) {
+	truncateTables(t)
+	now := time.Now().Unix()
+	user := User{
+		Username: "subscription-overlap-group-user",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "pro",
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	expiring := UserSubscription{
+		UserId: user.Id, Status: "active", StartTime: now - 3600, EndTime: now,
+		UpgradeGroup: "pro", PrevUserGroup: "default", DowngradeGroup: "default",
+	}
+	require.NoError(t, DB.Create(&expiring).Error)
+	overlapping := UserSubscription{
+		UserId: user.Id, Status: "active", StartTime: now - 60, EndTime: now + 3600,
+	}
+	require.NoError(t, DB.Create(&overlapping).Error)
+
+	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+		target, err := downgradeUserGroupForSubscriptionTx(tx, &expiring, now+1)
+		assert.Empty(t, target)
+		return err
+	}))
+
+	var stored User
+	require.NoError(t, DB.First(&stored, user.Id).Error)
+	assert.Equal(t, "pro", stored.Group)
+}
+
 func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *testing.T) {
 	previousDB, previousLogDB := DB, LOG_DB
 	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()

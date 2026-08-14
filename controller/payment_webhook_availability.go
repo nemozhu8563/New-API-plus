@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -24,8 +25,20 @@ func isStripeWebhookConfigured() bool {
 	return strings.TrimSpace(setting.StripeWebhookSecret) != ""
 }
 
+func isStripeSubscriptionEnabled() bool {
+	if !operation_setting.IsPaymentComplianceConfirmed() ||
+		strings.TrimSpace(setting.StripeApiSecret) == "" ||
+		!isStripeWebhookConfigured() {
+		return false
+	}
+	var count int64
+	return model.DB != nil && model.DB.Model(&model.SubscriptionPlan{}).
+		Where("enabled = ? AND stripe_price_id <> ?", true, "").
+		Count(&count).Error == nil && count > 0
+}
+
 func isStripeWebhookEnabled() bool {
-	return isStripeTopUpEnabled()
+	return isStripeWebhookConfigured()
 }
 
 func isCreemTopUpEnabled() bool {

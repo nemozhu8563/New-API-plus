@@ -1,11 +1,21 @@
 package controller
 
 import (
+	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func confirmPaymentComplianceForTest(t *testing.T) {
@@ -21,8 +31,57 @@ func confirmPaymentComplianceForTest(t *testing.T) {
 	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
 }
 
-func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
+func TestStripeWebhookEnabledForSubscriptionOnlyConfiguration(t *testing.T) {
 	confirmPaymentComplianceForTest(t)
+	originalDB := model.DB
+	originalAPISecret := setting.StripeApiSecret
+	originalWebhookSecret := setting.StripeWebhookSecret
+	originalPriceID := setting.StripePriceId
+	var sqlDB *sql.DB
+	t.Cleanup(func() {
+		model.DB = originalDB
+		setting.StripeApiSecret = originalAPISecret
+		setting.StripeWebhookSecret = originalWebhookSecret
+		setting.StripePriceId = originalPriceID
+		if sqlDB != nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err = db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}))
+	model.DB = db
+	setting.StripeApiSecret = "rk_test_placeholder"
+	setting.StripeWebhookSecret = "whsec_placeholder"
+	setting.StripePriceId = ""
+
+	require.NoError(t, db.Create(&model.SubscriptionPlan{
+		Title:         "Stripe subscription plan",
+		PriceAmount:   12,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		StripePriceId: "price_placeholder",
+	}).Error)
+
+	require.False(t, isStripeTopUpEnabled())
+	require.True(t, isStripeSubscriptionEnabled())
+	require.True(t, isStripeWebhookEnabled())
+}
+
+func TestStripeWebhookRemainsEnabledWhenSalesConfigurationIsRemoved(t *testing.T) {
+	paymentSetting := operation_setting.GetPaymentSetting()
+	originalConfirmed := paymentSetting.ComplianceConfirmed
+	originalTermsVersion := paymentSetting.ComplianceTermsVersion
+	t.Cleanup(func() {
+		paymentSetting.ComplianceConfirmed = originalConfirmed
+		paymentSetting.ComplianceTermsVersion = originalTermsVersion
+	})
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
@@ -33,15 +92,101 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	})
 
 	setting.StripeWebhookSecret = ""
-	setting.StripeApiSecret = "sk_test_123"
+	setting.StripeApiSecret = "sk_test_placeholder"
 	setting.StripePriceId = "price_123"
 	require.False(t, isStripeWebhookEnabled())
 
 	setting.StripeWebhookSecret = "whsec_test"
+	paymentSetting.ComplianceConfirmed = false
+	paymentSetting.ComplianceTermsVersion = ""
 	require.True(t, isStripeWebhookEnabled())
 
 	setting.StripePriceId = ""
-	require.False(t, isStripeWebhookEnabled())
+	require.False(t, isStripeTopUpEnabled())
+	require.True(t, isStripeWebhookEnabled())
+}
+
+func TestGetTopUpInfoNormalizesConfiguredStripeMethods(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalPayMethods := operation_setting.PayMethods
+	originalAPISecret := setting.StripeApiSecret
+	originalWebhookSecret := setting.StripeWebhookSecret
+	originalPriceID := setting.StripePriceId
+	t.Cleanup(func() {
+		operation_setting.PayMethods = originalPayMethods
+		setting.StripeApiSecret = originalAPISecret
+		setting.StripeWebhookSecret = originalWebhookSecret
+		setting.StripePriceId = originalPriceID
+	})
+	setting.StripeApiSecret = "rk_test_placeholder"
+	setting.StripeWebhookSecret = "whsec_placeholder"
+	setting.StripePriceId = "price_placeholder"
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "Configured Stripe", "type": " Stripe "},
+		{"name": "Card", "type": "card"},
+	}
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/topup/info", nil)
+	GetTopUpInfo(context)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			EnableStripeTopUp bool                `json:"enable_stripe_topup"`
+			PayMethods        []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.True(t, response.Data.EnableStripeTopUp)
+	stripeMethods := 0
+	for _, method := range response.Data.PayMethods {
+		if strings.EqualFold(strings.TrimSpace(method["type"]), model.PaymentMethodStripe) {
+			stripeMethods++
+		}
+	}
+	assert.Equal(t, 1, stripeMethods)
+}
+
+func TestGetTopUpInfoFiltersConfiguredStripeMethodWhenTopUpIsDisabled(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalPayMethods := operation_setting.PayMethods
+	originalAPISecret := setting.StripeApiSecret
+	originalWebhookSecret := setting.StripeWebhookSecret
+	originalPriceID := setting.StripePriceId
+	t.Cleanup(func() {
+		operation_setting.PayMethods = originalPayMethods
+		setting.StripeApiSecret = originalAPISecret
+		setting.StripeWebhookSecret = originalWebhookSecret
+		setting.StripePriceId = originalPriceID
+	})
+	setting.StripeApiSecret = ""
+	setting.StripeWebhookSecret = "whsec_placeholder"
+	setting.StripePriceId = ""
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "Stale Stripe", "type": "STRIPE"},
+		{"name": "Card", "type": "card"},
+	}
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/topup/info", nil)
+	GetTopUpInfo(context)
+
+	var response struct {
+		Data struct {
+			EnableStripeTopUp bool                `json:"enable_stripe_topup"`
+			PayMethods        []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Data.EnableStripeTopUp)
+	for _, method := range response.Data.PayMethods {
+		assert.False(t, strings.EqualFold(strings.TrimSpace(method["type"]), model.PaymentMethodStripe))
+	}
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

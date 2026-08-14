@@ -1,6 +1,9 @@
 package model
 
 import (
+	"math"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,16 +57,28 @@ func insertSubscriptionOrderForPaymentGuardTest(t *testing.T, tradeNo string, us
 func insertTopUpForPaymentGuardTest(t *testing.T, tradeNo string, userID int, paymentProvider string) {
 	t.Helper()
 	topUp := &TopUp{
-		UserId:          userID,
-		Amount:          2,
-		Money:           9.99,
-		TradeNo:         tradeNo,
-		PaymentMethod:   paymentProvider,
-		PaymentProvider: paymentProvider,
-		Status:          common.TopUpStatusPending,
-		CreateTime:      time.Now().Unix(),
+		UserId:              userID,
+		Amount:              2,
+		Money:               9.99,
+		TradeNo:             tradeNo,
+		PaymentMethod:       paymentProvider,
+		PaymentProvider:     paymentProvider,
+		ProviderOrderId:     "cs_" + tradeNo,
+		ProviderProductId:   "price_" + tradeNo,
+		CreditedQuota:       int64(9.99 * common.QuotaPerUnit),
+		ExpectedAmountMinor: 999,
+		ExpectedCurrency:    "USD",
+		Status:              common.TopUpStatusPending,
+		CreateTime:          time.Now().Unix(),
 	}
 	require.NoError(t, topUp.Insert())
+}
+
+func stripeSettlementForPaymentGuardTest(tradeNo string) StripeTopUpSettlement {
+	return StripeTopUpSettlement{
+		CustomerId: "cus_local_test", PaymentIntentId: "pi_" + tradeNo,
+		AmountMinor: 999, Currency: "USD",
+	}
 }
 
 func getTopUpStatusForPaymentGuardTest(t *testing.T, tradeNo string) string {
@@ -171,4 +186,125 @@ func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) 
 	order := GetSubscriptionOrderByTradeNo("sub-expire-guard")
 	require.NotNil(t, order)
 	assert.Equal(t, common.TopUpStatusPending, order.Status)
+}
+
+func TestRechargeStripe_IsIdempotent(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 404, 100)
+	insertTopUpForPaymentGuardTest(t, "stripe-recharge-idempotent", 404, PaymentProviderStripe)
+
+	require.NoError(t, Recharge("stripe-recharge-idempotent", stripeSettlementForPaymentGuardTest("stripe-recharge-idempotent"), "127.0.0.1"))
+	quotaAfterFirst := getUserQuotaForPaymentGuardTest(t, 404)
+	require.NoError(t, Recharge("stripe-recharge-idempotent", stripeSettlementForPaymentGuardTest("stripe-recharge-idempotent"), "127.0.0.1"))
+
+	assert.Equal(t, 100+int(9.99*common.QuotaPerUnit), quotaAfterFirst)
+	assert.Equal(t, quotaAfterFirst, getUserQuotaForPaymentGuardTest(t, 404))
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, "stripe-recharge-idempotent"))
+	var logCount int64
+	require.NoError(t, DB.Model(&Log{}).Where("user_id = ? AND type = ?", 404, LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestRechargeStripe_ConcurrentDuplicateCreditsOnce(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 405, 100)
+	tradeNo := "stripe-recharge-concurrent-idempotent"
+	insertTopUpForPaymentGuardTest(t, tradeNo, 405, PaymentProviderStripe)
+	settlement := stripeSettlementForPaymentGuardTest(tradeNo)
+
+	start := make(chan struct{})
+	errs := make([]error, 2)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(len(errs))
+	for index := range errs {
+		go func(index int) {
+			defer waitGroup.Done()
+			<-start
+			for attempt := 0; attempt < 20; attempt++ {
+				errs[index] = Recharge(tradeNo, settlement, "127.0.0.1")
+				if errs[index] == nil || !strings.Contains(strings.ToLower(errs[index].Error()), "locked") {
+					return
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}(index)
+	}
+	close(start)
+	waitGroup.Wait()
+
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
+	assert.Equal(t, 100+int(9.99*common.QuotaPerUnit), getUserQuotaForPaymentGuardTest(t, 405))
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, tradeNo))
+	var logCount int64
+	require.NoError(t, DB.Model(&Log{}).Where("user_id = ? AND type = ?", 405, LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
+}
+
+func TestRechargeStripe_RejectsInvalidQuotaWithoutChangingOrderOrBalance(t *testing.T) {
+	testCases := []struct {
+		name  string
+		money float64
+	}{
+		{name: "non-positive", money: 0},
+		{name: "overflow", money: math.MaxFloat64},
+	}
+
+	for index, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncateTables(t)
+			userID := 500 + index
+			tradeNo := "stripe-invalid-quota-" + testCase.name
+			insertUserForPaymentGuardTest(t, userID, 321)
+			insertTopUpForPaymentGuardTest(t, tradeNo, userID, PaymentProviderStripe)
+			require.NoError(t, DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Update("money", testCase.money).Error)
+			invalidQuota := int64(0)
+			if testCase.money > 0 {
+				invalidQuota = int64(common.MaxQuota) + 1
+			}
+			require.NoError(t, DB.Model(&TopUp{}).Where("trade_no = ?", tradeNo).Update("credited_quota", invalidQuota).Error)
+
+			require.Error(t, Recharge(tradeNo, stripeSettlementForPaymentGuardTest(tradeNo), "127.0.0.1"))
+
+			assert.Equal(t, 321, getUserQuotaForPaymentGuardTest(t, userID))
+			assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, tradeNo))
+		})
+	}
+}
+
+func TestRechargeStripe_RollsBackWhenBalanceWouldExceedMaxQuota(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 606, common.MaxQuota-100)
+	insertTopUpForPaymentGuardTest(t, "stripe-balance-overflow", 606, PaymentProviderStripe)
+
+	require.Error(t, Recharge("stripe-balance-overflow", stripeSettlementForPaymentGuardTest("stripe-balance-overflow"), "127.0.0.1"))
+
+	assert.Equal(t, common.MaxQuota-100, getUserQuotaForPaymentGuardTest(t, 606))
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, "stripe-balance-overflow"))
+}
+
+func TestCompleteSubscriptionOrderStripe_IsIdempotentAndPreservesProvider(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 707, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 708)
+	insertSubscriptionOrderForPaymentGuardTest(t, "stripe-subscription-idempotent", 707, plan.Id, PaymentProviderStripe)
+
+	require.NoError(t, CompleteSubscriptionOrder("stripe-subscription-idempotent", `{"event":"first"}`, PaymentProviderStripe, ""))
+	require.NoError(t, CompleteSubscriptionOrder("stripe-subscription-idempotent", `{"event":"duplicate"}`, PaymentProviderStripe, ""))
+
+	order := GetSubscriptionOrderByTradeNo("stripe-subscription-idempotent")
+	require.NotNil(t, order)
+	assert.Equal(t, common.TopUpStatusSuccess, order.Status)
+	assert.Equal(t, `{"event":"first"}`, order.ProviderPayload)
+	assert.Equal(t, int64(1), countUserSubscriptionsForPaymentGuardTest(t, 707))
+
+	topUp := GetTopUpByTradeNo("stripe-subscription-idempotent")
+	require.NotNil(t, topUp)
+	assert.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+	assert.Equal(t, PaymentProviderStripe, topUp.PaymentProvider)
+	assert.Equal(t, PaymentMethodStripe, topUp.PaymentMethod)
 }

@@ -58,6 +58,15 @@ export function isStripePayment(paymentType: string): boolean {
 }
 
 /**
+ * Navigate to a hosted checkout in the current tab. Checkout URLs are returned
+ * asynchronously, so opening a new window after the request can be blocked as
+ * a popup by the browser.
+ */
+export function redirectToHostedCheckout(url: string): void {
+  window.location.assign(url)
+}
+
+/**
  * Check if payment method is Waffo
  */
 export function isWaffoPayment(paymentType: string): boolean {
@@ -127,6 +136,12 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
   }
 
   return DEFAULT_PAYMENT_TYPE
+}
+
+export function isStripeSubscriptionEnabled(
+  topupInfo: TopupInfo | null
+): boolean {
+  return !!topupInfo?.enable_stripe_subscription
 }
 
 /**

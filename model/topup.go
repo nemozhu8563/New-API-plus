@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -12,16 +13,25 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id                    int     `json:"id"`
+	UserId                int     `json:"user_id" gorm:"index"`
+	Amount                int64   `json:"amount"`
+	Money                 float64 `json:"money"`
+	CreditedQuota         int64   `json:"credited_quota" gorm:"type:bigint;not null;default:0"`
+	ExpectedAmountMinor   int64   `json:"expected_amount_minor" gorm:"type:bigint;not null;default:0"`
+	ExpectedCurrency      string  `json:"expected_currency" gorm:"type:varchar(8);default:''"`
+	TradeNo               string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod         string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider       string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	ProviderOrderId       string  `json:"provider_order_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderProductId     string  `json:"provider_product_id" gorm:"type:varchar(255);default:''"`
+	ProviderCustomerId    string  `json:"provider_customer_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderPaymentIntent string  `json:"provider_payment_intent" gorm:"type:varchar(255);default:'';index"`
+	ProviderChargeId      string  `json:"provider_charge_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderLivemode      bool    `json:"provider_livemode"`
+	CreateTime            int64   `json:"create_time"`
+	CompleteTime          int64   `json:"complete_time"`
+	Status                string  `json:"status"`
 }
 
 const (
@@ -42,9 +52,11 @@ const (
 )
 
 var (
-	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
-	ErrTopUpNotFound         = errors.New("topup not found")
-	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrPaymentMethodMismatch  = errors.New("payment method mismatch")
+	ErrTopUpNotFound          = errors.New("topup not found")
+	ErrTopUpStatusInvalid     = errors.New("topup status invalid")
+	ErrStripeCheckoutUnbound  = errors.New("stripe checkout is not bound")
+	ErrStripeSnapshotMismatch = errors.New("stripe payment does not match the immutable order snapshot")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -57,6 +69,60 @@ func (topUp *TopUp) Update() error {
 	var err error
 	err = DB.Save(topUp).Error
 	return err
+}
+
+type StripeCheckoutBinding struct {
+	OrderId     string
+	ProductId   string
+	CustomerId  string
+	AmountMinor int64
+	Currency    string
+	Livemode    bool
+}
+
+func (topUp *TopUp) BindStripeCheckout(binding StripeCheckoutBinding) error {
+	if topUp == nil || topUp.Id == 0 || strings.TrimSpace(binding.OrderId) == "" ||
+		strings.TrimSpace(binding.ProductId) == "" || binding.AmountMinor <= 0 ||
+		strings.TrimSpace(binding.Currency) == "" {
+		return errors.New("invalid Stripe Checkout binding")
+	}
+	if topUp.PaymentProvider != PaymentProviderStripe || topUp.PaymentMethod != PaymentMethodStripe {
+		return ErrPaymentMethodMismatch
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var stored TopUp
+		if err := lockForUpdate(tx).Where("id = ?", topUp.Id).First(&stored).Error; err != nil {
+			return err
+		}
+		if stored.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		if stored.ProviderOrderId != "" && stored.ProviderOrderId != binding.OrderId {
+			return fmt.Errorf("%w: Checkout Session already bound", ErrStripeSnapshotMismatch)
+		}
+		if stored.ProviderProductId != "" && stored.ProviderProductId != binding.ProductId {
+			return fmt.Errorf("%w: Price already bound", ErrStripeSnapshotMismatch)
+		}
+		if stored.ExpectedAmountMinor > 0 && stored.ExpectedAmountMinor != binding.AmountMinor {
+			return fmt.Errorf("%w: Checkout amount changed", ErrStripeSnapshotMismatch)
+		}
+		if stored.ExpectedCurrency != "" && !strings.EqualFold(stored.ExpectedCurrency, binding.Currency) {
+			return fmt.Errorf("%w: Checkout currency changed", ErrStripeSnapshotMismatch)
+		}
+
+		stored.ProviderOrderId = binding.OrderId
+		stored.ProviderProductId = binding.ProductId
+		stored.ProviderCustomerId = binding.CustomerId
+		stored.ExpectedAmountMinor = binding.AmountMinor
+		stored.ExpectedCurrency = strings.ToUpper(binding.Currency)
+		stored.ProviderLivemode = binding.Livemode
+		if err := tx.Save(&stored).Error; err != nil {
+			return err
+		}
+		*topUp = stored
+		return nil
+	})
 }
 
 func GetTopUpById(id int) *TopUp {
@@ -98,7 +164,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status != common.TopUpStatusPending {
-			return ErrTopUpStatusInvalid
+			return nil
 		}
 
 		topUp.Status = targetStatus
@@ -106,12 +172,25 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	})
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+type StripeTopUpSettlement struct {
+	CustomerId      string
+	PaymentIntentId string
+	ChargeId        string
+	AmountMinor     int64
+	Currency        string
+	Livemode        bool
+}
+
+func Recharge(referenceId string, settlement StripeTopUpSettlement, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
+	if settlement.PaymentIntentId == "" || settlement.AmountMinor <= 0 || strings.TrimSpace(settlement.Currency) == "" {
+		return fmt.Errorf("%w: Stripe 充值结算数据不完整", ErrStripeSnapshotMismatch)
+	}
 
-	var quota float64
+	var quota int
+	var credited bool
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -129,32 +208,79 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return ErrPaymentMethodMismatch
 		}
 
-		if topUp.Status != common.TopUpStatusPending {
-			return errors.New("充值订单状态错误")
+		if topUp.ProviderOrderId == "" || topUp.ProviderProductId == "" ||
+			topUp.ExpectedAmountMinor <= 0 || topUp.ExpectedCurrency == "" {
+			return fmt.Errorf("%w: Stripe 充值订单缺少不可变支付快照", ErrStripeCheckoutUnbound)
+		}
+		if settlement.AmountMinor != topUp.ExpectedAmountMinor ||
+			!strings.EqualFold(settlement.Currency, topUp.ExpectedCurrency) ||
+			settlement.Livemode != topUp.ProviderLivemode {
+			return fmt.Errorf("%w: Stripe 充值结算金额、币种或模式不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderCustomerId != "" && settlement.CustomerId != topUp.ProviderCustomerId {
+			return fmt.Errorf("%w: Stripe Customer 与订单快照不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderPaymentIntent != "" && settlement.PaymentIntentId != "" && settlement.PaymentIntentId != topUp.ProviderPaymentIntent {
+			return fmt.Errorf("%w: Stripe PaymentIntent 与订单不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderChargeId != "" && settlement.ChargeId != "" && settlement.ChargeId != topUp.ProviderChargeId {
+			return fmt.Errorf("%w: Stripe Charge 与订单不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			if settlement.PaymentIntentId != topUp.ProviderPaymentIntent ||
+				settlement.ChargeId != topUp.ProviderChargeId {
+				return fmt.Errorf("%w: completed Stripe settlement changed", ErrStripeSnapshotMismatch)
+			}
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
+			return ErrTopUpStatusInvalid
+		}
+
+		if topUp.CreditedQuota <= 0 || topUp.CreditedQuota > int64(common.MaxQuota) {
+			return errors.New("无效的充值额度")
+		}
+		quota = int(topUp.CreditedQuota)
+
+		userResult := tx.Model(&User{}).
+			Where("id = ? AND quota <= ?", topUp.UserId, common.MaxQuota-quota).
+			Updates(map[string]interface{}{
+				"stripe_customer": settlement.CustomerId,
+				"quota":           gorm.Expr("quota + ?", quota),
+			})
+		if userResult.Error != nil {
+			return userResult.Error
+		}
+		if userResult.RowsAffected != 1 {
+			return errors.New("用户不存在或余额将超过系统上限")
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
+		topUp.ProviderCustomerId = settlement.CustomerId
+		topUp.ProviderPaymentIntent = settlement.PaymentIntentId
+		topUp.ProviderChargeId = settlement.ChargeId
+		topUp.ProviderLivemode = settlement.Livemode
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
 		}
-
-		quota = topUp.Money * common.QuotaPerUnit
-		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
-		if err != nil {
-			return err
-		}
+		credited = true
 
 		return nil
 	})
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
+		return err
 	}
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	if credited {
+		if err := InvalidateUserCache(topUp.UserId); err != nil {
+			common.SysError("failed to invalidate user cache after Stripe topup: " + err.Error())
+		}
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	}
 
 	return nil
 }

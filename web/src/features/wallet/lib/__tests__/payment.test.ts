@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { PAYMENT_TYPES } from '../constants'
+import { Window } from 'happy-dom'
+
+import { PAYMENT_TYPES } from '../../constants'
 import {
   dispatchSelectedPayment,
+  isStripeSubscriptionEnabled,
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
-} from './payment'
+  redirectToHostedCheckout,
+} from '../payment'
 
 describe('payment type classification', () => {
   test('keeps Waffo and Waffo Pancake on their dedicated flows', () => {
@@ -16,6 +20,49 @@ describe('payment type classification', () => {
     assert.equal(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO_PANCAKE), true)
     assert.equal(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO), false)
     assert.equal(isStripePayment(PAYMENT_TYPES.STRIPE), true)
+  })
+})
+
+describe('Stripe subscription availability', () => {
+  test('allows subscriptions when Stripe topups are disabled', () => {
+    assert.equal(
+      isStripeSubscriptionEnabled({
+        enable_online_topup: false,
+        enable_stripe_topup: false,
+        enable_stripe_subscription: true,
+        pay_methods: [],
+        min_topup: 1,
+        stripe_min_topup: 1,
+        amount_options: [],
+        discount: {},
+      }),
+      true
+    )
+  })
+})
+
+describe('hosted checkout navigation', () => {
+  test('redirects Stripe checkout in the current tab', () => {
+    const domWindow = new Window({ url: 'https://app.example.test/wallet' })
+    const originalWindow = globalThis.window
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: domWindow,
+    })
+
+    try {
+      redirectToHostedCheckout('https://checkout.stripe.example/session')
+      assert.equal(
+        domWindow.location.href,
+        'https://checkout.stripe.example/session'
+      )
+    } finally {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: originalWindow,
+      })
+      domWindow.close()
+    }
   })
 })
 

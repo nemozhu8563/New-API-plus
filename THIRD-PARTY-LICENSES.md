@@ -46,7 +46,7 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/shirou/gopsutil`                          | `v3.21.11+incompatible`              | BSD-3-Clause                                       |
 | backend     | production  | Go        | `github.com/shopspring/decimal`                       | `v1.4.0`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/stretchr/testify`                         | `v1.11.1`                            | MIT                                                |
-| backend     | production  | Go        | `github.com/stripe/stripe-go/v81`                     | `v81.4.0`                            | MIT                                                |
+| backend     | production  | Go        | `github.com/stripe/stripe-go/v86`                     | `v86.3.0`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/tcolgate/mp3`                             | `v0.0.0-20170426193717-e79c5a46d300` | MIT                                                |
 | backend     | production  | Go        | `github.com/thanhpk/randstr`                          | `v1.0.6`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/tidwall/gjson`                            | `v1.18.0`                            | MIT                                                |
