@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils'
 
 import { isStripeSubscriptionEnabled } from '../lib/payment'
 import type { PaymentMethod, TopupInfo } from '../types'
+import { StripeBillingPortalButton } from './stripe-billing-portal-button'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
@@ -172,6 +173,11 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
+  const hasStripeSubscription = allSubscriptions.some(
+    (record) =>
+      record.subscription.provider === 'stripe' &&
+      Boolean(record.subscription.provider_subscription_id)
+  )
   const isAvailable = loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
@@ -286,6 +292,7 @@ export function SubscriptionPlansCard({
               </span>
             </div>
             <div className='flex w-full items-center gap-2 sm:w-auto'>
+              {hasStripeSubscription && <StripeBillingPortalButton />}
               <Select
                 items={[
                   {

@@ -49,6 +49,8 @@ export const userSubscriptionSchema = z.object({
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
+  provider: z.string().optional(),
+  provider_subscription_id: z.string().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
@@ -94,6 +96,10 @@ export interface SubscriptionPayResponse {
   }
   url?: string
 }
+
+export type StripeBillingPortalResponse = ApiResponse<{
+  portal_url: string
+}>
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number

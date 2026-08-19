@@ -27,14 +27,15 @@ interface FooterProps {
 function FooterLinkItem(props: { link: FooterLink }) {
   const { t } = useTranslation()
   const isExternal = props.link.href.startsWith('http')
+  const isEmail = props.link.href.startsWith('mailto:')
   const label = t(props.link.text)
 
-  if (isExternal) {
+  if (isExternal || isEmail) {
     return (
       <a
         href={props.link.href}
-        target='_blank'
-        rel='noopener noreferrer'
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
         className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
       >
         {label}
@@ -122,7 +123,7 @@ export function Footer(props: FooterProps) {
           },
           {
             text: t('footer.columns.about.links.contact'),
-            href: 'https://docs.newapi.pro/support/community-interaction/',
+            href: 'mailto:contract@tryvalo.com',
           },
           {
             text: t('footer.columns.about.links.features'),

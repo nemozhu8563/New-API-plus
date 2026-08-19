@@ -11,6 +11,7 @@ import type {
   SubscriptionResetResult,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
+  StripeBillingPortalResponse,
   SelfSubscriptionData,
 } from './types'
 
@@ -120,6 +121,13 @@ export async function paySubscriptionStripe(
   data: SubscriptionPayRequest
 ): Promise<SubscriptionPayResponse> {
   const res = await api.post('/api/subscription/stripe/pay', data)
+  return res.data
+}
+
+export async function createStripeBillingPortalSession(): Promise<StripeBillingPortalResponse> {
+  const res = await api.post('/api/subscription/stripe/portal', undefined, {
+    skipBusinessError: true,
+  })
   return res.data
 }
 
