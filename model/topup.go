@@ -242,17 +242,35 @@ func Recharge(referenceId string, settlement StripeTopUpSettlement, callerIp str
 		}
 		quota = int(topUp.CreditedQuota)
 
-		userResult := tx.Model(&User{}).
-			Where("id = ? AND quota <= ?", topUp.UserId, common.MaxQuota-quota).
-			Updates(map[string]interface{}{
-				"stripe_customer": settlement.CustomerId,
-				"quota":           gorm.Expr("quota + ?", quota),
-			})
-		if userResult.Error != nil {
-			return userResult.Error
+		var user User
+		if err := lockForUpdate(tx).Where("id = ?", topUp.UserId).First(&user).Error; err != nil {
+			return errors.New("用户不存在")
 		}
-		if userResult.RowsAffected != 1 {
-			return errors.New("用户不存在或余额将超过系统上限")
+		debtPayment := topUp.CreditedQuota
+		if debtPayment > user.BillingDebt {
+			debtPayment = user.BillingDebt
+		}
+		walletCredit := topUp.CreditedQuota - debtPayment
+		if walletCredit < 0 || int64(user.Quota)+walletCredit > int64(common.MaxQuota) {
+			return errors.New("用户余额将超过系统上限")
+		}
+		if debtPayment > 0 {
+			if _, err := applyStripeBillingDebtPaymentTx(tx, topUp.UserId, debtPayment); err != nil {
+				return err
+			}
+		}
+		user.StripeCustomer = settlement.CustomerId
+		user.Quota += int(walletCredit)
+		user.BillingDebt -= debtPayment
+		if user.BillingDebt < 0 {
+			return errors.New("用户支付欠款不能为负数")
+		}
+		if err := tx.Model(&user).Updates(map[string]interface{}{
+			"stripe_customer": user.StripeCustomer,
+			"quota":           user.Quota,
+			"billing_debt":    user.BillingDebt,
+		}).Error; err != nil {
+			return err
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
@@ -261,6 +279,9 @@ func Recharge(referenceId string, settlement StripeTopUpSettlement, callerIp str
 		topUp.ProviderPaymentIntent = settlement.PaymentIntentId
 		topUp.ProviderChargeId = settlement.ChargeId
 		topUp.ProviderLivemode = settlement.Livemode
+		if err := registerStripeTopUpPaymentTx(tx, topUp, settlement); err != nil {
+			return err
+		}
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err

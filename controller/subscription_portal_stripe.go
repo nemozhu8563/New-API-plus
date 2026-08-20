@@ -38,7 +38,7 @@ func CreateStripeBillingPortalSession(c *gin.Context) {
 	}
 	returnURL := paymentReturnPath("/wallet")
 	parsedReturnURL, err := url.Parse(returnURL)
-	if err != nil || parsedReturnURL.Host == "" || (parsedReturnURL.Scheme != "https" && parsedReturnURL.Scheme != "http") {
+	if err != nil || parsedReturnURL.Host == "" || parsedReturnURL.Scheme != "https" {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe Customer Portal 返回地址无效 user_id=%d return_url=%q", userId, returnURL))
 		common.ApiErrorMsg(c, "无法打开 Stripe 账单管理页面")
 		return

@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -66,11 +67,23 @@ func GetSubscriptionSelf(c *gin.Context) {
 	if err != nil {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
+	stripeSubscriptions, stripeInvoices, err := model.GetStripeSubscriptionBilling(userId, stripeLivemodeForSecret(setting.StripeApiSecret))
+	if err != nil {
+		stripeSubscriptions = []model.StripeSubscriptionSummary{}
+		stripeInvoices = []model.StripeInvoiceSummary{}
+	}
+	billingDebt := int64(0)
+	if user, userErr := model.GetUserById(userId, false); userErr == nil {
+		billingDebt = user.BillingDebt
+	}
 
 	common.ApiSuccess(c, gin.H{
-		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"billing_preference":   pref,
+		"subscriptions":        activeSubscriptions, // all active subscriptions
+		"all_subscriptions":    allSubscriptions,    // all subscriptions including expired
+		"stripe_subscriptions": stripeSubscriptions,
+		"stripe_invoices":      stripeInvoices,
+		"billing_debt":         billingDebt,
 	})
 }
 

@@ -157,6 +157,20 @@ export const STATIC_I18N_KEYS = [
   'Technical Support',
   'Professional team providing 24/7 technical support',
 
+  // Tryvalo landing page (constants-driven labels)
+  'One endpoint',
+  'Use a familiar API format and keep your client integration focused.',
+  'Model choice',
+  'Choose from available models based on quality, speed, and cost.',
+  'Transparent usage',
+  'Review public model prices before signing up and track usage after login.',
+  'Create an account',
+  'Create an API key',
+  'Send your first request',
+  'OpenAI-compatible',
+  'Prepaid usage credits',
+  'Usage-based pricing',
+
   // User management (interpolated keys)
   'Remaining Quota ({{currency}})',
   'Enter quota in tokens',

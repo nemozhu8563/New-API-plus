@@ -46,6 +46,7 @@ await i18n.use(initReactI18next).init({
       translation: {
         'Manage billing': 'Manage billing',
         'Opening billing portal...': 'Opening billing portal...',
+        'Payment methods & invoices': 'Payment methods & invoices',
         'Unable to open billing portal': 'Unable to open billing portal',
       },
     },
@@ -138,7 +139,10 @@ describe('Stripe billing portal button', () => {
     })
 
     assert.equal(button.disabled, false)
-    assert.equal(button.textContent?.includes('Manage billing'), true)
+    assert.equal(
+      button.textContent?.includes('Payment methods & invoices'),
+      true
+    )
     assert.equal(domWindow.location.href, 'https://test.tryvalo.com/wallet')
 
     await act(async () => root.unmount())

@@ -31,6 +31,8 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
+	originalFetchStripeRefundsForCharge := fetchStripeRefundsForCharge
+	originalFetchStripeInvoicePayments := fetchStripeInvoicePayments
 	originalGinMode := gin.Mode()
 	var sqlDB *sql.DB
 	t.Cleanup(func() {
@@ -40,6 +42,8 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 		setting.StripeApiSecret = originalAPISecret
 		setting.StripeWebhookSecret = originalWebhookSecret
 		setting.StripePriceId = originalPriceID
+		fetchStripeRefundsForCharge = originalFetchStripeRefundsForCharge
+		fetchStripeInvoicePayments = originalFetchStripeInvoicePayments
 		gin.SetMode(originalGinMode)
 		if sqlDB != nil {
 			_ = sqlDB.Close()
@@ -56,6 +60,9 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 		&model.Log{},
 		&model.TopUp{},
 		&model.StripeWebhookEvent{},
+		&model.StripePaymentReference{},
+		&model.StripePaymentRecovery{},
+		&model.StripePaymentAdjustment{},
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
@@ -321,32 +328,184 @@ func TestStripeWebhookIgnoresUnrelatedEventBeforeCheckoutParsing(t *testing.T) {
 	assert.Empty(t, event.LastError)
 }
 
-func TestStripeWebhookRecordsRefundAndDisputeEventsForManualHandling(t *testing.T) {
+func TestStripeWebhookRejectsRefundLivemodeMismatchWhenProvided(t *testing.T) {
 	db := setupStripeWebhookTest(t)
-	eventTypes := []stripe.EventType{
-		stripe.EventTypeChargeRefunded,
-		stripe.EventTypeChargeDisputeCreated,
-		stripe.EventTypeChargeDisputeFundsWithdrawn,
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_refund_livemode_mismatch",
 		stripe.EventTypeRefundCreated,
-		stripe.EventTypeRefundUpdated,
-	}
-	for index, eventType := range eventTypes {
-		payload, signature := stripeWebhookPayloadForEvent(
-			t,
-			setting.StripeWebhookSecret,
-			fmt.Sprintf("evt_manual_review_%d", index),
-			eventType,
-			map[string]any{"id": fmt.Sprintf("obj_manual_review_%d", index), "object": "test"},
-		)
+		map[string]any{
+			"id":             "re_livemode_mismatch",
+			"object":         "refund",
+			"amount":         2000,
+			"currency":       "cny",
+			"livemode":       true,
+			"payment_intent": "pi_livemode_mismatch",
+			"status":         "succeeded",
+		},
+	)
 
-		recorder := invokeStripeWebhook(payload, signature)
+	recorder := invokeStripeWebhook(payload, signature)
 
-		assert.Equal(t, http.StatusOK, recorder.Code)
-		var event model.StripeWebhookEvent
-		require.NoError(t, db.Where("stripe_event_id = ?", fmt.Sprintf("evt_manual_review_%d", index)).First(&event).Error)
-		assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
-		assert.Equal(t, string(eventType), event.EventType)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_refund_livemode_mismatch").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusRejected, event.Status)
+	assert.Contains(t, event.LastError, "livemode")
+}
+
+func TestStripeWebhookAcceptsRefundWithoutObjectLivemode(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_refund_without_livemode",
+		stripe.EventTypeRefundCreated,
+		map[string]any{
+			"id":             "re_without_livemode",
+			"object":         "refund",
+			"amount":         2000,
+			"currency":       "cny",
+			"payment_intent": "pi_without_livemode",
+			"status":         "succeeded",
+		},
+	)
+
+	recorder := invokeStripeWebhook(payload, signature)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_refund_without_livemode").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
+}
+
+func TestStripeWebhookFetchesCompleteChargeRefundList(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	requestedChargeID := ""
+	fetchStripeRefundsForCharge = func(_ context.Context, chargeID string) ([]*stripe.Refund, error) {
+		requestedChargeID = chargeID
+		return []*stripe.Refund{{
+			ID:            "re_refunds_has_more",
+			Amount:        2000,
+			Currency:      stripe.CurrencyCNY,
+			PaymentIntent: &stripe.PaymentIntent{ID: "pi_refunds_has_more"},
+			Charge:        &stripe.Charge{ID: chargeID},
+			Status:        stripe.RefundStatusSucceeded,
+		}}, nil
 	}
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_charge_refunds_has_more",
+		stripe.EventTypeChargeRefunded,
+		map[string]any{
+			"id":              "ch_refunds_has_more",
+			"object":          "charge",
+			"amount_refunded": 2000,
+			"livemode":        false,
+			"payment_intent":  "pi_refunds_has_more",
+			"refunds": map[string]any{
+				"object":   "list",
+				"has_more": true,
+				"data": []map[string]any{{
+					"id":             "re_refunds_has_more",
+					"object":         "refund",
+					"amount":         2000,
+					"currency":       "cny",
+					"payment_intent": "pi_refunds_has_more",
+					"status":         "succeeded",
+				}},
+			},
+		},
+	)
+
+	recorder := invokeStripeWebhook(payload, signature)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "ch_refunds_has_more", requestedChargeID)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_charge_refunds_has_more").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
+	assert.Empty(t, event.LastError)
+}
+
+func TestStripeWebhookFetchesChargeRefundsWhenEmbeddedListIsMissing(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	requestedChargeID := ""
+	fetchStripeRefundsForCharge = func(_ context.Context, chargeID string) ([]*stripe.Refund, error) {
+		requestedChargeID = chargeID
+		return []*stripe.Refund{{
+			ID:            "re_refunds_missing",
+			Amount:        2000,
+			Currency:      stripe.CurrencyCNY,
+			PaymentIntent: &stripe.PaymentIntent{ID: "pi_refunds_missing"},
+			Charge:        &stripe.Charge{ID: chargeID},
+			Status:        stripe.RefundStatusSucceeded,
+		}}, nil
+	}
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_charge_refunds_missing",
+		stripe.EventTypeChargeRefunded,
+		map[string]any{
+			"id":              "ch_refunds_missing",
+			"object":          "charge",
+			"amount_refunded": 2000,
+			"livemode":        false,
+			"payment_intent":  "pi_refunds_missing",
+		},
+	)
+
+	recorder := invokeStripeWebhook(payload, signature)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "ch_refunds_missing", requestedChargeID)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_charge_refunds_missing").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
+	assert.Empty(t, event.LastError)
+}
+
+func TestStripeWebhookRetriesWhenCompleteChargeRefundListIsUnavailable(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	fetchStripeRefundsForCharge = func(_ context.Context, _ string) ([]*stripe.Refund, error) {
+		return nil, assert.AnError
+	}
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_charge_refunds_fetch_failed",
+		stripe.EventTypeChargeRefunded,
+		map[string]any{
+			"id":              "ch_refunds_fetch_failed",
+			"object":          "charge",
+			"amount_refunded": 2000,
+			"livemode":        false,
+			"payment_intent":  "pi_refunds_fetch_failed",
+			"refunds": map[string]any{
+				"object":   "list",
+				"has_more": true,
+				"data": []map[string]any{{
+					"id":             "re_refunds_fetch_failed",
+					"object":         "refund",
+					"amount":         2000,
+					"currency":       "cny",
+					"payment_intent": "pi_refunds_fetch_failed",
+					"status":         "succeeded",
+				}},
+			},
+		},
+	)
+
+	recorder := invokeStripeWebhook(payload, signature)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_charge_refunds_fetch_failed").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusFailed, event.Status)
+	assert.Contains(t, event.LastError, "完整退款列表")
 }
 
 func TestStripeWebhookRejectsUnassociatedPendingTopUp(t *testing.T) {
@@ -728,6 +887,14 @@ func stripePaidInvoiceForWebhookTest(order *model.SubscriptionOrder, invoiceID s
 		CollectionMethod: stripe.InvoiceCollectionMethodChargeAutomatically,
 		BillingReason:    stripe.InvoiceBillingReasonSubscriptionCycle,
 		Customer:         &stripe.Customer{ID: order.ProviderCustomerId},
+		Payments: &stripe.InvoicePaymentList{Data: []*stripe.InvoicePayment{{
+			ID: "inpy_" + invoiceID, AmountPaid: order.ExpectedAmountMinor,
+			Currency: stripe.CurrencyUSD, Livemode: order.ProviderLivemode, Status: "paid",
+			Payment: &stripe.InvoicePaymentPayment{
+				Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
+				PaymentIntent: &stripe.PaymentIntent{ID: "pi_" + invoiceID},
+			},
+		}}},
 		Parent: &stripe.InvoiceParent{
 			Type: stripe.InvoiceParentTypeSubscriptionDetails,
 			SubscriptionDetails: &stripe.InvoiceParentSubscriptionDetails{
@@ -759,6 +926,8 @@ func stripePaidInvoiceForWebhookTest(order *model.SubscriptionOrder, invoiceID s
 
 func stripePaidInvoiceObjectForWebhookTest(order *model.SubscriptionOrder, invoiceID string) map[string]any {
 	periodStart := int64(1_700_000_000)
+	paymentIntentID := "pi_" + order.TradeNo
+	chargeID := "ch_" + order.TradeNo
 	return map[string]any{
 		"id":                     invoiceID,
 		"object":                 "invoice",
@@ -780,6 +949,23 @@ func stripePaidInvoiceObjectForWebhookTest(order *model.SubscriptionOrder, invoi
 					"trade_no": order.TradeNo, "order_kind": "subscription", "price_id": order.ProviderProductId,
 				},
 			},
+		},
+		"payments": map[string]any{
+			"object":   "list",
+			"has_more": false,
+			"data": []any{map[string]any{
+				"id":          "inpy_" + order.TradeNo,
+				"object":      "invoice_payment",
+				"amount_paid": order.ExpectedAmountMinor,
+				"currency":    string(stripe.CurrencyUSD),
+				"livemode":    false,
+				"status":      "paid",
+				"payment": map[string]any{
+					"type":           "payment_intent",
+					"payment_intent": paymentIntentID,
+					"charge":         chargeID,
+				},
+			}},
 		},
 		"lines": map[string]any{
 			"object": "list",
@@ -842,7 +1028,7 @@ func TestStripePaidInvoiceWebhookCompletesDahliaSubscriptionSettlement(t *testin
 	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
 }
 
-func TestStripePaidInvoiceWebhookRejectsMissingAmountPaidOffStripe(t *testing.T) {
+func TestStripePaidInvoiceWebhookTreatsMissingAmountPaidOffStripeAsZero(t *testing.T) {
 	db := setupStripeWebhookTest(t)
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_missing_paid_off_stripe")
 	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_missing_paid_off_stripe")
@@ -860,13 +1046,13 @@ func TestStripePaidInvoiceWebhookRejectsMissingAmountPaidOffStripe(t *testing.T)
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusPending, stored.Status)
+	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
 	var subscriptions int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", "in_missing_paid_off_stripe").Count(&subscriptions).Error)
-	assert.Zero(t, subscriptions)
+	assert.Equal(t, int64(1), subscriptions)
 	var event model.StripeWebhookEvent
 	require.NoError(t, db.Where("stripe_event_id = ?", "evt_missing_paid_off_stripe").First(&event).Error)
-	assert.Equal(t, model.StripeWebhookEventStatusRejected, event.Status)
+	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
 }
 
 func TestStripePaidInvoiceWebhookFallsBackToBoundSubscriptionWithoutTradeNo(t *testing.T) {
@@ -912,7 +1098,7 @@ func TestStripeSubscriptionAsyncPaymentFailureRemainsRetryable(t *testing.T) {
 	assert.Equal(t, int64(100), stored.StripeStatusEventTime)
 
 	paidInvoice := stripePaidInvoiceForWebhookTest(order, "in_async_ordering")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
 	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
 	assert.Equal(t, "active", stored.StripeStatus)
@@ -929,7 +1115,7 @@ func TestStripeInvoiceBeforeCheckoutCompletionBindsSubscription(t *testing.T) {
 	order.ProviderSubscriptionId = common.GetPointer("sub_invoice_first")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_first")
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
@@ -963,7 +1149,7 @@ func TestStripeInvoiceBeforeCheckoutCompletionRejectsMismatchedMetadata(t *testi
 			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_first_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
 			testCase.mutate(invoice)
 
-			err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 			require.Error(t, err)
 			stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
@@ -979,9 +1165,10 @@ func TestStripePaidInvoiceAcceptsCustomerCreditThatChangesAmountPaid(t *testing.
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_credit_invoice")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_credit_invoice")
 	invoice.AmountPaid = 0
+	invoice.Payments = nil
 	event := stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}
 
-	require.NoError(t, processStripeInvoice(event, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), event, invoice))
 
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
@@ -992,6 +1179,92 @@ func TestStripePaidInvoiceAcceptsCustomerCreditThatChangesAmountPaid(t *testing.
 	var settlement model.StripeSubscriptionSettlement
 	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
 	assert.Zero(t, settlement.AmountPaidMinor)
+}
+
+func TestStripePaidInvoiceRetriesWhenCollectedPaymentReferencesAreUnavailable(t *testing.T) {
+	setupStripeWebhookTest(t)
+	order := insertStripeSubscriptionOrderForWebhookTest(t, model.DB, "sub_ref_missing_payment_references")
+	invoice := stripePaidInvoiceForWebhookTest(order, "in_missing_payment_references")
+	invoice.Payments = nil
+	fetchStripeInvoicePayments = func(_ context.Context, invoiceID string) ([]*stripe.InvoicePayment, error) {
+		assert.Equal(t, invoice.ID, invoiceID)
+		return nil, assert.AnError
+	}
+
+	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+
+	require.ErrorContains(t, err, "获取 Stripe Invoice")
+	assert.False(t, isPermanentStripeWebhookError(err))
+}
+
+func TestStripePaidInvoiceFetchesCompletePaymentReferences(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_fetch_payment_references")
+	invoice := stripePaidInvoiceForWebhookTest(order, "in_fetch_payment_references")
+	invoice.Payments = &stripe.InvoicePaymentList{
+		ListMeta: stripe.ListMeta{HasMore: true},
+		Data:     invoice.Payments.Data,
+	}
+	requestedInvoiceID := ""
+	fetchStripeInvoicePayments = func(_ context.Context, invoiceID string) ([]*stripe.InvoicePayment, error) {
+		requestedInvoiceID = invoiceID
+		return []*stripe.InvoicePayment{
+			{
+				ID: "inpy_fetch_first", AmountPaid: 500, Currency: stripe.CurrencyUSD,
+				Livemode: false, Status: "paid",
+				Payment: &stripe.InvoicePaymentPayment{
+					Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
+					PaymentIntent: &stripe.PaymentIntent{ID: "pi_fetch_first"},
+				},
+			},
+			{
+				ID: "inpy_fetch_second", AmountPaid: 700, Currency: stripe.CurrencyUSD,
+				Livemode: false, Status: "paid",
+				Payment: &stripe.InvoicePaymentPayment{
+					Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
+					PaymentIntent: &stripe.PaymentIntent{ID: "pi_fetch_second"},
+				},
+			},
+		}, nil
+	}
+
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	assert.Equal(t, invoice.ID, requestedInvoiceID)
+
+	var settlement model.StripeSubscriptionSettlement
+	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
+	var references []model.StripePaymentReference
+	require.NoError(t, db.Where("target_kind = ? AND target_id = ?", model.StripePaymentTargetSubscription, settlement.Id).
+		Order("amount_minor asc").Find(&references).Error)
+	require.Len(t, references, 2)
+	assert.Equal(t, int64(500), references[0].AmountMinor)
+	assert.Equal(t, int64(700), references[1].AmountMinor)
+}
+
+func TestStripePaidInvoiceRetriesWhenPaymentReferenceFetchFails(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_payment_references_retry")
+	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_payment_references_retry")
+	payments := invoiceObject["payments"].(map[string]any)
+	payments["has_more"] = true
+	fetchStripeInvoicePayments = func(_ context.Context, _ string) ([]*stripe.InvoicePayment, error) {
+		return nil, assert.AnError
+	}
+	payload, signature := stripeWebhookPayloadForEvent(
+		t,
+		setting.StripeWebhookSecret,
+		"evt_payment_references_retry",
+		stripe.EventTypeInvoicePaid,
+		invoiceObject,
+	)
+
+	recorder := invokeStripeWebhook(payload, signature)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	var event model.StripeWebhookEvent
+	require.NoError(t, db.Where("stripe_event_id = ?", "evt_payment_references_retry").First(&event).Error)
+	assert.Equal(t, model.StripeWebhookEventStatusFailed, event.Status)
+	assert.Contains(t, event.LastError, "付款引用")
 }
 
 func TestStripePaidInvoiceRejectsInvalidSettlementEnvelope(t *testing.T) {
@@ -1017,7 +1290,7 @@ func TestStripePaidInvoiceRejectsInvalidSettlementEnvelope(t *testing.T) {
 			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_envelope_"+strings.ReplaceAll(testCase.name, " ", "_"))
 			testCase.mutate(invoice)
 
-			err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 			require.Error(t, err)
 			var subscriptions int64
@@ -1050,7 +1323,7 @@ func TestStripeInvoiceRejectsMismatchedSubscriptionMetadata(t *testing.T) {
 			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
 			testCase.mutate(invoice)
 
-			err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 			require.Error(t, err)
 			var subscriptions int64
@@ -1064,10 +1337,11 @@ func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentPayload(t *testing.T)
 	db := setupStripeWebhookTest(t)
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 	invoice.AmountPaid--
+	invoice.Payments.Data[0].AmountPaid--
 
-	err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
 }
@@ -1076,10 +1350,10 @@ func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentUnitAmount(t *testing
 	db := setupStripeWebhookTest(t)
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice_unit_amount")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice_unit_amount")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 	invoice.Lines.Data[0].Pricing.UnitAmountDecimal++
 
-	err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
 }
@@ -1088,7 +1362,7 @@ func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentTotal(t *testing.T) {
 	db := setupStripeWebhookTest(t)
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice_total")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice_total")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 	var settlement model.StripeSubscriptionSettlement
 	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
 	assert.Equal(t, invoice.Total, settlement.InvoiceTotalMinor)
@@ -1098,7 +1372,7 @@ func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentTotal(t *testing.T) {
 		Update("expected_amount_minor", order.ExpectedAmountMinor+1).Error)
 	invoice.Total++
 
-	err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
 }
@@ -1109,14 +1383,14 @@ func TestStripeInvoicePaymentFailureCanRecoverWithPaidInvoice(t *testing.T) {
 	failedInvoice := stripePaidInvoiceForWebhookTest(order, "in_retry_failed")
 	failedInvoice.Status = stripe.InvoiceStatusOpen
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaymentFailed, Created: 100}, failedInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaymentFailed, Created: 100}, failedInvoice))
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
 	assert.Equal(t, common.TopUpStatusPending, stored.Status)
 	assert.Equal(t, "payment_failed", stored.StripeStatus)
 
 	paidInvoice := stripePaidInvoiceForWebhookTest(order, "in_retry_paid")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
 	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
 	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
@@ -1202,7 +1476,7 @@ func TestStripeSubscriptionDeletionPreservesPaidServicePeriod(t *testing.T) {
 	db := setupStripeWebhookTest(t)
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_deleted_period")
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_deleted_period")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 
 	subscription := &stripe.Subscription{
 		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
@@ -1233,7 +1507,7 @@ func TestStripePaidInvoiceDoesNotRollBackNewerCanceledStatus(t *testing.T) {
 	}, subscription))
 
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_stale_paid_invoice")
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, invoice))
 
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
@@ -1252,7 +1526,7 @@ func TestStripePaidInvoiceUsesFrozenPlanSnapshotAfterPlanMutation(t *testing.T) 
 	}).Error)
 	invoice := stripePaidInvoiceForWebhookTest(order, "in_frozen_plan")
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 
 	var userSubscription model.UserSubscription
 	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
@@ -1268,7 +1542,7 @@ func TestStripePaidInvoiceStoresOnlySettlementAuditFields(t *testing.T) {
 	invoice.Customer.Email = "private@example.com"
 	invoice.Description = "private invoice description"
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 
 	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
 	require.NotNil(t, stored)
@@ -1287,7 +1561,7 @@ func TestStripePaidInvoiceUsesStripeMonthEndPeriodAsAuthoritative(t *testing.T) 
 		End:   time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC).Unix(),
 	}
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
 
 	var userSubscription model.UserSubscription
 	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
@@ -1300,12 +1574,12 @@ func TestStripePaidInvoiceRejectsOverlappingServicePeriodForSameSubscription(t *
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_overlap_period")
 	firstInvoice := stripePaidInvoiceForWebhookTest(order, "in_overlap_period_first")
 	firstInvoice.Lines.Data[0].Period = &stripe.Period{Start: 100, End: 200}
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
 
 	overlappingInvoice := stripePaidInvoiceForWebhookTest(order, "in_overlap_period_second")
 	overlappingInvoice.Lines.Data[0].Period = &stripe.Period{Start: 150, End: 250}
 
-	err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, overlappingInvoice)
+	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, overlappingInvoice)
 
 	require.ErrorIs(t, err, model.ErrStripeSubscriptionPeriodOverlap)
 	var subscriptions int64
@@ -1338,12 +1612,12 @@ func TestStripePaidInvoiceAllowsAdjacentServicePeriodsForSameSubscription(t *tes
 	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_adjacent_period")
 	firstInvoice := stripePaidInvoiceForWebhookTest(order, "in_adjacent_period_first")
 	firstInvoice.Lines.Data[0].Period = &stripe.Period{Start: 100, End: 200}
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
 
 	adjacentInvoice := stripePaidInvoiceForWebhookTest(order, "in_adjacent_period_second")
 	adjacentInvoice.Lines.Data[0].Period = &stripe.Period{Start: 200, End: 300}
 
-	require.NoError(t, processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, adjacentInvoice))
+	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, adjacentInvoice))
 	var subscriptions int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).
 		Where("provider_subscription_id = ?", *order.ProviderSubscriptionId).
@@ -1373,7 +1647,7 @@ func TestStripePaidInvoiceRejectsImmutableSnapshotMismatches(t *testing.T) {
 			invoice := stripePaidInvoiceForWebhookTest(order, "in_mismatch_"+strings.ReplaceAll(testCase.name, " ", "_"))
 			testCase.mutate(invoice)
 
-			err := processStripeInvoice(stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
+			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
 
 			require.Error(t, err)
 			stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)

@@ -42,7 +42,9 @@ export function StripeBillingPortalButton() {
       ) : (
         <ExternalLink className='h-3.5 w-3.5' aria-hidden='true' />
       )}
-      {loading ? t('Opening billing portal...') : t('Manage billing')}
+      {loading
+        ? t('Opening billing portal...')
+        : t('Payment methods & invoices')}
     </Button>
   )
 }

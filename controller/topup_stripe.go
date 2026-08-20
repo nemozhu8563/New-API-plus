@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +58,7 @@ func isPermanentStripeWebhookError(err error) bool {
 	return errors.Is(err, model.ErrPaymentMethodMismatch) ||
 		errors.Is(err, model.ErrTopUpStatusInvalid) ||
 		errors.Is(err, model.ErrStripeSnapshotMismatch) ||
+		errors.Is(err, model.ErrStripeAdjustmentMismatch) ||
 		errors.Is(err, model.ErrStripeSubscriptionMismatch) ||
 		errors.Is(err, model.ErrStripeInvoiceAlreadyBound) ||
 		errors.Is(err, model.ErrStripeSubscriptionPeriodOverlap)
@@ -67,6 +67,35 @@ func isPermanentStripeWebhookError(err error) bool {
 var createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
 	client := stripe.NewClient(setting.StripeApiSecret)
 	return client.V1CheckoutSessions.Create(params.Context, params)
+}
+
+var fetchStripeRefundsForCharge = func(ctx context.Context, chargeId string) ([]*stripe.Refund, error) {
+	client := stripe.NewClient(setting.StripeApiSecret)
+	params := &stripe.RefundListParams{Charge: stripe.String(chargeId)}
+	refunds := make([]*stripe.Refund, 0)
+	for refund, err := range client.V1Refunds.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, err
+		}
+		refunds = append(refunds, refund)
+	}
+	return refunds, nil
+}
+
+var fetchStripeInvoicePayments = func(ctx context.Context, invoiceId string) ([]*stripe.InvoicePayment, error) {
+	client := stripe.NewClient(setting.StripeApiSecret)
+	params := &stripe.InvoicePaymentListParams{
+		Invoice: stripe.String(invoiceId),
+		Status:  stripe.String("paid"),
+	}
+	payments := make([]*stripe.InvoicePayment, 0)
+	for payment, err := range client.V1InvoicePayments.List(ctx, params).All(ctx) {
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+	return payments, nil
 }
 
 // StripePayRequest represents a payment request for Stripe checkout.
@@ -365,25 +394,11 @@ func processStripeWebhookEvent(ctx context.Context, event stripe.Event, callerIp
 		if event.Data == nil || len(event.Data.Raw) == 0 {
 			return rejectStripeWebhook("Stripe webhook 缺少 Invoice 数据")
 		}
-		if event.Type == stripe.EventTypeInvoicePaid {
-			var rawInvoice map[string]json.RawMessage
-			if err := common.Unmarshal(event.Data.Raw, &rawInvoice); err != nil {
-				return rejectStripeWebhook("Stripe webhook Invoice 无效")
-			}
-			rawAmountPaidOffStripe, ok := rawInvoice["amount_paid_off_stripe"]
-			if !ok || strings.TrimSpace(string(rawAmountPaidOffStripe)) == "" || strings.TrimSpace(string(rawAmountPaidOffStripe)) == "null" {
-				return rejectStripeWebhook("Stripe invoice.paid 缺少 amount_paid_off_stripe")
-			}
-			var amountPaidOffStripe int64
-			if err := common.Unmarshal(rawAmountPaidOffStripe, &amountPaidOffStripe); err != nil {
-				return rejectStripeWebhook("Stripe invoice.paid 的 amount_paid_off_stripe 无效")
-			}
-		}
 		var invoice stripe.Invoice
 		if err := common.Unmarshal(event.Data.Raw, &invoice); err != nil {
 			return rejectStripeWebhook("Stripe webhook Invoice 无效")
 		}
-		return processStripeInvoice(event, &invoice)
+		return processStripeInvoice(ctx, event, &invoice)
 	case stripe.EventTypeCustomerSubscriptionUpdated, stripe.EventTypeCustomerSubscriptionDeleted:
 		if event.Data == nil || len(event.Data.Raw) == 0 {
 			return rejectStripeWebhook("Stripe webhook 缺少 Subscription 数据")
@@ -393,21 +408,184 @@ func processStripeWebhookEvent(ctx context.Context, event stripe.Event, callerIp
 			return rejectStripeWebhook("Stripe webhook Subscription 无效")
 		}
 		return processStripeSubscriptionLifecycle(event, &subscription)
-	case stripe.EventTypeChargeRefunded,
-		stripe.EventTypeChargeDisputeCreated,
+	case stripe.EventTypeChargeRefunded:
+		if event.Data == nil || len(event.Data.Raw) == 0 {
+			return rejectStripeWebhook("Stripe webhook 缺少 Charge 数据")
+		}
+		var charge stripe.Charge
+		if err := common.Unmarshal(event.Data.Raw, &charge); err != nil {
+			return rejectStripeWebhook("Stripe webhook Charge 无效")
+		}
+		return processStripeChargeRefunded(ctx, event, &charge)
+	case stripe.EventTypeRefundCreated, stripe.EventTypeRefundUpdated, stripe.EventTypeRefundFailed:
+		if event.Data == nil || len(event.Data.Raw) == 0 {
+			return rejectStripeWebhook("Stripe webhook 缺少 Refund 数据")
+		}
+		var refund stripe.Refund
+		if err := common.Unmarshal(event.Data.Raw, &refund); err != nil {
+			return rejectStripeWebhook("Stripe webhook Refund 无效")
+		}
+		var refundMode struct {
+			Livemode *bool `json:"livemode"`
+		}
+		if err := common.Unmarshal(event.Data.Raw, &refundMode); err != nil {
+			return rejectStripeWebhook("Stripe webhook Refund 无效")
+		}
+		if refundMode.Livemode != nil && *refundMode.Livemode != event.Livemode {
+			return rejectStripeWebhook("Stripe Refund livemode 不匹配")
+		}
+		return processStripeRefund(ctx, event, &refund, "", "")
+	case stripe.EventTypeChargeDisputeCreated,
 		stripe.EventTypeChargeDisputeFundsWithdrawn,
-		stripe.EventTypeRefundCreated,
-		stripe.EventTypeRefundUpdated:
-		logger.LogWarn(ctx, fmt.Sprintf(
-			"Stripe webhook 需要人工处理，当前不会自动撤销余额或订阅权益 event_id=%s event_type=%s",
-			event.ID,
-			event.Type,
-		))
-		return nil
+		stripe.EventTypeChargeDisputeUpdated,
+		stripe.EventTypeChargeDisputeClosed,
+		stripe.EventTypeChargeDisputeFundsReinstated:
+		if event.Data == nil || len(event.Data.Raw) == 0 {
+			return rejectStripeWebhook("Stripe webhook 缺少 Dispute 数据")
+		}
+		var dispute stripe.Dispute
+		if err := common.Unmarshal(event.Data.Raw, &dispute); err != nil {
+			return rejectStripeWebhook("Stripe webhook Dispute 无效")
+		}
+		return processStripeDispute(ctx, event, &dispute)
 	default:
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 忽略事件 event_id=%s event_type=%s", event.ID, event.Type))
 		return nil
 	}
+}
+
+func processStripeChargeRefunded(ctx context.Context, event stripe.Event, charge *stripe.Charge) error {
+	if charge == nil || charge.ID == "" || charge.Livemode != event.Livemode || charge.AmountRefunded <= 0 {
+		return rejectStripeWebhook("Stripe charge.refunded 数据无效")
+	}
+	var refunds []*stripe.Refund
+	if charge.Refunds == nil || len(charge.Refunds.Data) == 0 || charge.Refunds.HasMore {
+		var err error
+		refunds, err = fetchStripeRefundsForCharge(ctx, charge.ID)
+		if err != nil {
+			return fmt.Errorf("获取 Stripe Charge %s 的完整退款列表失败: %w", charge.ID, err)
+		}
+		if len(refunds) == 0 {
+			return fmt.Errorf("Stripe Charge %s 的完整退款列表暂不可用", charge.ID)
+		}
+	} else {
+		refunds = charge.Refunds.Data
+	}
+	paymentIntentId := ""
+	if charge.PaymentIntent != nil {
+		paymentIntentId = charge.PaymentIntent.ID
+	}
+	for _, refund := range refunds {
+		if refund == nil {
+			continue
+		}
+		if err := processStripeRefund(ctx, event, refund, paymentIntentId, charge.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processStripeRefund(ctx context.Context, event stripe.Event, refund *stripe.Refund, fallbackPaymentIntentId string, fallbackChargeId string) error {
+	if refund == nil || refund.ID == "" || refund.Amount <= 0 || strings.TrimSpace(string(refund.Currency)) == "" || event.Created <= 0 {
+		return rejectStripeWebhook("Stripe Refund 数据无效")
+	}
+	paymentIntentId := strings.TrimSpace(fallbackPaymentIntentId)
+	if refund.PaymentIntent != nil && refund.PaymentIntent.ID != "" {
+		paymentIntentId = refund.PaymentIntent.ID
+	}
+	chargeId := strings.TrimSpace(fallbackChargeId)
+	if refund.Charge != nil && refund.Charge.ID != "" {
+		chargeId = refund.Charge.ID
+	}
+	if paymentIntentId == "" && chargeId == "" {
+		return rejectStripeWebhook("Stripe Refund 缺少 PaymentIntent 或 Charge")
+	}
+	active := refund.Status == stripe.RefundStatusSucceeded
+	priority := 1
+	switch refund.Status {
+	case stripe.RefundStatusPending, stripe.RefundStatusRequiresAction:
+		priority = 2
+	case stripe.RefundStatusSucceeded:
+		priority = 3
+	case stripe.RefundStatusFailed, stripe.RefundStatusCanceled:
+		priority = 4
+	}
+	if event.Type == stripe.EventTypeRefundFailed {
+		active = false
+		priority = 5
+	}
+	result, err := model.ApplyStripePaymentAdjustment(model.StripePaymentAdjustmentInput{
+		ObjectType: model.StripeAdjustmentRefund, ObjectId: refund.ID, EventId: event.ID,
+		PaymentIntentId: paymentIntentId, ChargeId: chargeId, AmountMinor: refund.Amount,
+		Currency: string(refund.Currency), Livemode: event.Livemode, Status: string(refund.Status),
+		Active: active, EventCreated: event.Created, EventPriority: priority,
+	})
+	if errors.Is(err, model.ErrStripePaymentUnmanaged) {
+		logger.LogInfo(ctx, fmt.Sprintf("Stripe Refund 不属于本站订单，已忽略 event_id=%s refund_id=%s", event.ID, refund.ID))
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	logger.LogWarn(ctx, fmt.Sprintf(
+		"Stripe Refund 权益同步完成 event_id=%s refund_id=%s target=%s:%d recovered_quota=%d outstanding_quota=%d",
+		event.ID, refund.ID, result.TargetKind, result.TargetId, result.RecoveredQuota, result.OutstandingQuota,
+	))
+	return nil
+}
+
+func processStripeDispute(ctx context.Context, event stripe.Event, dispute *stripe.Dispute) error {
+	if dispute == nil || dispute.ID == "" || dispute.Amount <= 0 || strings.TrimSpace(string(dispute.Currency)) == "" ||
+		dispute.Livemode != event.Livemode || event.Created <= 0 {
+		return rejectStripeWebhook("Stripe Dispute 数据无效")
+	}
+	paymentIntentId := ""
+	if dispute.PaymentIntent != nil {
+		paymentIntentId = dispute.PaymentIntent.ID
+	}
+	chargeId := ""
+	if dispute.Charge != nil {
+		chargeId = dispute.Charge.ID
+	}
+	if paymentIntentId == "" && chargeId == "" {
+		return rejectStripeWebhook("Stripe Dispute 缺少 PaymentIntent 或 Charge")
+	}
+	active := dispute.Status == stripe.DisputeStatusNeedsResponse ||
+		dispute.Status == stripe.DisputeStatusUnderReview ||
+		dispute.Status == stripe.DisputeStatusLost
+	priority := 1
+	switch event.Type {
+	case stripe.EventTypeChargeDisputeFundsWithdrawn:
+		active = true
+		priority = 2
+	case stripe.EventTypeChargeDisputeUpdated:
+		priority = 3
+	case stripe.EventTypeChargeDisputeClosed:
+		active = dispute.Status == stripe.DisputeStatusLost
+		priority = 4
+	case stripe.EventTypeChargeDisputeFundsReinstated:
+		active = false
+		priority = 5
+	}
+	result, err := model.ApplyStripePaymentAdjustment(model.StripePaymentAdjustmentInput{
+		ObjectType: model.StripeAdjustmentDispute, ObjectId: dispute.ID, EventId: event.ID,
+		PaymentIntentId: paymentIntentId, ChargeId: chargeId, AmountMinor: dispute.Amount,
+		Currency: string(dispute.Currency), Livemode: dispute.Livemode, Status: string(dispute.Status),
+		Active: active, EventCreated: event.Created, EventPriority: priority,
+	})
+	if errors.Is(err, model.ErrStripePaymentUnmanaged) {
+		logger.LogInfo(ctx, fmt.Sprintf("Stripe Dispute 不属于本站订单，已忽略 event_id=%s dispute_id=%s", event.ID, dispute.ID))
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	logger.LogWarn(ctx, fmt.Sprintf(
+		"Stripe Dispute 权益同步完成 event_id=%s dispute_id=%s target=%s:%d recovered_quota=%d outstanding_quota=%d",
+		event.ID, dispute.ID, result.TargetKind, result.TargetId, result.RecoveredQuota, result.OutstandingQuota,
+	))
+	return nil
 }
 
 func sessionCompleted(ctx context.Context, event stripe.Event, checkoutSession *stripe.CheckoutSession, callerIp string) error {
@@ -691,7 +869,7 @@ func bindStripeSubscriptionCheckout(checkoutSession *stripe.CheckoutSession) err
 	return order.BindStripeSubscription(checkoutSession.Customer.ID, checkoutSession.Subscription.ID, checkoutSession.Livemode)
 }
 
-func processStripeInvoice(event stripe.Event, invoice *stripe.Invoice) error {
+func processStripeInvoice(ctx context.Context, event stripe.Event, invoice *stripe.Invoice) error {
 	if invoice == nil || invoice.ID == "" || invoice.Livemode != event.Livemode {
 		return rejectStripeWebhook("Stripe Invoice 数据无效")
 	}
@@ -786,6 +964,62 @@ func processStripeInvoice(event stripe.Event, invoice *stripe.Invoice) error {
 	if invoice.Total != order.ExpectedAmountMinor {
 		return rejectStripeWebhook("Stripe Invoice 总额与订阅订单不匹配")
 	}
+	var invoicePayments []*stripe.InvoicePayment
+	fetchedInvoicePayments := false
+	if invoice.AmountPaid > 0 && (invoice.Payments == nil || len(invoice.Payments.Data) == 0 || invoice.Payments.HasMore) {
+		fetchedInvoicePayments = true
+		var err error
+		invoicePayments, err = fetchStripeInvoicePayments(ctx, invoice.ID)
+		if err != nil {
+			return fmt.Errorf("获取 Stripe Invoice %s 的完整付款引用失败: %w", invoice.ID, err)
+		}
+		if len(invoicePayments) == 0 {
+			return fmt.Errorf("Stripe Invoice %s 的完整付款引用暂不可用", invoice.ID)
+		}
+	} else if invoice.Payments != nil {
+		invoicePayments = invoice.Payments.Data
+	}
+	paymentSnapshots := make([]model.StripePaymentSnapshot, 0, len(invoicePayments))
+	var referencedAmountPaid int64
+	for _, invoicePayment := range invoicePayments {
+		if invoicePayment == nil || invoicePayment.Status != "paid" || invoicePayment.AmountPaid <= 0 ||
+			invoicePayment.Livemode != invoice.Livemode || !strings.EqualFold(string(invoicePayment.Currency), string(invoice.Currency)) ||
+			invoicePayment.Payment == nil {
+			continue
+		}
+		paymentIntentId := ""
+		chargeId := ""
+		if invoicePayment.Payment.PaymentIntent != nil {
+			paymentIntentId = strings.TrimSpace(invoicePayment.Payment.PaymentIntent.ID)
+		}
+		if invoicePayment.Payment.Charge != nil {
+			chargeId = strings.TrimSpace(invoicePayment.Payment.Charge.ID)
+		}
+		if paymentIntentId == "" && chargeId == "" {
+			if fetchedInvoicePayments {
+				return fmt.Errorf("Stripe Invoice %s 的付款引用暂缺少 PaymentIntent 或 Charge", invoice.ID)
+			}
+			return rejectStripeWebhook("Stripe invoice.paid 付款引用缺少 PaymentIntent 或 Charge")
+		}
+		if referencedAmountPaid > invoice.AmountPaid-invoicePayment.AmountPaid {
+			if fetchedInvoicePayments {
+				return fmt.Errorf("Stripe Invoice %s 的付款引用金额暂不一致", invoice.ID)
+			}
+			return rejectStripeWebhook("Stripe invoice.paid 付款引用金额溢出")
+		}
+		referencedAmountPaid += invoicePayment.AmountPaid
+		paymentSnapshots = append(paymentSnapshots, model.StripePaymentSnapshot{
+			PaymentIntentId: paymentIntentId,
+			ChargeId:        chargeId,
+			AmountMinor:     invoicePayment.AmountPaid,
+		})
+	}
+	if (invoice.AmountPaid > 0 && len(paymentSnapshots) == 0) || referencedAmountPaid != invoice.AmountPaid {
+		if fetchedInvoicePayments {
+			return fmt.Errorf("Stripe Invoice %s 的付款引用金额暂与账单不一致", invoice.ID)
+		}
+		return rejectStripeWebhook("Stripe invoice.paid 付款引用金额与账单不一致")
+	}
 	payload, err := common.Marshal(stripeInvoiceAuditSnapshot{
 		InvoiceId: invoice.ID, CustomerId: invoice.Customer.ID, SubscriptionId: subscriptionId,
 		ProductId: priceId, Quantity: quantity, UnitAmountMinor: unitAmountMinor,
@@ -802,6 +1036,7 @@ func processStripeInvoice(event stripe.Event, invoice *stripe.Invoice) error {
 		UnitAmountMinor: unitAmountMinor, InvoiceTotalMinor: invoice.Total, AmountPaidMinor: invoice.AmountPaid,
 		Currency: string(invoice.Currency), Livemode: invoice.Livemode,
 		PeriodStart: periodStart, PeriodEnd: periodEnd, EventCreated: event.Created, ProviderPayload: string(payload),
+		Payments: paymentSnapshots,
 	})
 }
 
@@ -828,6 +1063,7 @@ func processStripeSubscriptionLifecycle(event stripe.Event, subscription *stripe
 	if order == nil {
 		return model.ErrSubscriptionOrderNotFound
 	}
+	currentPeriodEnd := stripeSubscriptionCurrentPeriodEnd(subscription)
 	return model.UpdateStripeSubscriptionLifecycle(
 		subscription.ID,
 		subscription.Customer.ID,
@@ -835,6 +1071,9 @@ func processStripeSubscriptionLifecycle(event stripe.Event, subscription *stripe
 		subscription.Livemode,
 		event.Created,
 		event.Type == stripe.EventTypeCustomerSubscriptionDeleted,
+		subscription.CancelAtPeriodEnd,
+		subscription.CancelAt,
+		currentPeriodEnd,
 	)
 }
 

@@ -14,7 +14,7 @@ import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { defaultTopNavLinks } from '../config/top-nav.config'
+import { resolveTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
 
@@ -43,7 +43,6 @@ export interface PublicHeaderProps {
 
 export function PublicHeader(props: PublicHeaderProps) {
   const {
-    navLinks = defaultTopNavLinks,
     showLanguageSwitcher = true,
     logo: customLogo,
     siteName: customSiteName,
@@ -75,7 +74,7 @@ export function PublicHeader(props: PublicHeaderProps) {
   const user = auth.user
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
-  const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const links = resolveTopNavLinks(props.navLinks, dynamicLinks)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)

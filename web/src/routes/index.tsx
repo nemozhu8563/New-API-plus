@@ -1,14 +1,7 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
-import { resolveAppEntryRoute } from '@/lib/app-entry-route'
-import { useAuthStore } from '@/stores/auth-store'
+import { TryvaloLandingPage } from '@/features/landing/tryvalo-landing-page'
 
 export const Route = createFileRoute('/')({
-  beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-    throw redirect({
-      href: resolveAppEntryRoute(Boolean(auth.user && auth.accessToken)),
-      replace: true,
-    })
-  },
+  component: TryvaloLandingPage,
 })

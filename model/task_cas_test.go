@@ -50,6 +50,9 @@ func TestMain(m *testing.M) {
 		&Ability{},
 		&TopUp{},
 		&StripeWebhookEvent{},
+		&StripePaymentReference{},
+		&StripePaymentRecovery{},
+		&StripePaymentAdjustment{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
@@ -92,6 +95,9 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM abilities")
 		DB.Exec("DELETE FROM top_ups")
 		DB.Exec("DELETE FROM stripe_webhook_events")
+		DB.Exec("DELETE FROM stripe_payment_adjustments")
+		DB.Exec("DELETE FROM stripe_payment_references")
+		DB.Exec("DELETE FROM stripe_payment_recoveries")
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")

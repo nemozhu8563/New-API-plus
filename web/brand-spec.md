@@ -1,43 +1,38 @@
-# UI design contract
+# Tryvalo public web brand specification
 
-## Design read
+## Mode
 
-- Artifact: authenticated API gateway console and sign-in entry.
-- Audience: developers, individual API users, operators, and administrators.
-- Visual language: warm, restrained builder SaaS with an Anthropic-inspired
-  cream-and-clay palette.
-- Mode: redesign overhaul. Existing product, data, routes, permissions, and
-  accessibility contracts remain authoritative.
-- Dials: visual variance 5, motion 3, information density 7, asset dependence
-  2, brand fidelity 7.
+- Public landing page: Redesign · Preserve.
+- Wallet subscription billing: Extension.
+- Preserve existing routes, runtime configuration, accessibility behavior, dark mode, and authenticated console journeys.
 
-## Fixed system
+## Brand assets
 
-- Theme: follow the operating-system light/dark preference.
-- Palette: the existing `anthropic` preset is the sole active palette.
-- Typography: Public Sans for headings and body copy.
-- Radius: `0.75rem`.
-- Density: spacious (`lg`) while preserving data-rich layouts.
-- Navigation: floating sidebar; page-level navigation lives in the sidebar or
-  page tabs, never in the global header.
-- Motion: short state feedback only, with reduced-motion support.
+- Primary logo: runtime `logo` returned by `/api/status` and rendered through the existing `HeaderLogo` component.
+- Local fallback logo: `public/logo.png`.
+- Product imagery: none required for the v0; the API request example is the product proof surface.
+- Do not copy text, graphics, source, or identity assets from the reference site.
 
-## Assets and protected contracts
+## Visual system
 
-- The system logo and display name continue to come from `/api/status`; custom
-  deployments keep their configured identity.
-- Package metadata and runtime module paths remain unchanged unless a separate
-  migration explicitly updates their consumers.
-- Preserve authenticated routes, deep links, form behavior, API contracts,
-  analytics hooks, i18n, keyboard behavior, and real data.
+- Palette: existing semantic CSS tokens only (`background`, `foreground`, `primary`, `muted`, `accent`, `border`, and status tokens).
+- Typography: Public Sans for display and body; the existing monospace stack for API examples.
+- Spacing: 4px base with 8px primary rhythm; public content width capped at 1152px.
+- Radius: existing `rounded-xl` and `rounded-2xl` system; `rounded-3xl` only for the primary pricing callout.
+- Elevation: hairline rings and borders first; no decorative drop-shadow hierarchy.
+- Motion: existing 150–200ms interaction feedback; navigation keeps its established transition. Honor reduced motion.
 
-## Scope record
+## Design calibration
 
-- Preserve: authentication methods, configured logo/name, sidebar information
-  architecture, notifications, search, language selection, profile actions.
-- Improve: hierarchy, spacing, responsive behavior, empty/error/loading states.
-- Remove: the marketing home page, global page-navigation duplication, theme
-  configurators, and decorative card/border noise.
-- Highest-risk change: root and post-auth routing.
-- Rollback: each P0 slice remains an isolated commit on
-  `codex/ui-core-redesign`.
+- Visual variance: 5/10 — familiar developer landing structure with one asymmetric hero split.
+- Motion intensity: 3/10 — state feedback and existing header behavior only.
+- Information density: 6/10 — enough product, pricing, delivery, and legal context for developers and payment review.
+- Asset dependence: 2/10 — typography, code, and real runtime branding carry the page.
+- Brand fidelity: 9/10 for the landing page and 10/10 for wallet extensions.
+
+## Content constraints
+
+- Describe a unified AI API and public per-model usage pricing truthfully.
+- Do not invent customer logos, testimonials, uptime figures, savings claims, model availability, or fixed SaaS tiers.
+- Keep CNY top-up mechanics out of the landing-page hero; detailed purchase terms belong in the authenticated wallet and legal documents.
+- Keep `contract@tryvalo.com`, Terms of Service, and Privacy Policy reachable from public pages.

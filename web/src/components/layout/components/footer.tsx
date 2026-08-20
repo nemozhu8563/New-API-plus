@@ -21,6 +21,7 @@ interface FooterProps {
   name?: string
   columns?: FooterColumnProps[]
   copyright?: string
+  homeUrl?: '/' | '/sign-in'
   className?: string
 }
 
@@ -185,7 +186,10 @@ export function Footer(props: FooterProps) {
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
           {/* Brand column */}
           <div className='shrink-0'>
-            <Link to='/sign-in' className='group flex items-center gap-2.5'>
+            <Link
+              to={props.homeUrl ?? '/sign-in'}
+              className='group flex items-center gap-2.5'
+            >
               <img
                 src={displayLogo}
                 alt={displayName}

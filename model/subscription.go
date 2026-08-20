@@ -244,6 +244,10 @@ type SubscriptionOrder struct {
 	PlanAllowWalletOverflow bool    `json:"plan_allow_wallet_overflow"`
 	StripeStatus            string  `json:"stripe_status" gorm:"type:varchar(32);default:''"`
 	StripeStatusEventTime   int64   `json:"stripe_status_event_time" gorm:"type:bigint;default:0"`
+	StripeCancelAtPeriodEnd bool    `json:"stripe_cancel_at_period_end"`
+	StripeCancelAt          int64   `json:"stripe_cancel_at" gorm:"type:bigint;not null;default:0"`
+	StripeCancelRequestedAt int64   `json:"stripe_cancel_requested_at" gorm:"type:bigint;not null;default:0"`
+	StripeCurrentPeriodEnd  int64   `json:"stripe_current_period_end" gorm:"type:bigint;not null;default:0"`
 	Status                  string  `json:"status"`
 	CreateTime              int64   `json:"create_time"`
 	CompleteTime            int64   `json:"complete_time"`
@@ -398,7 +402,7 @@ func GetStripeSubscriptionOrderByProviderSubscriptionId(subscriptionId string) *
 	return &order
 }
 
-func UpdateStripeSubscriptionLifecycle(subscriptionId string, customerId string, stripeStatus string, livemode bool, eventCreated int64, terminal bool) error {
+func UpdateStripeSubscriptionLifecycle(subscriptionId string, customerId string, stripeStatus string, livemode bool, eventCreated int64, terminal bool, cancelAtPeriodEnd bool, cancelAt int64, currentPeriodEnd int64) error {
 	if strings.TrimSpace(subscriptionId) == "" || strings.TrimSpace(customerId) == "" || strings.TrimSpace(stripeStatus) == "" || eventCreated <= 0 {
 		return errors.New("invalid Stripe subscription lifecycle update")
 	}
@@ -424,8 +428,133 @@ func UpdateStripeSubscriptionLifecycle(subscriptionId string, customerId string,
 		}
 		order.StripeStatus = stripeStatus
 		order.StripeStatusEventTime = eventCreated
+		order.StripeCancelAtPeriodEnd = cancelAtPeriodEnd
+		order.StripeCancelAt = cancelAt
+		order.StripeCurrentPeriodEnd = currentPeriodEnd
 		return tx.Save(&order).Error
 	})
+}
+
+type StripeSubscriptionSummary struct {
+	SubscriptionId    string `json:"subscription_id"`
+	CustomerId        string `json:"customer_id"`
+	PlanId            int    `json:"plan_id"`
+	PlanTitle         string `json:"plan_title"`
+	Status            string `json:"status"`
+	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
+	CancelAt          int64  `json:"cancel_at"`
+	CurrentPeriodEnd  int64  `json:"current_period_end"`
+	Livemode          bool   `json:"livemode"`
+}
+
+type StripeInvoiceSummary struct {
+	InvoiceId       string `json:"invoice_id"`
+	SubscriptionId  string `json:"subscription_id"`
+	PlanTitle       string `json:"plan_title"`
+	AmountPaidMinor int64  `json:"amount_paid_minor"`
+	Currency        string `json:"currency"`
+	PeriodStart     int64  `json:"period_start"`
+	PeriodEnd       int64  `json:"period_end"`
+	CreatedAt       int64  `json:"created_at"`
+	Livemode        bool   `json:"livemode"`
+}
+
+func GetStripeSubscriptionOrderForUser(userId int, subscriptionId string, livemode bool) (*SubscriptionOrder, error) {
+	if userId <= 0 || strings.TrimSpace(subscriptionId) == "" {
+		return nil, errors.New("invalid Stripe subscription lookup")
+	}
+	var order SubscriptionOrder
+	if err := DB.Where(
+		"user_id = ? AND payment_provider = ? AND provider_subscription_id = ? AND provider_livemode = ?",
+		userId, PaymentProviderStripe, subscriptionId, livemode,
+	).First(&order).Error; err != nil {
+		return nil, err
+	}
+	return &order, nil
+}
+
+func MarkStripeSubscriptionCancellationRequested(userId int, subscriptionId string, customerId string, livemode bool, stripeStatus string, cancelAt int64, currentPeriodEnd int64) error {
+	if userId <= 0 || strings.TrimSpace(subscriptionId) == "" || strings.TrimSpace(customerId) == "" ||
+		strings.TrimSpace(stripeStatus) == "" || currentPeriodEnd <= 0 {
+		return errors.New("invalid Stripe cancellation response")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var order SubscriptionOrder
+		if err := lockForUpdate(tx).Where(
+			"user_id = ? AND payment_provider = ? AND provider_subscription_id = ? AND provider_livemode = ?",
+			userId, PaymentProviderStripe, subscriptionId, livemode,
+		).First(&order).Error; err != nil {
+			return err
+		}
+		if order.ProviderCustomerId != customerId {
+			return fmt.Errorf("%w: Stripe Customer mismatch", ErrStripeSubscriptionMismatch)
+		}
+		order.StripeStatus = stripeStatus
+		order.StripeCancelAtPeriodEnd = true
+		order.StripeCancelAt = cancelAt
+		order.StripeCancelRequestedAt = common.GetTimestamp()
+		order.StripeCurrentPeriodEnd = currentPeriodEnd
+		return tx.Save(&order).Error
+	})
+}
+
+func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscriptionSummary, []StripeInvoiceSummary, error) {
+	if userId <= 0 {
+		return nil, nil, errors.New("invalid userId")
+	}
+	var orders []SubscriptionOrder
+	if err := DB.Where(
+		"user_id = ? AND payment_provider = ? AND provider_subscription_id IS NOT NULL AND provider_livemode = ?",
+		userId, PaymentProviderStripe, livemode,
+	).Order("stripe_current_period_end desc, id desc").Find(&orders).Error; err != nil {
+		return nil, nil, err
+	}
+	subscriptions := make([]StripeSubscriptionSummary, 0, len(orders))
+	orderTitles := make(map[int]string, len(orders))
+	for _, order := range orders {
+		if order.ProviderSubscriptionId == nil || strings.TrimSpace(*order.ProviderSubscriptionId) == "" {
+			continue
+		}
+		orderTitles[order.Id] = order.PlanTitle
+		subscriptions = append(subscriptions, StripeSubscriptionSummary{
+			SubscriptionId:    *order.ProviderSubscriptionId,
+			CustomerId:        order.ProviderCustomerId,
+			PlanId:            order.PlanId,
+			PlanTitle:         order.PlanTitle,
+			Status:            order.StripeStatus,
+			CancelAtPeriodEnd: order.StripeCancelAtPeriodEnd,
+			CancelAt:          order.StripeCancelAt,
+			CurrentPeriodEnd:  order.StripeCurrentPeriodEnd,
+			Livemode:          order.ProviderLivemode,
+		})
+	}
+	if len(orderTitles) == 0 {
+		return subscriptions, []StripeInvoiceSummary{}, nil
+	}
+	orderIds := make([]int, 0, len(orderTitles))
+	for orderId := range orderTitles {
+		orderIds = append(orderIds, orderId)
+	}
+	var settlements []StripeSubscriptionSettlement
+	if err := DB.Where("subscription_order_id IN ? AND livemode = ?", orderIds, livemode).
+		Order("period_end desc, id desc").Limit(100).Find(&settlements).Error; err != nil {
+		return nil, nil, err
+	}
+	invoices := make([]StripeInvoiceSummary, 0, len(settlements))
+	for _, settlement := range settlements {
+		invoices = append(invoices, StripeInvoiceSummary{
+			InvoiceId:       settlement.InvoiceId,
+			SubscriptionId:  settlement.ProviderSubscriptionId,
+			PlanTitle:       orderTitles[settlement.SubscriptionOrderId],
+			AmountPaidMinor: settlement.AmountPaidMinor,
+			Currency:        settlement.Currency,
+			PeriodStart:     settlement.PeriodStart,
+			PeriodEnd:       settlement.PeriodEnd,
+			CreatedAt:       settlement.CreatedAt,
+			Livemode:        settlement.Livemode,
+		})
+	}
+	return subscriptions, invoices, nil
 }
 
 func MarkStripeSubscriptionPaymentFailed(tradeNo string, subscriptionId string, customerId string, livemode bool, eventCreated int64) error {
@@ -917,6 +1046,7 @@ type StripeInvoiceSettlementInput struct {
 	PeriodEnd         int64
 	EventCreated      int64
 	ProviderPayload   string
+	Payments          []StripePaymentSnapshot
 }
 
 func stripeInvoiceSettlementMatchesInput(existing *StripeSubscriptionSettlement, input StripeInvoiceSettlementInput) bool {
@@ -974,6 +1104,15 @@ func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error
 			if !stripeInvoiceSettlementMatchesInput(&existing, input) {
 				return ErrStripeInvoiceAlreadyBound
 			}
+			if len(input.Payments) > 0 {
+				var existingSub UserSubscription
+				if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&existingSub).Error; err != nil {
+					return err
+				}
+				if err := registerStripeSubscriptionPaymentsTx(tx, &existing, &existingSub, input.Payments); err != nil {
+					return err
+				}
+			}
 			return nil
 		}
 
@@ -1011,6 +1150,15 @@ func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error
 		if query.RowsAffected > 0 {
 			if !stripeInvoiceSettlementMatchesInput(&existing, input) {
 				return ErrStripeInvoiceAlreadyBound
+			}
+			if len(input.Payments) > 0 {
+				var existingSub UserSubscription
+				if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&existingSub).Error; err != nil {
+					return err
+				}
+				if err := registerStripeSubscriptionPaymentsTx(tx, &existing, &existingSub, input.Payments); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
@@ -1120,6 +1268,11 @@ func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error
 		}
 		if err := tx.Create(settlement).Error; err != nil {
 			return err
+		}
+		if len(input.Payments) > 0 {
+			if err := registerStripeSubscriptionPaymentsTx(tx, settlement, sub, input.Payments); err != nil {
+				return err
+			}
 		}
 		if order.Status == common.TopUpStatusPending {
 			if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {

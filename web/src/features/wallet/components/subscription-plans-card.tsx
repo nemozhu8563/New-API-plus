@@ -36,6 +36,8 @@ import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
+  StripeInvoiceSummary,
+  StripeSubscriptionSummary,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 import { formatQuota } from '@/lib/format'
@@ -43,7 +45,7 @@ import { cn } from '@/lib/utils'
 
 import { isStripeSubscriptionEnabled } from '../lib/payment'
 import type { PaymentMethod, TopupInfo } from '../types'
-import { StripeBillingPortalButton } from './stripe-billing-portal-button'
+import { StripeSubscriptionBilling } from './stripe-subscription-billing'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
@@ -91,6 +93,13 @@ export function SubscriptionPlansCard({
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
+  const [stripeSubscriptions, setStripeSubscriptions] = useState<
+    StripeSubscriptionSummary[]
+  >([])
+  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoiceSummary[]>(
+    []
+  )
+  const [billingDebt, setBillingDebt] = useState(0)
   const [billingPreference, setBillingPreference] =
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
@@ -128,6 +137,9 @@ export function SubscriptionPlansCard({
         )
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
+        setStripeSubscriptions(res.data.stripe_subscriptions || [])
+        setStripeInvoices(res.data.stripe_invoices || [])
+        setBillingDebt(Number(res.data.billing_debt || 0))
       }
     } catch {
       // ignore
@@ -173,11 +185,6 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const hasStripeSubscription = allSubscriptions.some(
-    (record) =>
-      record.subscription.provider === 'stripe' &&
-      Boolean(record.subscription.provider_subscription_id)
-  )
   const isAvailable = loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
@@ -292,7 +299,6 @@ export function SubscriptionPlansCard({
               </span>
             </div>
             <div className='flex w-full items-center gap-2 sm:w-auto'>
-              {hasStripeSubscription && <StripeBillingPortalButton />}
               <Select
                 items={[
                   {
@@ -361,9 +367,11 @@ export function SubscriptionPlansCard({
                 className='h-8 w-8'
                 onClick={handleRefresh}
                 disabled={refreshing}
+                aria-label={t('Refresh subscriptions')}
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
+                  aria-hidden='true'
                 />
               </Button>
             </div>
@@ -510,6 +518,13 @@ export function SubscriptionPlansCard({
             </p>
           )}
         </div>
+
+        <StripeSubscriptionBilling
+          subscriptions={stripeSubscriptions}
+          invoices={stripeInvoices}
+          billingDebt={billingDebt}
+          onRefresh={fetchSelfSubscription}
+        />
 
         {/* Available plans grid */}
         {plans.length > 0 ? (

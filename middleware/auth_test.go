@@ -42,6 +42,19 @@ func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	})
 }
 
+func TestAbortRelayForBillingDebtReturnsPaymentRequired(t *testing.T) {
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+
+	aborted := abortRelayForBillingDebt(c, &model.UserBase{BillingDebt: 1})
+
+	assert.True(t, aborted)
+	assert.True(t, c.IsAborted())
+	assert.Equal(t, http.StatusPaymentRequired, response.Code)
+	assert.Contains(t, response.Body.String(), "支付退款或争议欠款")
+}
+
 func issueExpiredDashboardAccessToken(t *testing.T, identity service.AuthIdentity) string {
 	t.Helper()
 	claims := jwt.MapClaims{
