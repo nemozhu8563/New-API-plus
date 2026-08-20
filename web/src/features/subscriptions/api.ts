@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import type {
   ApiResponse,
   PlanRecord,
+  PublicPlanRecord,
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
@@ -221,7 +222,9 @@ export async function getSelfSubscriptionFull(): Promise<
   return res.data
 }
 
-export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
+export async function getPublicPlans(): Promise<
+  ApiResponse<PublicPlanRecord[]>
+> {
   const res = await api.get('/api/subscription/plans')
   return res.data
 }

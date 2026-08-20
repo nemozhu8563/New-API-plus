@@ -1,12 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import {
-  ArrowRight,
-  Check,
-  Code2,
-  Gauge,
-  Layers3,
-  WalletCards,
-} from 'lucide-react'
+import { ArrowRight, Check, Code2, Gauge, Layers3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Footer } from '@/components/layout/components/footer'
@@ -19,12 +12,34 @@ import {
 } from '@/lib/app-entry-route'
 import { useAuthStore } from '@/stores/auth-store'
 
-const LANDING_NAV_LINKS: TopNavLink[] = [
-  { title: 'Pricing', href: '/pricing' },
-  { title: 'About', href: '/about' },
-  { title: 'Terms of Service', href: '/user-agreement' },
-  { title: 'Privacy Policy', href: '/privacy-policy' },
-]
+import { LandingPlansSection } from './landing-plans-section'
+
+const LANDING_NAV_LINKS: TopNavLink[] = [{ title: 'Plans', href: '#plans' }]
+
+const LANDING_FOOTER_COLUMNS = [
+  {
+    title: 'Product',
+    links: [
+      { text: 'Plans', href: '#plans' },
+      { text: 'Open dashboard', href: '/dashboard' },
+      { text: 'Create an account', href: '/sign-up' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { text: 'About', href: '/about' },
+      { text: 'Contact us', href: 'mailto:contract@tryvalo.com' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { text: 'Terms of Service', href: '/user-agreement' },
+      { text: 'Privacy Policy', href: '/privacy-policy' },
+    ],
+  },
+] as const
 
 const REQUEST_EXAMPLE = `curl "$TRYVALO_API_BASE/v1/chat/completions" \\
   -H "Authorization: Bearer $TRYVALO_API_KEY" \\
@@ -44,13 +59,13 @@ const CAPABILITIES = [
   {
     title: 'Model choice',
     description:
-      'Choose from available models based on quality, speed, and cost.',
+      'Choose from available models while keeping one consistent integration.',
     icon: Layers3,
   },
   {
-    title: 'Transparent usage',
+    title: 'Clear usage controls',
     description:
-      'Review public model prices before signing up and track usage after login.',
+      'Track your remaining credits and next weekly refresh from the dashboard.',
     icon: Gauge,
   },
 ] as const
@@ -90,32 +105,32 @@ export function TryvaloLandingPage() {
               </h1>
               <p className='text-muted-foreground mt-6 max-w-2xl text-base leading-7 text-pretty sm:text-lg'>
                 {t(
-                  'Build against an OpenAI-compatible endpoint, choose the model per request, and pay only for actual API usage.'
+                  'Build against an OpenAI-compatible endpoint with broad model access and predictable four-week plans.'
                 )}
               </p>
               <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
                 <Button
                   size='lg'
                   className='h-11 rounded-xl px-5'
-                  render={<Link to={primaryRoute} />}
+                  render={<a href='#plans' />}
                 >
-                  {isAuthenticated ? t('Open dashboard') : t('Start building')}
+                  {t('View plans')}
                   <ArrowRight data-icon='inline-end' />
                 </Button>
                 <Button
                   variant='outline'
                   size='lg'
                   className='h-11 rounded-xl px-5'
-                  render={<Link to='/pricing' />}
+                  render={<Link to={primaryRoute} />}
                 >
-                  {t('View live pricing')}
+                  {isAuthenticated ? t('Open dashboard') : t('Start building')}
                 </Button>
               </div>
               <div className='text-muted-foreground mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs'>
                 {[
                   'OpenAI-compatible',
-                  'Prepaid usage credits',
-                  'Usage-based pricing',
+                  'Weekly refreshed credits',
+                  'Four-week subscriptions',
                 ].map((item) => (
                   <span key={item} className='inline-flex items-center gap-1.5'>
                     <Check className='text-success size-3.5' />
@@ -194,34 +209,7 @@ export function TryvaloLandingPage() {
           </div>
         </section>
 
-        <section className='mx-auto max-w-6xl px-6 py-16 sm:py-24'>
-          <div className='ring-foreground/10 bg-card grid overflow-hidden rounded-3xl ring-1 lg:grid-cols-[1fr_auto]'>
-            <div className='p-6 sm:p-10'>
-              <div className='bg-accent text-accent-foreground flex size-10 items-center justify-center rounded-xl'>
-                <WalletCards className='size-5' />
-              </div>
-              <h2 className='mt-6 text-2xl font-semibold tracking-[-0.025em]'>
-                {t('Pricing that follows usage')}
-              </h2>
-              <p className='text-muted-foreground mt-3 max-w-2xl text-sm leading-6 text-pretty'>
-                {t(
-                  'No invented SaaS tiers. Review the current per-model rates and fund your account when needed.'
-                )}
-              </p>
-            </div>
-            <div className='bg-muted/35 border-t p-6 lg:flex lg:min-w-72 lg:items-center lg:border-t-0 lg:border-l lg:p-10'>
-              <Button
-                variant='outline'
-                size='lg'
-                className='h-11 w-full rounded-xl px-5'
-                render={<Link to='/pricing' />}
-              >
-                {t('Review model pricing')}
-                <ArrowRight data-icon='inline-end' />
-              </Button>
-            </div>
-          </div>
-        </section>
+        <LandingPlansSection isAuthenticated={isAuthenticated} />
 
         <section className='border-t'>
           <div className='mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-16 sm:flex-row sm:items-center sm:py-20'>
@@ -231,23 +219,30 @@ export function TryvaloLandingPage() {
               </h2>
               <p className='text-muted-foreground mt-2 max-w-2xl text-sm leading-6'>
                 {t(
-                  'Create an account, add credit, and use the same API format across supported models.'
+                  'Choose a plan, create an API key, and use the same API format across supported models.'
                 )}
               </p>
             </div>
             <Button
               size='lg'
               className='h-11 rounded-xl px-5'
-              render={<Link to={primaryRoute} />}
+              render={<a href='#plans' />}
             >
-              {isAuthenticated ? t('Open dashboard') : t('Start building')}
+              {t('Choose a plan')}
               <ArrowRight data-icon='inline-end' />
             </Button>
           </div>
         </section>
       </main>
 
-      <Footer homeUrl={PUBLIC_HOME_ROUTE} />
+      <Footer
+        homeUrl={PUBLIC_HOME_ROUTE}
+        columns={LANDING_FOOTER_COLUMNS.map((column) => ({
+          ...column,
+          links: column.links.map((link) => ({ ...link })),
+        }))}
+        variant='warm'
+      />
     </PublicLayout>
   )
 }

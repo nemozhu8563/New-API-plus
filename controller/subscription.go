@@ -20,6 +20,55 @@ type SubscriptionPlanDTO struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+type PublicSubscriptionPlan struct {
+	Id                      int     `json:"id"`
+	Title                   string  `json:"title"`
+	Subtitle                string  `json:"subtitle"`
+	PriceAmount             float64 `json:"price_amount"`
+	Currency                string  `json:"currency"`
+	DurationUnit            string  `json:"duration_unit"`
+	DurationValue           int     `json:"duration_value"`
+	CustomSeconds           int64   `json:"custom_seconds"`
+	AllowBalancePay         bool    `json:"allow_balance_pay"`
+	MaxPurchasePerUser      int     `json:"max_purchase_per_user"`
+	UpgradeGroup            string  `json:"upgrade_group"`
+	TotalAmount             int64   `json:"total_amount"`
+	QuotaResetPeriod        string  `json:"quota_reset_period"`
+	QuotaResetCustomSeconds int64   `json:"quota_reset_custom_seconds"`
+	StripeCheckoutAvailable bool    `json:"stripe_checkout_available"`
+	CreemCheckoutAvailable  bool    `json:"creem_checkout_available"`
+	WaffoCheckoutAvailable  bool    `json:"waffo_checkout_available"`
+}
+
+type PublicSubscriptionPlanDTO struct {
+	Plan PublicSubscriptionPlan `json:"plan"`
+}
+
+func newPublicSubscriptionPlanDTO(plan model.SubscriptionPlan) PublicSubscriptionPlanDTO {
+	plan.NormalizeDefaults()
+	return PublicSubscriptionPlanDTO{
+		Plan: PublicSubscriptionPlan{
+			Id:                      plan.Id,
+			Title:                   plan.Title,
+			Subtitle:                plan.Subtitle,
+			PriceAmount:             plan.PriceAmount,
+			Currency:                plan.Currency,
+			DurationUnit:            plan.DurationUnit,
+			DurationValue:           plan.DurationValue,
+			CustomSeconds:           plan.CustomSeconds,
+			AllowBalancePay:         false,
+			MaxPurchasePerUser:      plan.MaxPurchasePerUser,
+			UpgradeGroup:            plan.UpgradeGroup,
+			TotalAmount:             plan.TotalAmount,
+			QuotaResetPeriod:        plan.QuotaResetPeriod,
+			QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
+			StripeCheckoutAvailable: isTryvaloStripeSubscriptionPlan(&plan),
+			CreemCheckoutAvailable:  false,
+			WaffoCheckoutAvailable:  false,
+		},
+	}
+}
+
 type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
@@ -28,25 +77,54 @@ type SubscriptionBalancePayRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
+func normalizeSubscriptionPlanCurrency(currency string) (string, bool) {
+	normalized := strings.ToUpper(strings.TrimSpace(currency))
+	if normalized == "" {
+		normalized = model.SubscriptionCurrencyCNY
+	}
+	return normalized, normalized == model.SubscriptionCurrencyCNY
+}
+
+func isTryvaloStripeSubscriptionPlan(plan *model.SubscriptionPlan) bool {
+	if plan == nil || !plan.Enabled || strings.TrimSpace(plan.StripePriceId) == "" {
+		return false
+	}
+	currency, isCNY := normalizeSubscriptionPlanCurrency(plan.Currency)
+	return isCNY &&
+		currency == model.SubscriptionCurrencyCNY &&
+		plan.DurationUnit == model.SubscriptionDurationDay &&
+		plan.DurationValue == 28 &&
+		model.NormalizeResetPeriod(plan.QuotaResetPeriod) == model.SubscriptionResetCustom &&
+		plan.QuotaResetCustomSeconds == 604800
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiSuccess(c, []SubscriptionPlanDTO{})
+		common.ApiSuccess(c, []PublicSubscriptionPlanDTO{})
 		return
 	}
 
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := model.DB.Where(
+		"enabled = ? AND currency = ? AND duration_unit = ? AND duration_value = ? AND quota_reset_period = ? AND quota_reset_custom_seconds = ?",
+		true,
+		model.SubscriptionCurrencyCNY,
+		model.SubscriptionDurationDay,
+		28,
+		model.SubscriptionResetCustom,
+		int64(604800),
+	).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	result := make([]SubscriptionPlanDTO, 0, len(plans))
+	result := make([]PublicSubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		p.NormalizeDefaults()
-		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
-		})
+		if !isTryvaloStripeSubscriptionPlan(&p) {
+			continue
+		}
+		result = append(result, newPublicSubscriptionPlanDTO(p))
 	}
 	common.ApiSuccess(c, result)
 }
@@ -148,7 +226,25 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 }
 
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan             model.SubscriptionPlan `json:"plan"`
+	currencyProvided bool
+}
+
+func (r *AdminUpsertSubscriptionPlanRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias AdminUpsertSubscriptionPlanRequest
+	var decoded requestAlias
+	if err := common.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields struct {
+		Plan map[string]any `json:"plan"`
+	}
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*r = AdminUpsertSubscriptionPlanRequest(decoded)
+	_, r.currencyProvided = fields.Plan["currency"]
+	return nil
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -174,10 +270,12 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "价格不能超过9999")
 		return
 	}
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
+	currency, validCurrency := normalizeSubscriptionPlanCurrency(req.Plan.Currency)
+	if !validCurrency {
+		common.ApiErrorMsg(c, "套餐币种仅支持 CNY")
+		return
 	}
-	req.Plan.Currency = "USD"
+	req.Plan.Currency = currency
 	if req.Plan.AllowBalancePay == nil {
 		req.Plan.AllowBalancePay = common.GetPointer(true)
 	}
@@ -254,10 +352,14 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = id
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
+	if req.currencyProvided {
+		currency, validCurrency := normalizeSubscriptionPlanCurrency(req.Plan.Currency)
+		if !validCurrency {
+			common.ApiErrorMsg(c, "套餐币种仅支持 CNY")
+			return
+		}
+		req.Plan.Currency = currency
 	}
-	req.Plan.Currency = "USD"
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -298,7 +400,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
-			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,
 			"custom_seconds":             req.Plan.CustomSeconds,
@@ -314,6 +415,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),
+		}
+		if req.currencyProvided {
+			updateMap["currency"] = req.Plan.Currency
 		}
 		if req.Plan.AllowBalancePay != nil {
 			updateMap["allow_balance_pay"] = *req.Plan.AllowBalancePay

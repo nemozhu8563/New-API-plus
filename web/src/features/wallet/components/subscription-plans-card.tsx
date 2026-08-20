@@ -33,9 +33,13 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatSubscriptionPrice,
+} from '@/features/subscriptions/lib'
 import type {
-  PlanRecord,
+  PublicPlanRecord,
   StripeInvoiceSummary,
   StripeSubscriptionSummary,
   UserSubscriptionRecord,
@@ -86,7 +90,7 @@ export function SubscriptionPlansCard({
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
-  const [plans, setPlans] = useState<PlanRecord[]>([])
+  const [plans, setPlans] = useState<PublicPlanRecord[]>([])
   const [activeSubscriptions, setActiveSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
@@ -106,7 +110,9 @@ export function SubscriptionPlansCard({
   const [refreshing, setRefreshing] = useState(false)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<PublicPlanRecord | null>(
+    null
+  )
 
   const enableStripe = isStripeSubscriptionEnabled(topupInfo)
   const enableCreem = !!topupInfo?.enable_creem_topup
@@ -533,8 +539,11 @@ export function SubscriptionPlansCard({
               const plan = p?.plan
               if (!plan) return null
               const totalAmount = Number(plan.total_amount || 0)
-              const price = Number(plan.price_amount || 0).toFixed(2)
-              const isPopular = index === 0 && plans.length > 1
+              const price = formatSubscriptionPrice(
+                Number(plan.price_amount || 0),
+                plan.currency
+              )
+              const isPopular = index === 1
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
@@ -585,7 +594,7 @@ export function SubscriptionPlansCard({
 
                     <div className='py-2'>
                       <span className='text-primary text-2xl font-bold'>
-                        ${price}
+                        {price}
                       </span>
                     </div>
 

@@ -4,6 +4,20 @@ import dayjs from '@/lib/dayjs'
 
 import type { SubscriptionPlan } from '../types'
 
+export function formatSubscriptionPrice(
+  amount: number,
+  currency = 'CNY'
+): string {
+  const normalizedAmount = Number.isFinite(amount) ? amount : 0
+  return Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: currency.trim().toUpperCase() || 'CNY',
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: Number.isInteger(normalizedAmount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(normalizedAmount)
+}
+
 export function formatDuration(
   plan: Partial<SubscriptionPlan>,
   t: TFunction

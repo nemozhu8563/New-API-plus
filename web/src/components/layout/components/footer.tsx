@@ -23,21 +23,28 @@ interface FooterProps {
   copyright?: string
   homeUrl?: '/' | '/sign-in'
   className?: string
+  variant?: 'default' | 'warm'
 }
 
-function FooterLinkItem(props: { link: FooterLink }) {
+function FooterLinkItem(props: { link: FooterLink; warm?: boolean }) {
   const { t } = useTranslation()
   const isExternal = props.link.href.startsWith('http')
   const isEmail = props.link.href.startsWith('mailto:')
+  const isPageAnchor = props.link.href.startsWith('#')
   const label = t(props.link.text)
 
-  if (isExternal || isEmail) {
+  if (isExternal || isEmail || isPageAnchor) {
     return (
       <a
         href={props.link.href}
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
-        className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
+        className={cn(
+          'text-sm transition-colors duration-200',
+          props.warm
+            ? 'text-[#21160f]/70 hover:text-[#21160f]'
+            : 'text-muted-foreground hover:text-foreground'
+        )}
       >
         {label}
       </a>
@@ -47,7 +54,12 @@ function FooterLinkItem(props: { link: FooterLink }) {
   return (
     <Link
       to={props.link.href}
-      className='text-muted-foreground hover:text-foreground text-sm transition-colors duration-200'
+      className={cn(
+        'text-sm transition-colors duration-200',
+        props.warm
+          ? 'text-[#21160f]/70 hover:text-[#21160f]'
+          : 'text-muted-foreground hover:text-foreground'
+      )}
     >
       {label}
     </Link>
@@ -154,8 +166,10 @@ export function Footer(props: FooterProps) {
   )
 
   const displayColumns = props.columns ?? fallbackColumns
+  const showColumns = Boolean(props.columns?.length) || isDemoSiteMode
+  const isWarm = props.variant === 'warm'
 
-  if (footerHtml) {
+  if (footerHtml && !isWarm) {
     return (
       <footer
         className={cn(
@@ -180,7 +194,13 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/40 relative z-10 border-t', props.className)}
+      className={cn(
+        'relative z-10 border-t',
+        isWarm
+          ? 'border-[#7d472c]/20 bg-[#ef884c] text-[#21160f]'
+          : 'border-border/40',
+        props.className
+      )}
     >
       <div className='mx-auto max-w-6xl px-6 py-12 md:py-16'>
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
@@ -199,23 +219,41 @@ export function Footer(props: FooterProps) {
                 {displayName}
               </span>
             </Link>
-            <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
+            <p
+              className={cn(
+                'mt-3 max-w-[200px] text-xs leading-relaxed',
+                isWarm ? 'text-[#21160f]/65' : 'text-muted-foreground/60'
+              )}
+            >
               {t('Powerful API Management Platform')}
             </p>
+            {isWarm && (
+              <a
+                href='mailto:contract@tryvalo.com'
+                className='mt-4 block text-sm text-[#21160f]/75 transition-colors hover:text-[#21160f]'
+              >
+                contract@tryvalo.com
+              </a>
+            )}
           </div>
 
           {/* Links columns */}
-          {isDemoSiteMode && (
-            <div className='grid grid-cols-3 gap-8 md:gap-16'>
+          {showColumns && (
+            <div className='grid grid-cols-2 gap-8 sm:grid-cols-3 md:gap-16'>
               {displayColumns.map((column) => (
                 <div key={column.title}>
-                  <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
+                  <p
+                    className={cn(
+                      'mb-3 text-xs font-medium tracking-wider uppercase',
+                      isWarm ? 'text-[#21160f]/85' : 'text-muted-foreground/50'
+                    )}
+                  >
                     {t(column.title)}
                   </p>
                   <ul className='space-y-2.5'>
                     {column.links.map((link) => (
                       <li key={`${link.text}-${link.href}`}>
-                        <FooterLinkItem link={link} />
+                        <FooterLinkItem link={link} warm={isWarm} />
                       </li>
                     ))}
                   </ul>
@@ -225,13 +263,23 @@ export function Footer(props: FooterProps) {
           )}
         </div>
 
-        <div className='border-border/30 mt-12 flex flex-col items-center gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
-          <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
+        <div
+          className={cn(
+            'mt-12 flex flex-col items-center gap-x-3 gap-y-2 border-t pt-6 sm:flex-row',
+            isWarm ? 'border-[#7d472c]/20' : 'border-border/30'
+          )}
+        >
+          <div
+            className={cn(
+              'flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start',
+              isWarm ? 'text-[#21160f]/60' : 'text-muted-foreground/40'
+            )}
+          >
             <span>
               &copy; {currentYear} {displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}
             </span>
-            <LegalLinks leadingSeparator />
+            {!isWarm && <LegalLinks leadingSeparator />}
           </div>
         </div>
       </div>

@@ -47,8 +47,8 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if plan.StripePriceId == "" {
-		common.ApiErrorMsg(c, "该套餐未配置 StripePriceId")
+	if !isTryvaloStripeSubscriptionPlan(plan) {
+		common.ApiErrorMsg(c, "该套餐当前不可通过 Stripe 购买")
 		return
 	}
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {

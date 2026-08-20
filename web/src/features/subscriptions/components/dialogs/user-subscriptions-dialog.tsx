@@ -47,7 +47,7 @@ import {
   deleteUserSubscription,
   resetUserSubscriptionsByPlan,
 } from '../../api'
-import { formatTimestamp } from '../../lib'
+import { formatSubscriptionPrice, formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 
 interface Props {
@@ -233,8 +233,12 @@ export function UserSubscriptionsDialog(props: Props) {
                   value: String(p.plan.id),
                   label: (
                     <>
-                      {p.plan.title}($
-                      {Number(p.plan.price_amount || 0).toFixed(2)})
+                      {p.plan.title} (
+                      {formatSubscriptionPrice(
+                        Number(p.plan.price_amount || 0),
+                        p.plan.currency
+                      )}
+                      )
                     </>
                   ),
                 }))}
@@ -248,8 +252,12 @@ export function UserSubscriptionsDialog(props: Props) {
                   <SelectGroup>
                     {plans.map((p) => (
                       <SelectItem key={p.plan.id} value={String(p.plan.id)}>
-                        {p.plan.title} ($
-                        {Number(p.plan.price_amount || 0).toFixed(2)})
+                        {p.plan.title} (
+                        {formatSubscriptionPrice(
+                          Number(p.plan.price_amount || 0),
+                          p.plan.currency
+                        )}
+                        )
                       </SelectItem>
                     ))}
                   </SelectGroup>

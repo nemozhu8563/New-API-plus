@@ -9,7 +9,7 @@ export const subscriptionPlanSchema = z.object({
   title: z.string(),
   subtitle: z.string().optional(),
   price_amount: z.number(),
-  currency: z.string().default('USD'),
+  currency: z.string().default('CNY'),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
   duration_value: z.number(),
   custom_seconds: z.number().optional(),
@@ -32,6 +32,37 @@ export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
   plan: SubscriptionPlan
+}
+
+export const publicSubscriptionPlanSchema = subscriptionPlanSchema
+  .pick({
+    id: true,
+    title: true,
+    subtitle: true,
+    price_amount: true,
+    currency: true,
+    duration_unit: true,
+    duration_value: true,
+    custom_seconds: true,
+    quota_reset_period: true,
+    quota_reset_custom_seconds: true,
+    allow_balance_pay: true,
+    max_purchase_per_user: true,
+    total_amount: true,
+    upgrade_group: true,
+  })
+  .extend({
+    stripe_checkout_available: z.boolean(),
+    creem_checkout_available: z.boolean(),
+    waffo_checkout_available: z.boolean(),
+  })
+
+export type PublicSubscriptionPlan = z.infer<
+  typeof publicSubscriptionPlanSchema
+>
+
+export interface PublicPlanRecord {
+  plan: PublicSubscriptionPlan
 }
 
 // ============================================================================

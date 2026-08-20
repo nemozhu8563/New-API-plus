@@ -28,8 +28,12 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
-import { formatDuration, formatResetPeriod } from '../../lib'
-import type { PlanRecord } from '../../types'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatSubscriptionPrice,
+} from '../../lib'
+import type { PublicPlanRecord } from '../../types'
 
 interface PaymentMethod {
   type: string
@@ -39,7 +43,7 @@ interface PaymentMethod {
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  plan: PlanRecord | null
+  plan: PublicPlanRecord | null
   enableStripe?: boolean
   enableCreem?: boolean
   enableWaffoPancake?: boolean
@@ -68,10 +72,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const plan = props.plan?.plan
   if (!plan) return null
 
-  const hasStripe = props.enableStripe && !!plan.stripe_price_id
-  const hasCreem = props.enableCreem && !!plan.creem_product_id
+  const hasStripe = props.enableStripe && plan.stripe_checkout_available
+  const hasCreem = props.enableCreem && plan.creem_checkout_available
   const hasWaffoPancake =
-    props.enableWaffoPancake && !!plan.waffo_pancake_product_id
+    props.enableWaffoPancake && plan.waffo_checkout_available
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
   const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
@@ -81,7 +85,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
     selectedEpayMethod ||
     t('Select payment method')
   const totalAmount = Number(plan.total_amount || 0)
-  const price = Number(plan.price_amount || 0).toFixed(2)
+  const price = formatSubscriptionPrice(
+    Number(plan.price_amount || 0),
+    plan.currency
+  )
   const quotaPerUnit =
     currency?.quotaPerUnit && currency.quotaPerUnit > 0
       ? currency.quotaPerUnit
@@ -299,7 +306,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <Separator />
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
-            <span className='text-primary text-lg font-bold'>${price}</span>
+            <span className='text-primary text-lg font-bold'>{price}</span>
           </div>
         </div>
 

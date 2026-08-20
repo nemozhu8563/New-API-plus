@@ -17,7 +17,7 @@ export type HeaderNavModules = {
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   home: true,
   console: true,
-  pricing: { enabled: true, requireAuth: false },
+  pricing: { enabled: true, requireAuth: true },
   rankings: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
