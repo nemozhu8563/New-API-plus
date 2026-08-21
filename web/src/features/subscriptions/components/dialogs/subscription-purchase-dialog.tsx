@@ -290,7 +290,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     onClick={handlePayStripe}
                     disabled={paying || limitReached}
                   >
-                    Stripe
+                    {t('Pay')}
                   </Button>
                 )}
                 {hasCreem && (
