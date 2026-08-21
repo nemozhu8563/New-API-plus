@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 
 import { Footer } from '@/components/layout/components/footer'
 import { PublicLayout } from '@/components/layout/components/public-layout'
-import type { TopNavLink } from '@/components/layout/types'
 import { Button } from '@/components/ui/button'
 import {
   PUBLIC_HOME_ROUTE,
@@ -12,9 +11,8 @@ import {
 } from '@/lib/app-entry-route'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { LANDING_NAV_LINKS } from './landing-nav-links'
 import { LandingPlansSection } from './landing-plans-section'
-
-const LANDING_NAV_LINKS: TopNavLink[] = [{ title: 'Plans', href: '#plans' }]
 
 const LANDING_FOOTER_COLUMNS = [
   {
