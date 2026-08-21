@@ -17,16 +17,13 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
-import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatQuota } from '@/lib/format'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 
 import {
   paySubscriptionStripe,
   paySubscriptionCreem,
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
-  paySubscriptionBalance,
 } from '../../api'
 import {
   formatDuration,
@@ -51,13 +48,10 @@ interface Props {
   epayMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
-  userQuota?: number
-  onPurchaseSuccess?: () => void | Promise<void>
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
   const { t } = useTranslation()
-  const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
 
@@ -89,17 +83,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
     Number(plan.price_amount || 0),
     plan.currency
   )
-  const quotaPerUnit =
-    currency?.quotaPerUnit && currency.quotaPerUnit > 0
-      ? currency.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-  const balanceCost = Math.max(
-    0,
-    Math.ceil(Number(plan.price_amount || 0) * quotaPerUnit)
-  )
-  const userQuota = Math.max(0, Number(props.userQuota || 0))
-  const allowBalancePay = plan.allow_balance_pay !== false
-  const insufficientBalance = userQuota < balanceCost
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
@@ -218,32 +201,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  const handlePayBalance = async () => {
-    if (!allowBalancePay) {
-      toast.error(t('This plan does not allow balance redemption'))
-      return
-    }
-    setPaying(true)
-    try {
-      const res = await paySubscriptionBalance({ plan_id: plan.id })
-      if (res.success) {
-        toast.success(t('Subscription purchased successfully'))
-        void props.onPurchaseSuccess?.()
-        props.onOpenChange(false)
-      } else {
-        toast.error(
-          res.message && res.message !== 'success'
-            ? res.message
-            : t('Payment request failed')
-        )
-      }
-    } catch {
-      toast.error(t('Payment request failed'))
-    } finally {
-      setPaying(false)
-    }
-  }
-
   return (
     <Dialog
       open={props.open}
@@ -318,39 +275,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </AlertDescription>
           </Alert>
         )}
-
-        <div className='flex flex-col gap-2 rounded-md border p-3'>
-          <div className='flex items-center justify-between gap-2 text-xs'>
-            <span className='text-muted-foreground'>{t('Required')}</span>
-            <span>{formatQuota(balanceCost)}</span>
-          </div>
-          <div className='flex items-center justify-between gap-2 text-xs'>
-            <span className='text-muted-foreground'>{t('Available')}</span>
-            <span>{formatQuota(userQuota)}</span>
-          </div>
-          {!allowBalancePay ? (
-            <Alert variant='destructive'>
-              <AlertDescription>
-                {t('This plan does not allow balance redemption')}
-              </AlertDescription>
-            </Alert>
-          ) : (
-            insufficientBalance && (
-              <Alert variant='destructive'>
-                <AlertDescription>{t('Insufficient balance')}</AlertDescription>
-              </Alert>
-            )
-          )}
-          <Button
-            variant='outline'
-            onClick={handlePayBalance}
-            disabled={
-              paying || limitReached || !allowBalancePay || insufficientBalance
-            }
-          >
-            {t('Pay with Balance')}
-          </Button>
-        </div>
 
         {hasAnyPayment && (
           <div className='space-y-3'>

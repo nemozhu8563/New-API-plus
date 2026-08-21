@@ -66,7 +66,6 @@ function createPlan(
       duration_value: 28,
       quota_reset_period: 'custom',
       quota_reset_custom_seconds: 604800,
-      allow_balance_pay: false,
       max_purchase_per_user: 0,
       total_amount: weeklyQuota * 500000,
       stripe_checkout_available: true,

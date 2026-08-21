@@ -53,9 +53,6 @@ import { StripeSubscriptionBilling } from './stripe-subscription-billing'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
-  onAvailabilityChange?: (available: boolean) => void
-  userQuota?: number
-  onPurchaseSuccess?: () => void | Promise<void>
 }
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
@@ -72,7 +69,7 @@ function getBillingPreferenceLabel(
     case 'subscription_first':
       return t('Subscription First')
     case 'wallet_first':
-      return t('Wallet First')
+      return t('Wallet First (API calls)')
     case 'subscription_only':
       return t('Subscription Only')
     case 'wallet_only':
@@ -84,9 +81,6 @@ function getBillingPreferenceLabel(
 
 export function SubscriptionPlansCard({
   topupInfo,
-  onAvailabilityChange,
-  userQuota,
-  onPurchaseSuccess,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
 
@@ -191,7 +185,6 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -208,10 +201,6 @@ export function SubscriptionPlansCard({
     }
     return map
   }, [allSubscriptions])
-
-  useEffect(() => {
-    onAvailabilityChange?.(isAvailable)
-  }, [isAvailable, onAvailabilityChange])
 
   const planTitleMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -382,6 +371,12 @@ export function SubscriptionPlansCard({
               </Button>
             </div>
           </div>
+
+          <p className='text-muted-foreground mt-2 text-xs'>
+            {t(
+              'This setting only changes the charge order for API calls. Wallet balance cannot be used to purchase subscriptions.'
+            )}
+          </p>
 
           {disablePref && isSubPref && (
             <p className='text-muted-foreground mt-2 text-xs'>
@@ -661,8 +656,6 @@ export function SubscriptionPlansCard({
         enableWaffoPancake={enableWaffoPancake}
         enableOnlineTopUp={enableOnlineTopUp}
         epayMethods={epayMethods}
-        userQuota={userQuota}
-        onPurchaseSuccess={onPurchaseSuccess}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user
             ? Number(selectedPlan.plan.max_purchase_per_user)

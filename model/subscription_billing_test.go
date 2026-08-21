@@ -3,7 +3,6 @@ package model
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -15,32 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
-
-func TestCalcSubscriptionBalanceQuotaCeilsFractionalQuota(t *testing.T) {
-	originalQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = 10
-	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
-
-	quota, err := calcSubscriptionBalanceQuota(1.01)
-
-	require.NoError(t, err)
-	assert.Equal(t, 11, quota)
-}
-
-func TestCalcSubscriptionBalanceQuotaRejectsOverflow(t *testing.T) {
-	originalQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = 10
-	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
-
-	quota, err := calcSubscriptionBalanceQuota(math.MaxFloat64)
-
-	assert.Zero(t, quota)
-	var clamp *common.QuotaClamp
-	require.ErrorAs(t, err, &clamp)
-	assert.Equal(t, common.QuotaClampOverflow, clamp.Kind)
-	assert.Equal(t, "QuotaFromDecimal", clamp.Op)
-	assert.Equal(t, common.MaxQuota, clamp.Clamped)
-}
 
 func TestCompleteStripeSubscriptionInvoiceConcurrentOverlappingPeriodsSettlesOnce(t *testing.T) {
 	previousDB, previousLogDB := DB, LOG_DB

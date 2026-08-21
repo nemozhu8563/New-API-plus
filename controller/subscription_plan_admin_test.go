@@ -162,7 +162,6 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 		DurationValue:           28,
 		Enabled:                 true,
 		SortOrder:               300,
-		AllowBalancePay:         common.GetPointer(true),
 		AllowWalletOverflow:     common.GetPointer(false),
 		StripePriceId:           "price_internal",
 		CreemProductId:          "creem_internal",
@@ -196,8 +195,8 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 	assert.Equal(t, true, publicPlan["stripe_checkout_available"])
 	assert.Equal(t, false, publicPlan["creem_checkout_available"])
 	assert.Equal(t, false, publicPlan["waffo_checkout_available"])
-	assert.Equal(t, false, publicPlan["allow_balance_pay"])
 	for _, internalField := range []string{
+		"allow_balance_pay",
 		"stripe_price_id",
 		"creem_product_id",
 		"waffo_pancake_product_id",

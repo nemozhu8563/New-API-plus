@@ -29,7 +29,6 @@ type PublicSubscriptionPlan struct {
 	DurationUnit            string  `json:"duration_unit"`
 	DurationValue           int     `json:"duration_value"`
 	CustomSeconds           int64   `json:"custom_seconds"`
-	AllowBalancePay         bool    `json:"allow_balance_pay"`
 	MaxPurchasePerUser      int     `json:"max_purchase_per_user"`
 	UpgradeGroup            string  `json:"upgrade_group"`
 	TotalAmount             int64   `json:"total_amount"`
@@ -56,7 +55,6 @@ func newPublicSubscriptionPlanDTO(plan model.SubscriptionPlan) PublicSubscriptio
 			DurationUnit:            plan.DurationUnit,
 			DurationValue:           plan.DurationValue,
 			CustomSeconds:           plan.CustomSeconds,
-			AllowBalancePay:         false,
 			MaxPurchasePerUser:      plan.MaxPurchasePerUser,
 			UpgradeGroup:            plan.UpgradeGroup,
 			TotalAmount:             plan.TotalAmount,
@@ -71,10 +69,6 @@ func newPublicSubscriptionPlanDTO(plan model.SubscriptionPlan) PublicSubscriptio
 
 type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
-}
-
-type SubscriptionBalancePayRequest struct {
-	PlanId int `json:"plan_id"`
 }
 
 func normalizeSubscriptionPlanCurrency(currency string) (string, bool) {
@@ -188,25 +182,6 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"billing_preference": pref})
 }
 
-func SubscriptionRequestBalancePay(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
-		return
-	}
-
-	userId := c.GetInt("id")
-	var req SubscriptionBalancePayRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		common.ApiErrorMsg(c, "参数错误")
-		return
-	}
-
-	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, nil)
-}
-
 // ---- Admin APIs ----
 
 func AdminListSubscriptionPlans(c *gin.Context) {
@@ -276,9 +251,6 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Currency = currency
-	if req.Plan.AllowBalancePay == nil {
-		req.Plan.AllowBalancePay = common.GetPointer(true)
-	}
 	if req.Plan.AllowWalletOverflow == nil {
 		req.Plan.AllowWalletOverflow = common.GetPointer(true)
 	}
@@ -418,9 +390,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		}
 		if req.currencyProvided {
 			updateMap["currency"] = req.Plan.Currency
-		}
-		if req.Plan.AllowBalancePay != nil {
-			updateMap["allow_balance_pay"] = *req.Plan.AllowBalancePay
 		}
 		if req.Plan.AllowWalletOverflow != nil {
 			updateMap["allow_wallet_overflow"] = *req.Plan.AllowWalletOverflow
