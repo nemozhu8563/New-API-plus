@@ -76,6 +76,11 @@ await i18n.use(initReactI18next).init({
         'Unable to open billing portal': 'Unable to open billing portal',
       },
     },
+    zhCN: {
+      translation: {
+        active: '活跃',
+      },
+    },
   },
 })
 
@@ -204,6 +209,35 @@ describe('Stripe subscription billing', () => {
   test('formats Stripe minor-unit invoice amounts using the invoice currency', () => {
     assert.equal(formatStripeInvoiceAmount(2_000, 'cny', 'en-US'), '¥20.00')
     assert.equal(formatStripeInvoiceAmount(2_000, 'jpy', 'ja-JP'), '￥2,000')
+  })
+
+  test('renders a fulfilled invoice with the zhCN interface locale', async () => {
+    await i18n.changeLanguage('zhCN')
+    const invoice: StripeInvoiceSummary = {
+      invoice_id: 'in_test_fulfilled',
+      subscription_id: activeSubscription.subscription_id,
+      plan_title: 'Premium',
+      amount_paid_minor: 89_900,
+      currency: 'CNY',
+      period_start: 1_787_303_037,
+      period_end: 1_789_722_237,
+      created_at: 1_787_536_589,
+      livemode: false,
+    }
+
+    try {
+      const { container, root } = await renderBilling(
+        { ...activeSubscription, current_period_end: 0 },
+        async () => {},
+        [invoice]
+      )
+
+      assert.equal(container.textContent?.includes('Premium'), true)
+      await act(async () => root.unmount())
+      container.remove()
+    } finally {
+      await i18n.changeLanguage('en')
+    }
   })
 
   test('labels billing history as the eight most recent invoices', async () => {

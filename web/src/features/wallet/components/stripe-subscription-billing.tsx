@@ -12,6 +12,7 @@ import type {
   StripeInvoiceSummary,
   StripeSubscriptionSummary,
 } from '@/features/subscriptions/types'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatQuota } from '@/lib/format'
 
 import { StripeBillingPortalButton } from './stripe-billing-portal-button'
@@ -34,6 +35,7 @@ export function StripeSubscriptionBilling(
   props: StripeSubscriptionBillingProps
 ) {
   const { t, i18n } = useTranslation()
+  const intlLocale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [cancelTarget, setCancelTarget] =
     useState<StripeSubscriptionSummary | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -48,7 +50,7 @@ export function StripeSubscriptionBilling(
 
   const formatDateTime = (timestamp: number) => {
     if (timestamp <= 0) return t('Not available')
-    return new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    return new Intl.DateTimeFormat(intlLocale, {
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(new Date(timestamp * 1000))
@@ -220,7 +222,7 @@ export function StripeSubscriptionBilling(
                   {formatStripeInvoiceAmount(
                     invoice.amount_paid_minor,
                     invoice.currency,
-                    i18n.resolvedLanguage
+                    intlLocale
                   )}
                 </span>
               </div>
