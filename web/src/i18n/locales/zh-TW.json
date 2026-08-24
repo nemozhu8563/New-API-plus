@@ -5473,6 +5473,7 @@
     "Week": "本週",
     "Weekday": "星期",
     "Weekly": "每週",
+    "Weekly Quota": "每週額度",
     "Weekly quota {{quota}}": "每週額度 {{quota}}",
     "Weekly refreshed credits": "每週更新額度",
     "Weekly token usage by model across the past few weeks": "最近幾週內各模型的每週 Token 用量",

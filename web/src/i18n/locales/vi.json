@@ -5473,6 +5473,7 @@
     "Week": "Tuần",
     "Weekday": "Thứ trong tuần",
     "Weekly": "Hàng tuần",
+    "Weekly Quota": "Hạn mức hàng tuần",
     "Weekly quota {{quota}}": "Hạn mức hàng tuần {{quota}}",
     "Weekly refreshed credits": "Hạn mức làm mới hàng tuần",
     "Weekly token usage by model across the past few weeks": "Sử dụng token hàng tuần của từng mô hình trong vài tuần qua",

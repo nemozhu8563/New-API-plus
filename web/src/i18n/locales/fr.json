@@ -5473,6 +5473,7 @@
     "Week": "Semaine",
     "Weekday": "Jour de la semaine",
     "Weekly": "Hebdomadaire",
+    "Weekly Quota": "Quota hebdomadaire",
     "Weekly quota {{quota}}": "Quota hebdomadaire : {{quota}}",
     "Weekly refreshed credits": "Crédits renouvelés chaque semaine",
     "Weekly token usage by model across the past few weeks": "Utilisation hebdomadaire des tokens par modèle au cours des dernières semaines",

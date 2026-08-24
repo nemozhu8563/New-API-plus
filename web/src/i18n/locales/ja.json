@@ -5473,6 +5473,7 @@
     "Week": "週",
     "Weekday": "曜日",
     "Weekly": "毎週",
+    "Weekly Quota": "週間クォータ",
     "Weekly quota {{quota}}": "週間クォータ {{quota}}",
     "Weekly refreshed credits": "毎週更新されるクレジット",
     "Weekly token usage by model across the past few weeks": "過去数週間にわたるモデル別の週次トークン使用量",

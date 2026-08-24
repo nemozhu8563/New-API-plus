@@ -5473,6 +5473,7 @@
     "Week": "Week",
     "Weekday": "Weekday",
     "Weekly": "Weekly",
+    "Weekly Quota": "Weekly Quota",
     "Weekly quota {{quota}}": "Weekly quota {{quota}}",
     "Weekly refreshed credits": "Weekly refreshed credits",
     "Weekly token usage by model across the past few weeks": "Weekly token usage by model across the past few weeks",

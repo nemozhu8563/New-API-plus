@@ -5473,6 +5473,7 @@
     "Week": "Неделя",
     "Weekday": "День недели",
     "Weekly": "Еженедельно",
+    "Weekly Quota": "Недельная квота",
     "Weekly quota {{quota}}": "Недельная квота: {{quota}}",
     "Weekly refreshed credits": "Еженедельное обновление кредитов",
     "Weekly token usage by model across the past few weeks": "Еженедельное использование токенов по моделям за последние недели",
