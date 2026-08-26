@@ -1,5 +1,22 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { describe, expect, test } from 'vitest'
 
 import {
   parseTelegramBindCallback,
@@ -33,51 +50,48 @@ function fakeTimerRuntime() {
 
 describe('OAuth bind popup lifecycle', () => {
   test('parses Telegram success and stable error callbacks', () => {
-    assert.deepEqual(
+    expect(
       parseTelegramBindCallback({
         telegram_bind: 'success',
         flow_token: 'flow-success',
-      }),
-      {
-        kind: 'result',
-        flowToken: 'flow-success',
-        success: true,
-      }
-    )
-    assert.deepEqual(
+      })
+    ).toEqual({
+      kind: 'result',
+      flowToken: 'flow-success',
+      success: true,
+    })
+    expect(
       parseTelegramBindCallback({
         telegram_bind: 'error',
         flow_token: 'flow-error',
         error_code: 'TELEGRAM_BIND_ALREADY_BOUND',
-      }),
-      {
-        kind: 'result',
-        flowToken: 'flow-error',
-        success: false,
-        code: 'TELEGRAM_BIND_ALREADY_BOUND',
-      }
-    )
+      })
+    ).toEqual({
+      kind: 'result',
+      flowToken: 'flow-error',
+      success: false,
+      code: 'TELEGRAM_BIND_ALREADY_BOUND',
+    })
   })
 
   test('rejects Telegram callbacks without a flow token and ignores descriptions', () => {
-    assert.deepEqual(parseTelegramBindCallback({ telegram_bind: 'error' }), {
+    expect(parseTelegramBindCallback({ telegram_bind: 'error' })).toEqual({
       kind: 'invalid',
     })
-    assert.deepEqual(
+    expect(
       parseTelegramBindCallback({
         telegram_bind: 'error',
         flow_token: 'flow-error',
         error_code: 'UNKNOWN_CODE',
         error_description: 'untrusted message',
-      } as Parameters<typeof parseTelegramBindCallback>[0]),
-      {
-        kind: 'result',
-        flowToken: 'flow-error',
-        success: false,
-        code: 'UNKNOWN_CODE',
-      }
-    )
-    assert.equal(parseTelegramBindCallback({}), null)
+      } as Parameters<typeof parseTelegramBindCallback>[0])
+    ).toEqual({
+      kind: 'result',
+      flowToken: 'flow-error',
+      success: false,
+      code: 'UNKNOWN_CODE',
+    })
+    expect(parseTelegramBindCallback({})).toBe(null)
   })
 
   test('posts only complete Telegram bind results to an available opener', () => {
@@ -94,11 +108,10 @@ describe('OAuth bind popup lifecycle', () => {
       error_code: 'UNKNOWN_CODE',
     })
 
-    assert.equal(
-      postTelegramBindResult(callback, opener, 'https://dashboard.example.com'),
-      true
-    )
-    assert.deepEqual(messages, [
+    expect(
+      postTelegramBindResult(callback, opener, 'https://dashboard.example.com')
+    ).toBe(true)
+    expect(messages).toEqual([
       {
         message: {
           type: 'telegram:binding:result',
@@ -110,23 +123,17 @@ describe('OAuth bind popup lifecycle', () => {
       },
     ])
 
-    assert.equal(
-      postTelegramBindResult(
-        { kind: 'invalid' },
-        opener,
-        'https://example.com'
-      ),
-      false
-    )
-    assert.equal(
+    expect(
+      postTelegramBindResult({ kind: 'invalid' }, opener, 'https://example.com')
+    ).toBe(false)
+    expect(
       postTelegramBindResult(
         callback,
         { ...opener, closed: true },
         'https://example.com'
-      ),
-      false
-    )
-    assert.equal(messages.length, 1)
+      )
+    ).toBe(false)
+    expect(messages.length).toBe(1)
   })
 
   test('waits 30 seconds for the opener response and can be cancelled', () => {
@@ -140,11 +147,11 @@ describe('OAuth bind popup lifecycle', () => {
       timer.runtime
     )
 
-    assert.equal(timer.delay, 30_000)
+    expect(timer.delay).toBe(30_000)
     cancel()
     timer.fire()
-    assert.equal(timedOut, false)
-    assert.deepEqual(timer.cancelled, [timer.handle])
+    expect(timedOut).toBe(false)
+    expect(timer.cancelled).toEqual([timer.handle])
   })
 
   test('reports a closed popup once and clears its poller', () => {
@@ -160,13 +167,13 @@ describe('OAuth bind popup lifecycle', () => {
       timer.runtime
     )
 
-    assert.equal(timer.delay, 500)
+    expect(timer.delay).toBe(500)
     timer.fire()
-    assert.equal(closedCount, 0)
+    expect(closedCount).toBe(0)
     popup.closed = true
     timer.fire()
     timer.fire()
-    assert.equal(closedCount, 1)
-    assert.deepEqual(timer.cancelled, [timer.handle])
+    expect(closedCount).toBe(1)
+    expect(timer.cancelled).toEqual([timer.handle])
   })
 })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { after, afterEach, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll as after, afterEach, describe, test } from 'vitest'
 
 import type { AffiliateSummary } from '@/features/affiliates'
 import { api } from '@/lib/api'
@@ -115,6 +115,7 @@ async function flushQueries() {
   await act(async () => {
     await Promise.resolve()
     await Promise.resolve()
+    await new Promise<void>((resolve) => domWindow.setTimeout(resolve, 0))
   })
 }
 

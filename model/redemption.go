@@ -399,6 +399,7 @@ func redeemCode(key string, userId int, requiredBenefitType string) (*Redemption
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码激活订阅 %s，兑换码ID %d，订阅ID %d", result.PlanTitle, redemption.Id, result.SubscriptionId))
 		return result, nil
 	}
+	syncCreditUserQuotaCache(userId, redemption.Quota, "redemption")
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return result, nil
 }

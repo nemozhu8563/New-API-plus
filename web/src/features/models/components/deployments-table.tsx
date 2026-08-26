@@ -212,6 +212,7 @@ export function DeploymentsTable() {
         applyHeaderSize
         toolbarProps={{
           searchPlaceholder: t('Search deployments...'),
+          searchDebounceMs: 500,
           filters: [
             {
               columnId: 'status',

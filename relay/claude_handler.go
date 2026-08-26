@@ -107,6 +107,11 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 		info.UpstreamModelName = request.Model
 	}
+	if !model_setting.GetGlobalSettings().PassThroughRequestEnabled && !info.ChannelSetting.PassThroughBodyEnabled {
+		if effort := request.GetEfforts(); effort != "" {
+			info.SetReasoningEffort(effort)
+		}
+	}
 
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
@@ -197,8 +202,7 @@ func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor
 		if err != nil {
 			return nil, nil, types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		info.UpstreamRequestBodySize = storage.Size()
-		return common.ReaderOnly(storage), nil, nil
+		return common.NewReplayableBodyReader(storage), storage, nil
 	}
 
 	if applyClaudeAssistantPrefillCompatibility(request, info) {
@@ -234,10 +238,9 @@ func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor
 	}
 
 	logger.LogDebug(c, "requestBody: %s", jsonData)
-	body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+	body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
 		return nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
-	info.UpstreamRequestBodySize = size
 	return body, closer, nil
 }

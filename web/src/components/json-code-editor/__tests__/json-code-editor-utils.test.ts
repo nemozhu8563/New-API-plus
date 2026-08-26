@@ -1,5 +1,22 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { describe, expect, test } from 'vitest'
 
 import {
   applyJsonSmartEnter,
@@ -11,42 +28,42 @@ import {
 
 describe('json code editor utils', () => {
   test('treats empty drafts as valid editable JSON drafts', () => {
-    assert.deepEqual(getJsonValidationState('  \n'), {
+    expect(getJsonValidationState('  \n')).toEqual({
       isValid: true,
       messageKey: 'JSON',
     })
   })
 
   test('reports invalid JSON without throwing away the draft', () => {
-    assert.deepEqual(getJsonValidationState('{"model": }'), {
+    expect(getJsonValidationState('{"model": }')).toEqual({
       isValid: false,
       messageKey: 'Invalid JSON',
     })
   })
 
   test('formats valid JSON with stable two-space indentation', () => {
-    assert.deepEqual(formatJsonDraft('{"model":{"ratio":2}}'), {
+    expect(formatJsonDraft('{"model":{"ratio":2}}')).toEqual({
       didFormat: true,
       value: '{\n  "model": {\n    "ratio": 2\n  }\n}',
     })
   })
 
   test('keeps invalid JSON drafts unchanged when formatting is requested', () => {
-    assert.deepEqual(formatJsonDraft('{"model": }'), {
+    expect(formatJsonDraft('{"model": }')).toEqual({
       didFormat: false,
       value: '{"model": }',
     })
   })
 
   test('derives the one-based cursor line and column from text offsets', () => {
-    assert.deepEqual(getCursorLocation('{\n  "model": 1\n}', 5), {
+    expect(getCursorLocation('{\n  "model": 1\n}', 5)).toEqual({
       line: 2,
       column: 4,
     })
   })
 
   test('expands paired JSON brackets with a nested indentation line', () => {
-    assert.deepEqual(applyJsonSmartEnter('{}', 1, 1), {
+    expect(applyJsonSmartEnter('{}', 1, 1)).toEqual({
       value: '{\n  \n}',
       selectionStart: 4,
       selectionEnd: 4,
@@ -72,11 +89,11 @@ describe('json code editor utils', () => {
     source.scrollTop = 80
     synchronizer.sync()
 
-    assert.equal(queuedFrames.length, 1)
+    expect(queuedFrames.length).toBe(1)
 
     queuedFrames[0]()
 
-    assert.equal(contentLayer.style.transform, 'translate3d(-24px, -80px, 0)')
-    assert.equal(lineNumberLayer.style.transform, 'translate3d(0, -80px, 0)')
+    expect(contentLayer.style.transform).toBe('translate3d(-24px, -80px, 0)')
+    expect(lineNumberLayer.style.transform).toBe('translate3d(0, -80px, 0)')
   })
 })

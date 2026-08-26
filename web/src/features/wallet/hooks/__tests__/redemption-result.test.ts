@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { before, describe, test } from 'node:test'
 
 import i18next from 'i18next'
+import { beforeAll as before, describe, test } from 'vitest'
 
 import { formatQuota } from '@/lib/format'
 

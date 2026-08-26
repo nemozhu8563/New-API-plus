@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { describe, test } from 'vitest'
 
 import { PAYMENT_TYPES } from '../../constants'
 import {

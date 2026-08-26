@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
-import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
+import { parseQuotaFromDollars, quotaUnitsToEditableAmount } from '@/lib/format'
 
 import {
   REDEMPTION_VALIDATION,
@@ -130,7 +130,7 @@ export function transformRedemptionToFormDefaults(
   return {
     name: redemption.name,
     benefit_type: redemption.benefit_type || 'quota',
-    quota_dollars: quotaUnitsToDollars(redemption.quota),
+    quota_dollars: quotaUnitsToEditableAmount(redemption.quota),
     subscription_plan_id:
       redemption.subscription_plan_id > 0
         ? String(redemption.subscription_plan_id)

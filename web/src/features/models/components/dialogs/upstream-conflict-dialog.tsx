@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type ColumnDef, type RowSelectionState } from '@tanstack/react-table'
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table'
 import {
   Search,
   Info,
@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useDebounce } from '@/hooks/use-debounce'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { applyUpstreamOverwrite } from '../../api'
@@ -99,6 +100,7 @@ export function UpstreamConflictDialog({
   } = useModels()
   const isMobile = useIsMobile()
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 200)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [pageSize, setPageSize] = useState(10)
@@ -131,7 +133,7 @@ export function UpstreamConflictDialog({
 
   const totalModels = upstreamConflicts.length
   const totalFields = conflictRows.length
-  const normalizedSearch = search.trim().toLowerCase()
+  const normalizedSearch = debouncedSearch.trim().toLowerCase()
 
   const { matchingModelNames, visibleRowIds } = useMemo(() => {
     if (!normalizedSearch) {
@@ -378,7 +380,7 @@ export function UpstreamConflictDialog({
     const payload: SyncOverwritePayload[] = Object.entries(groupedSelections)
       .map(([modelName, fields]) => ({
         model_name: modelName,
-        fields: Array.from(fields),
+        fields: [...fields],
       }))
       .filter((item) => item.fields.length > 0)
 

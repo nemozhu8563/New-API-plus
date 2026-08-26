@@ -1,5 +1,22 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { describe, expect, test } from 'vitest'
 
 import { getServerErrorMessageKey } from './server-error-message'
 
@@ -7,8 +24,8 @@ describe('server error message mapping', () => {
   test('maps the active-session limit to recovery instructions', () => {
     const message = getServerErrorMessageKey({ code: 'AUTH_SESSION_LIMIT' })
 
-    assert.match(message ?? '', /Sign out other sessions/)
-    assert.match(message ?? '', /reset your password/)
+    expect(message ?? '').toMatch(/Sign out other sessions/)
+    expect(message ?? '').toMatch(/reset your password/)
   })
 
   test('maps an Axios-shaped issuance limit to rolling-window guidance', () => {
@@ -16,8 +33,8 @@ describe('server error message mapping', () => {
       response: { data: { code: 'AUTH_SESSION_ISSUANCE_LIMIT' } },
     })
 
-    assert.match(message ?? '', /rolling window/)
-    assert.equal(getServerErrorMessageKey({ code: 'UNKNOWN_CODE' }), null)
+    expect(message ?? '').toMatch(/rolling window/)
+    expect(getServerErrorMessageKey({ code: 'UNKNOWN_CODE' })).toBe(null)
   })
 
   test('maps stable Telegram bind errors without exposing server text', () => {
@@ -37,16 +54,15 @@ describe('server error message mapping', () => {
     }
 
     for (const [code, message] of Object.entries(expected)) {
-      assert.equal(getServerErrorMessageKey({ code }), message)
+      expect(getServerErrorMessageKey({ code })).toBe(message)
     }
 
-    assert.equal(
+    expect(
       getServerErrorMessageKey({
         response: {
           data: { code: 'TELEGRAM_BIND_INTERNAL_ERROR', message: 'raw detail' },
         },
-      }),
-      expected.TELEGRAM_BIND_INTERNAL_ERROR
-    )
+      })
+    ).toBe(expected.TELEGRAM_BIND_INTERNAL_ERROR)
   })
 })

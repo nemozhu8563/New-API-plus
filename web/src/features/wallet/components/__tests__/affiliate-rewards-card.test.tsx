@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { after, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll as after, describe, test } from 'vitest'
 
 import type { AffiliateSummary } from '@/features/affiliates'
 import type { UserWalletData } from '@/features/wallet/types'

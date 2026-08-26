@@ -1,5 +1,22 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { describe, expect, test } from 'vitest'
 
 import type { ChatCompletionRequest } from '../types'
 import { createStreamRequestController } from './use-stream-request'
@@ -85,12 +102,12 @@ describe('latest-wins stream request coordination', () => {
     const second = controller.send(payload, noopCallbacks)
     firstHeaders.resolve({ Authorization: 'Bearer stale' })
     await first
-    assert.equal(sources.length, 0)
+    expect(sources.length).toBe(0)
 
     secondHeaders.resolve({ Authorization: 'Bearer current' })
     await second
-    assert.equal(sources.length, 1)
-    assert.equal(sources[0]?.streamed, true)
+    expect(sources.length).toBe(1)
+    expect(sources[0]?.streamed).toBe(true)
   })
 
   test('stop cancels a request that is still waiting for headers', async () => {
@@ -110,7 +127,7 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    assert.equal(sourceCount, 0)
+    expect(sourceCount).toBe(0)
   })
 
   test('dispose cancels a pending header request without a state update', async () => {
@@ -131,8 +148,8 @@ describe('latest-wins stream request coordination', () => {
     headers.resolve({ Authorization: 'Bearer ignored' })
     await request
 
-    assert.equal(sourceCount, 0)
-    assert.deepEqual(streamingStates, [false])
+    expect(sourceCount).toBe(0)
+    expect(streamingStates).toEqual([false])
   })
 
   test('closes the previous source and ignores all of its later events', async () => {
@@ -164,7 +181,7 @@ describe('latest-wins stream request coordination', () => {
 
     await controller.send(payload, callbacks)
     const second = controller.send(payload, callbacks)
-    assert.equal(sources[0]?.closed, true)
+    expect(sources[0]?.closed).toBe(true)
     sources[0]?.emit(
       'message',
       JSON.stringify({ choices: [{ delta: { content: 'stale' } }] })
@@ -177,6 +194,6 @@ describe('latest-wins stream request coordination', () => {
       JSON.stringify({ choices: [{ delta: { content: 'current' } }] })
     )
 
-    assert.deepEqual(updates, ['current'])
+    expect(updates).toEqual(['current'])
   })
 })

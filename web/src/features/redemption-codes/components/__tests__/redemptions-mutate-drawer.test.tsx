@@ -1,83 +1,81 @@
-import assert from 'node:assert/strict'
-import { after, afterEach, describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
 
-import { Window } from 'happy-dom'
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
-import { api } from '@/lib/api'
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  type RenderResult,
+} from '@testing-library/react'
+import { afterEach, describe, expect, test } from 'vitest'
 
 import type { Redemption } from '../../types'
 
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'HTMLButtonElement',
-  'HTMLInputElement',
-  'HTMLFormElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'KeyboardEvent',
-  'PointerEvent',
-  'MouseEvent',
-  'FocusEvent',
-  'CustomEvent',
-  'MutationObserver',
-  'ResizeObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
-
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
-
-const { act } = await import('react')
-const { createRoot } = await import('react-dom/client')
-const { createInstance } = await import('i18next')
+const i18n = (await import('i18next')).default
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const { Toaster, toast } = await import('sonner')
+const { api } = await import('@/lib/api')
+const { useSystemConfigStore } = await import('@/stores/system-config-store')
 const { RedemptionsProvider } = await import('../redemptions-provider')
 const { RedemptionsMutateDrawer } = await import('../redemptions-mutate-drawer')
 
-const i18n = createInstance()
 await i18n.use(initReactI18next).init({
   lng: 'en',
-  resources: { en: { translation: {} } },
+  resources: {
+    en: {
+      translation: {
+        'Failed to load': 'Failed to load',
+        'Loading...': 'Loading...',
+        'Save changes': 'Save changes',
+        'Something went wrong!': 'Something went wrong!',
+      },
+    },
+  },
 })
 
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
+type ApiMethod = (url: string, data?: unknown) => Promise<{ data: unknown }>
+type MockableApi = {
+  get: ApiMethod
+  put: ApiMethod
 }
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
-type Deferred<T> = {
-  promise: Promise<T>
-  resolve: (value: T) => void
+type RenderedDrawer = {
+  result: RenderResult
 }
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-  return { promise, resolve }
+type CurrencyFixture = {
+  quotaDisplayType: 'USD' | 'CNY'
+  usdExchangeRate: number
 }
 
-function redemption(id: number, name: string): Redemption {
+const apiClient = api as unknown as MockableApi
+const originalGet = apiClient.get
+const originalPut = apiClient.put
+const originalConsoleLog = Reflect.get(console, 'log')
+let renderedDrawer: RenderedDrawer | null = null
+
+function redemption(id: number, quota = 500001): Redemption {
   return {
     id,
     user_id: 1,
-    name,
-    key: String(id).padStart(32, '0'),
+    name: `code-${id}`,
+    key: `key-${id}`,
     status: 1,
-    quota: 100,
+    quota,
     benefit_type: 'quota',
     subscription_plan_id: 0,
     subscription_plan_title: '',
@@ -89,135 +87,252 @@ function redemption(id: number, name: string): Redemption {
   }
 }
 
-const originalGet = api.get
-const originalPut = api.put
-let root: ReturnType<typeof createRoot> | null = null
-let host: HTMLDivElement | null = null
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, reject, resolve }
+}
 
-afterEach(async () => {
-  api.get = originalGet
-  api.put = originalPut
-  if (root) {
-    await act(async () => root?.unmount())
-    root = null
+function drawerTree(currentRow: Redemption) {
+  return (
+    <I18nextProvider i18n={i18n}>
+      <RedemptionsProvider>
+        <RedemptionsMutateDrawer
+          open
+          currentRow={currentRow}
+          onOpenChange={() => undefined}
+        />
+      </RedemptionsProvider>
+      <Toaster duration={60_000} />
+    </I18nextProvider>
+  )
+}
+
+async function renderDrawer(
+  currentRow: Redemption,
+  currency: CurrencyFixture = {
+    quotaDisplayType: 'USD',
+    usdExchangeRate: 1,
   }
-  host?.remove()
-  host = null
-  document.body.replaceChildren()
-})
-
-after(() => {
-  domWindow.close()
-})
-
-describe('redemptions mutate drawer', () => {
-  test('blocks update submission until the current code finishes loading', async () => {
-    const response = deferred<{
-      data: { success: true; data: Redemption }
-    }>()
-    let updateCalls = 0
-    api.get = (() => response.promise) as unknown as typeof api.get
-    api.put = (() => {
-      updateCalls += 1
-      return Promise.resolve({ data: { success: true } })
-    }) as unknown as typeof api.put
-
-    const currentRow = redemption(1, 'current row')
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
-
-    await act(async () => {
-      root?.render(
-        <I18nextProvider i18n={i18n}>
-          <RedemptionsProvider>
-            <RedemptionsMutateDrawer
-              open
-              onOpenChange={() => undefined}
-              currentRow={currentRow}
-            />
-          </RedemptionsProvider>
-        </I18nextProvider>
-      )
-    })
-
-    const saveButton = document.querySelector<HTMLButtonElement>(
-      'button[form="redemption-form"]'
-    )
-    const form = document.querySelector<HTMLFormElement>('#redemption-form')
-    assert.ok(saveButton)
-    assert.ok(form)
-    assert.equal(saveButton.disabled, true)
-
-    await act(async () => {
-      form.dispatchEvent(
-        new Event('submit', { bubbles: true, cancelable: true })
-      )
-      await Promise.resolve()
-    })
-    assert.equal(updateCalls, 0)
-
-    response.resolve({ data: { success: true, data: currentRow } })
-    await act(async () => {
-      await response.promise
-      await Promise.resolve()
-    })
-
-    assert.equal(saveButton.disabled, false)
+): Promise<void> {
+  useSystemConfigStore.getState().setConfig({
+    currency: {
+      displayInCurrency: true,
+      quotaDisplayType: currency.quotaDisplayType,
+      quotaPerUnit: 500000,
+      usdExchangeRate: currency.usdExchangeRate,
+      customCurrencySymbol: '¤',
+      customCurrencyExchangeRate: 1,
+    },
   })
 
-  test('ignores an earlier edit response after switching to another code', async () => {
-    const first = deferred<{ data: { success: true; data: Redemption } }>()
-    const second = deferred<{ data: { success: true; data: Redemption } }>()
-    api.get = ((url: string) => {
-      if (url === '/api/redemption/1') return first.promise
-      if (url === '/api/redemption/2') return second.promise
-      throw new Error(`Unexpected GET ${url}`)
-    }) as unknown as typeof api.get
+  renderedDrawer = { result: render(drawerTree(currentRow)) }
+}
 
-    const firstRow = redemption(1, 'first row')
-    const secondRow = redemption(2, 'second row')
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
+async function rerenderDrawer(currentRow: Redemption): Promise<void> {
+  if (!renderedDrawer) {
+    throw new Error('Expected a rendered redemption drawer')
+  }
+  renderedDrawer.result.rerender(drawerTree(currentRow))
+}
 
-    const render = async (currentRow: Redemption) => {
-      await act(async () => {
-        root?.render(
-          <I18nextProvider i18n={i18n}>
-            <RedemptionsProvider>
-              <RedemptionsMutateDrawer
-                open
-                onOpenChange={() => undefined}
-                currentRow={currentRow}
-              />
-            </RedemptionsProvider>
-          </I18nextProvider>
-        )
-      })
+function getSaveButton(): HTMLButtonElement {
+  return screen.getByRole('button', { name: 'Save changes' })
+}
+
+function getControlByLabel(labelText: 'Name'): HTMLInputElement
+function getControlByLabel(labelText: 'Quota (CNY)'): HTMLInputElement
+function getControlByLabel(labelText: 'Quota (USD)'): HTMLInputElement
+function getControlByLabel(labelText: string): HTMLElement {
+  const label = [...document.querySelectorAll<HTMLLabelElement>('label')].find(
+    (candidate) => candidate.textContent?.trim() === labelText
+  )
+  if (!label) {
+    throw new Error(`Expected label "${labelText}"`)
+  }
+  const control =
+    label.control ??
+    label
+      .closest('[data-slot="form-item"]')
+      ?.querySelector<HTMLElement>('[data-slot="form-control"], input')
+  if (!control) {
+    throw new Error(`Expected control for label "${labelText}"`)
+  }
+  return control
+}
+
+function changeInput(input: HTMLInputElement, value: string): void {
+  fireEvent.input(input, { target: { value } })
+}
+
+function submitForm(): void {
+  const form = document.querySelector<HTMLFormElement>('#redemption-form')
+  if (!form) {
+    throw new Error('Expected redemption form')
+  }
+  fireEvent.submit(form)
+}
+
+async function waitForLoadedForm(): Promise<void> {
+  await waitFor(() => expect(getSaveButton()).toBeEnabled())
+}
+
+afterEach(() => {
+  apiClient.get = originalGet
+  apiClient.put = originalPut
+  Reflect.set(console, 'log', originalConsoleLog)
+  toast.dismiss()
+  localStorage.clear()
+  renderedDrawer = null
+})
+
+describe('redemption drawer', () => {
+  test('blocks update submission until the current code finishes loading', async () => {
+    const original = redemption(1)
+    const request = deferred<{ data: unknown }>()
+    const updates: unknown[] = []
+    apiClient.get = () => request.promise
+    apiClient.put = async (_url, data) => {
+      updates.push(data)
+      return { data: { success: true } }
     }
 
-    await render(firstRow)
-    await render(secondRow)
+    await renderDrawer(original)
 
-    second.resolve({ data: { success: true, data: secondRow } })
-    await act(async () => {
-      await second.promise
-      await Promise.resolve()
+    expect(screen.getByRole('button', { name: 'Loading...' })).toBeDisabled()
+    submitForm()
+    expect(updates).toEqual([])
+
+    request.resolve({ data: { success: true, data: original } })
+    await waitForLoadedForm()
+  })
+
+  test('shows the reported CNY quota without floating-point noise', async () => {
+    const original = redemption(1, 13888889)
+    apiClient.get = async () => ({ data: { success: true, data: original } })
+
+    await renderDrawer(original, {
+      quotaDisplayType: 'CNY',
+      usdExchangeRate: 7.2,
     })
+    await waitForLoadedForm()
 
-    const nameInput = document.querySelector<HTMLInputElement>(
-      'input[placeholder="Enter a name"]'
+    expect(getControlByLabel('Quota (CNY)').value).toBe('200')
+  })
+
+  test('blocks updates and reports an error when loading rejects', async () => {
+    const updates: unknown[] = []
+    Reflect.set(console, 'log', () => undefined)
+    apiClient.get = async () => {
+      throw new Error('network failure')
+    }
+    apiClient.put = async (_url, data) => {
+      updates.push(data)
+      return { data: { success: true } }
+    }
+
+    await renderDrawer(redemption(1))
+    await waitFor(() =>
+      expect(document.body).toHaveTextContent('Something went wrong!')
     )
-    assert.ok(nameInput)
-    assert.equal(nameInput.value, 'second row')
 
-    first.resolve({ data: { success: true, data: firstRow } })
-    await act(async () => {
-      await first.promise
-      await Promise.resolve()
+    expect(getSaveButton()).toBeDisabled()
+    submitForm()
+    expect(updates).toEqual([])
+  })
+
+  test('blocks updates and uses localized feedback for unsuccessful responses', async () => {
+    apiClient.get = async () => ({
+      data: { success: false, message: 'raw server message' },
     })
 
-    assert.equal(nameInput.value, 'second row')
+    await renderDrawer(redemption(1))
+    await waitFor(() =>
+      expect(document.body).toHaveTextContent('Failed to load')
+    )
+
+    expect(getSaveButton()).toBeDisabled()
+    expect(document.body).not.toHaveTextContent('raw server message')
+  })
+
+  test('keeps the original quota when another field changes', async () => {
+    const original = redemption(1)
+    const updates: Array<Record<string, unknown>> = []
+    apiClient.get = async () => ({ data: { success: true, data: original } })
+    apiClient.put = async (_url, data) => {
+      expect(data && typeof data === 'object').toBeTruthy()
+      updates.push(data as Record<string, unknown>)
+      return { data: { success: true, data: original } }
+    }
+
+    await renderDrawer(original)
+    await waitForLoadedForm()
+    expect(getControlByLabel('Quota (USD)').value).toBe('1')
+
+    changeInput(getControlByLabel('Name'), 'renamed')
+    submitForm()
+    await waitFor(() => expect(updates).toHaveLength(1))
+
+    expect(updates[0]?.name).toBe('renamed')
+    expect(updates[0]?.quota).toBe(500001)
+  })
+
+  test('recalculates quota when the quota field changes', async () => {
+    const original = redemption(1)
+    const updates: Array<Record<string, unknown>> = []
+    apiClient.get = async () => ({ data: { success: true, data: original } })
+    apiClient.put = async (_url, data) => {
+      expect(data && typeof data === 'object').toBeTruthy()
+      updates.push(data as Record<string, unknown>)
+      return { data: { success: true, data: original } }
+    }
+
+    await renderDrawer(original)
+    await waitForLoadedForm()
+    changeInput(getControlByLabel('Quota (USD)'), '2')
+    submitForm()
+    await waitFor(() => expect(updates).toHaveLength(1))
+
+    expect(updates[0]?.quota).toBe(1000000)
+  })
+
+  test('ignores an older response after switching records', async () => {
+    const first = redemption(1, 500001)
+    const second = redemption(2, 1000001)
+    const firstRequest = deferred<{ data: unknown }>()
+    const secondRequest = deferred<{ data: unknown }>()
+    const requestedUrls: string[] = []
+    const updates: Array<Record<string, unknown>> = []
+    apiClient.get = (url) => {
+      requestedUrls.push(url)
+      if (url === '/api/redemption/1') return firstRequest.promise
+      if (url === '/api/redemption/2') return secondRequest.promise
+      throw new Error(`Unexpected GET ${url}`)
+    }
+    apiClient.put = async (_url, data) => {
+      expect(data && typeof data === 'object').toBeTruthy()
+      updates.push(data as Record<string, unknown>)
+      return { data: { success: true, data: second } }
+    }
+
+    await renderDrawer(first)
+    await rerenderDrawer(second)
+    await waitFor(() => expect(requestedUrls).toContain('/api/redemption/2'))
+    secondRequest.resolve({ data: { success: true, data: second } })
+    await waitForLoadedForm()
+
+    firstRequest.resolve({ data: { success: true, data: first } })
+    expect(getControlByLabel('Name').value).toBe('code-2')
+
+    changeInput(getControlByLabel('Name'), 'second')
+    submitForm()
+    await waitFor(() => expect(updates).toHaveLength(1))
+
+    expect(updates[0]?.id).toBe(2)
+    expect(updates[0]?.quota).toBe(1000001)
   })
 })

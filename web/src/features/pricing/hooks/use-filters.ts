@@ -1,6 +1,8 @@
 import { useSearch } from '@tanstack/react-router'
 import { useMemo, useCallback, useState } from 'react'
 
+import { useDebounce } from '@/hooks/use-debounce'
+
 import {
   FILTER_ALL,
   SORT_OPTIONS,
@@ -49,6 +51,7 @@ export function useFilters(models: PricingModel[]) {
   }))
 
   const searchInput = filterState.search || ''
+  const debouncedSearchInput = useDebounce(searchInput, 200)
   const sortBy = filterState.sort || SORT_OPTIONS.NAME
   const vendorFilter = filterState.vendor || FILTER_ALL
   const groupFilter = filterState.group || FILTER_ALL
@@ -129,7 +132,7 @@ export function useFilters(models: PricingModel[]) {
     if (!models || models.length === 0) return []
 
     return filterAndSortModels(models, {
-      search: searchInput,
+      search: debouncedSearchInput,
       vendor: vendorFilter,
       group: groupFilter,
       quotaType: quotaTypeFilter,
@@ -139,7 +142,7 @@ export function useFilters(models: PricingModel[]) {
     })
   }, [
     models,
-    searchInput,
+    debouncedSearchInput,
     vendorFilter,
     groupFilter,
     quotaTypeFilter,

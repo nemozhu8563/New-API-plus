@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { after, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll as after, test } from 'vitest'
 
 import type { PublicPlanRecord } from '@/features/subscriptions/types'
 

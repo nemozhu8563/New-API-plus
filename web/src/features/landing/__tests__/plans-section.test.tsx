@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { after, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll as after, describe, test } from 'vitest'
 
 import type { PublicPlanRecord } from '@/features/subscriptions/types'
 
@@ -209,7 +209,7 @@ after(() => {
   domWindow.close()
 })
 
-describe('landing subscription plans', { concurrency: false }, () => {
+describe('landing subscription plans', { concurrent: false }, () => {
   test('renders backend plan totals and marks the second plan as recommended', async () => {
     const view = await renderPlans({
       loadPlans: async () => ({ success: true, data: plans }),

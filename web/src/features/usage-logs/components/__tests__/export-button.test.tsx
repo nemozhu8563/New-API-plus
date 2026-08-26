@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
-import { after, afterEach, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
+import { afterAll as after, afterEach, describe, test } from 'vitest'
 
 import { api } from '@/lib/api'
 

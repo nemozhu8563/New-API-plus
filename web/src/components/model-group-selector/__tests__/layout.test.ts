@@ -1,5 +1,22 @@
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { describe, expect, test } from 'vitest'
 
 import {
   modelGroupSelectorLayoutClasses,
@@ -11,8 +28,8 @@ describe('model group selector layout', () => {
     const groupScrollClasses =
       modelGroupSelectorLayoutClasses.groupScroll.split(' ')
 
-    assert.ok(groupScrollClasses.includes('auto-rows-[2rem]'))
-    assert.ok(groupScrollClasses.includes('content-start'))
+    expect(groupScrollClasses.includes('auto-rows-[2rem]')).toBeTruthy()
+    expect(groupScrollClasses.includes('content-start')).toBeTruthy()
   })
 
   test('centers the selected group inside its own scroll container', () => {
@@ -32,7 +49,7 @@ describe('model group selector layout', () => {
 
     scrollSelectedOptionIntoView(selectedOption, scrollContainer)
 
-    assert.deepEqual(scrollCalls, [{ top: 76, behavior: 'auto' }])
+    expect(scrollCalls).toEqual([{ top: 76, behavior: 'auto' }])
   })
 
   test('falls back to scrollIntoView when no group container is provided', () => {
@@ -45,6 +62,6 @@ describe('model group selector layout', () => {
 
     scrollSelectedOptionIntoView(selectedOption)
 
-    assert.deepEqual(scrollCalls, [{ block: 'center', inline: 'nearest' }])
+    expect(scrollCalls).toEqual([{ block: 'center', inline: 'nearest' }])
   })
 })

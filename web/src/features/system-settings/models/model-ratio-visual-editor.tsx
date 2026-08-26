@@ -664,6 +664,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           <DataTableToolbar
             table={table}
             searchPlaceholder={t('Search models...')}
+            searchDebounceMs={250}
             filters={[
               {
                 columnId: 'billingMode',
