@@ -2,6 +2,8 @@
 
 > 当前状态（2026-07-31）：GCP `sub2api-prod`、`/opt/new-api-test` 及其 Cloud Build 发布链路已完全弃用。当前唯一有效的测试、发布和回滚目标是 GreenCloud；本文下方关于 GCP 的内容仅保留为迁移历史，不得照此执行。
 
+2026-08-26 的本地代码与发布边界见 [项目代码与发布现状](2026-08-26-project-operating-status.md)；该状态页不改写本文的历史现场记录。
+
 ## 目标与边界
 
 将 `new-api`、宿主机版 CLIProxyAPI（CPA）和 CPA keeper 从 GCP 迁至 GreenCloud；镜像只在本地构建为 `linux/amd64`，以不可变镜像包上传到 GreenCloud。CPA 不对公网开放，只有 `new-api` 可以通过私有 Docker 桥接访问它。
