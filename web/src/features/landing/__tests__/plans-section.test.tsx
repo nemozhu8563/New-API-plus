@@ -221,7 +221,7 @@ describe('landing subscription plans', { concurrency: false }, () => {
       assert.match(view.container.textContent || '', /Weekly quota \$110/)
       assert.doesNotMatch(
         view.container.textContent || '',
-        /per[- ]?(?:token|model|request)|unit price|discount/i
+        /per[- ]?(?:token|model|request)|unit price/i
       )
       const sectionHeading = [...view.container.querySelectorAll('h2')].find(
         (heading) =>
@@ -256,6 +256,65 @@ describe('landing subscription plans', { concurrency: false }, () => {
         premiumCard.previousElementSibling?.textContent || '',
         /Recommended/
       )
+    } finally {
+      await view.cleanup()
+    }
+  })
+
+  test('shows each subscription plan discount against four weeks of weekly quota', async () => {
+    const view = await renderPlans({
+      loadPlans: async () => ({ success: true, data: plans }),
+    })
+    try {
+      await waitForPlansQuery(view.queryClient, 'success')
+
+      for (const [title, discount] of [
+        ['Standard', '9/10 price'],
+        ['Premium', '8.6/10 price'],
+        ['Professional', '8.4/10 price'],
+      ]) {
+        const heading = [...view.container.querySelectorAll('h3')].find(
+          (candidate) => candidate.textContent === title
+        )
+        const card = heading?.closest('article')
+        assert.ok(card)
+        assert.ok(card.textContent?.includes(discount))
+      }
+
+      const enterpriseHeading = [...view.container.querySelectorAll('h3')].find(
+        (heading) => heading.textContent === 'Enterprise plan'
+      )
+      const enterpriseCard = enterpriseHeading?.closest('article')
+      assert.ok(enterpriseCard)
+      assert.doesNotMatch(enterpriseCard.textContent || '', /\/10 price/)
+    } finally {
+      await view.cleanup()
+    }
+  })
+
+  test('keeps all four offers in one balanced responsive grid', async () => {
+    const view = await renderPlans({
+      loadPlans: async () => ({ success: true, data: plans }),
+    })
+    try {
+      await waitForPlansQuery(view.queryClient, 'success')
+
+      const grid = view.container.querySelector(
+        '[data-slot="landing-plans-grid"]'
+      )
+      assert.ok(grid)
+      assert.ok(grid.classList.contains('grid-cols-1'))
+      assert.ok(grid.classList.contains('min-[768px]:max-[1180px]:grid-cols-2'))
+      assert.ok(grid.classList.contains('min-[1180px]:grid-cols-4'))
+      assert.equal(grid.children.length, 4)
+
+      const enterpriseHeading = [...view.container.querySelectorAll('h3')].find(
+        (heading) => heading.textContent === 'Enterprise plan'
+      )
+      const enterpriseCard = enterpriseHeading?.closest('article')
+      assert.ok(enterpriseCard)
+      assert.equal(enterpriseCard.parentElement, grid)
+      assert.doesNotMatch(enterpriseCard.className, /col-span/)
     } finally {
       await view.cleanup()
     }

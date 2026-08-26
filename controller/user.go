@@ -1392,6 +1392,39 @@ func TopUp(c *gin.Context) {
 	})
 }
 
+func RedeemCode(c *gin.Context) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		return
+	}
+
+	id := c.GetInt("id")
+	lock := getTopUpLock(id)
+	if !lock.TryLock() {
+		common.ApiErrorI18n(c, i18n.MsgUserTopUpProcessing)
+		return
+	}
+	defer lock.Unlock()
+	req := topUpRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := model.RedeemCode(req.Key, id)
+	if err != nil {
+		// Keep all code-state details private so this endpoint cannot be used
+		// to enumerate valid, expired, or already-used redemption codes.
+		common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
+		logger.LogError(c, fmt.Sprintf("failed to redeem code for user %d: %s", id, err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    result,
+	})
+}
+
 type UpdateUserSettingRequest struct {
 	QuotaWarningType                 string  `json:"notify_type"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`

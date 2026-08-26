@@ -58,7 +58,7 @@ after(() => {
 })
 
 describe('subscription plans layout', () => {
-  test('shows three available plans in one row from medium screens upward', async () => {
+  test('shows three prominent plan cards in one row from medium screens upward', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined
     const requestsComplete = new Promise<void>((resolve) => {
@@ -158,6 +158,26 @@ describe('subscription plans layout', () => {
     assert.ok(planGrid.classList.contains('grid-cols-1'))
     assert.ok(planGrid.classList.contains('sm:grid-cols-2'))
     assert.ok(planGrid.classList.contains('md:grid-cols-3'))
+
+    const planCards = [...planGrid.children]
+    assert.equal(planCards.length, 3)
+    for (const planCard of planCards) {
+      assert.ok(planCard.classList.contains('min-h-[340px]'))
+
+      const content = planCard.querySelector('[data-slot="card-content"]')
+      assert.ok(content)
+      assert.ok(content.classList.contains('p-5'))
+      assert.ok(content.classList.contains('sm:p-6'))
+
+      const title = planCard.querySelector('h4')
+      assert.ok(title)
+      assert.ok(title.classList.contains('text-lg'))
+      assert.ok(planCard.querySelector('.text-3xl'))
+
+      const subscribeButton = planCard.querySelector('[data-slot="button"]')
+      assert.ok(subscribeButton)
+      assert.ok(subscribeButton.classList.contains('h-9'))
+    }
 
     await act(async () => root.unmount())
     container.remove()

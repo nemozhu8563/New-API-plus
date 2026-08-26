@@ -49,7 +49,7 @@ await i18n.use(initReactI18next).init({
           'Each package includes {{credits}} ({{price}})',
         'Increase quantity': 'Increase quantity',
         'Order summary': 'Order summary',
-        'Pay securely with Stripe': 'Pay securely with Stripe',
+        Pay: 'Pay',
         'Purchase quantity': 'Purchase quantity',
         Quantity: 'Quantity',
         Total: 'Total',
@@ -151,7 +151,7 @@ describe('Stripe topup package selection', () => {
     )
     assert.equal(increaseButton.disabled, true)
 
-    const checkoutButton = findButton(container, 'Pay securely with Stripe')
+    const checkoutButton = findButton(container, 'Pay')
     assert.ok(checkoutButton)
     await act(async () => checkoutButton.click())
     assert.deepEqual(checkoutAmounts, [40])

@@ -24,6 +24,14 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -32,6 +40,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { getAdminPlans } from '@/features/subscriptions/api'
+import type { PlanRecord } from '@/features/subscriptions/types'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { addTimeToDate } from '@/lib/time'
@@ -42,10 +52,11 @@ import {
   getRedemptionFormSchema,
   type RedemptionFormValues,
   REDEMPTION_FORM_DEFAULT_VALUES,
+  truncateRedemptionName,
   transformFormDataToPayload,
   transformRedemptionToFormDefaults,
 } from '../lib'
-import { type Redemption } from '../types'
+import type { Redemption } from '../types'
 import { useRedemptions } from './redemptions-provider'
 
 type RedemptionsMutateDrawerProps = {
@@ -63,6 +74,11 @@ export function RedemptionsMutateDrawer({
   const isUpdate = !!currentRow
   const { triggerRefresh } = useRedemptions()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [loadedRedemptionId, setLoadedRedemptionId] = useState<number | null>(
+    null
+  )
+  const [plans, setPlans] = useState<PlanRecord[]>([])
+  const [plansLoading, setPlansLoading] = useState(false)
 
   const form = useForm<RedemptionFormValues>({
     resolver: zodResolver(getRedemptionFormSchema(t)),
@@ -71,18 +87,76 @@ export function RedemptionsMutateDrawer({
 
   // Load existing data when updating
   useEffect(() => {
+    let cancelled = false
+
     if (open && isUpdate && currentRow) {
       // For update, fetch fresh data
-      getRedemption(currentRow.id).then((result) => {
-        if (result.success && result.data) {
+      setLoadedRedemptionId(null)
+      getRedemption(currentRow.id)
+        .then((result) => {
+          if (cancelled) return
+          if (!result.success || !result.data) {
+            toast.error(t('Loading failed'))
+            return
+          }
           form.reset(transformRedemptionToFormDefaults(result.data))
+          setLoadedRedemptionId(currentRow.id)
+        })
+        .catch(() => {
+          if (!cancelled) {
+            toast.error(t('Loading failed'))
+          }
+        })
+    } else {
+      setLoadedRedemptionId(null)
+      if (open && !isUpdate) {
+        // For create, reset to defaults
+        form.reset(REDEMPTION_FORM_DEFAULT_VALUES)
+      }
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, isUpdate, currentRow, form, t])
+
+  const isLoadingRedemption =
+    open && isUpdate && loadedRedemptionId !== currentRow?.id
+  let submitLabel = t('Save changes')
+  if (isLoadingRedemption) {
+    submitLabel = t('Loading...')
+  } else if (isSubmitting) {
+    submitLabel = t('Saving...')
+  }
+
+  useEffect(() => {
+    if (!open || isUpdate) return
+
+    let cancelled = false
+    setPlansLoading(true)
+    getAdminPlans()
+      .then((result) => {
+        if (cancelled) return
+        setPlans(
+          result.success
+            ? (result.data || []).filter((record) => record.plan.enabled)
+            : []
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setPlansLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlans([])
+          toast.error(t('Loading failed'))
         }
       })
-    } else if (open && !isUpdate) {
-      // For create, reset to defaults
-      form.reset(REDEMPTION_FORM_DEFAULT_VALUES)
+
+    return () => {
+      cancelled = true
     }
-  }, [open, isUpdate, currentRow, form])
+  }, [open, isUpdate, t])
 
   const onSubmit = async (data: RedemptionFormValues) => {
     setIsSubmitting(true)
@@ -121,11 +195,26 @@ export function RedemptionsMutateDrawer({
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (isLoadingRedemption) {
+      event.preventDefault()
+      return
+    }
+
     if (!isUpdate) {
       const name = form.getValues('name')
       if (!name?.trim()) {
-        const quota = parseQuotaFromDollars(form.getValues('quota_dollars'))
-        form.setValue('name', formatQuota(quota), { shouldValidate: true })
+        if (form.getValues('benefit_type') === 'subscription') {
+          const planId = Number(form.getValues('subscription_plan_id'))
+          const plan = plans.find((record) => record.plan.id === planId)
+          form.setValue(
+            'name',
+            truncateRedemptionName(plan?.plan.title || t('Subscription')),
+            { shouldValidate: true }
+          )
+        } else {
+          const quota = parseQuotaFromDollars(form.getValues('quota_dollars'))
+          form.setValue('name', formatQuota(quota), { shouldValidate: true })
+        }
       }
     }
 
@@ -144,6 +233,7 @@ export function RedemptionsMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
+  const benefitType = form.watch('benefit_type')
 
   return (
     <Sheet
@@ -197,32 +287,138 @@ export function RedemptionsMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='quota_dollars'
+                name='benefit_type'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{quotaLabel}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        step={tokensOnly ? 1 : 0.01}
-                        placeholder={quotaPlaceholder}
-                        onChange={(e) =>
-                          field.onChange(parseFloat(e.target.value) || 0)
-                        }
-                      />
-                    </FormControl>
+                    <FormLabel>{t('Type')}</FormLabel>
+                    <Select
+                      items={[
+                        { value: 'quota', label: t('Quota') },
+                        { value: 'subscription', label: t('Subscription') },
+                      ]}
+                      value={field.value}
+                      onValueChange={(value) =>
+                        value !== null && field.onChange(value)
+                      }
+                    >
+                      <FormControl>
+                        <SelectTrigger disabled={isUpdate}>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='quota'>{t('Quota')}</SelectItem>
+                          <SelectItem value='subscription'>
+                            {t('Subscription')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
                     <FormDescription>
-                      {tokensOnly
-                        ? t('Enter the quota amount in tokens')
-                        : t('Enter the quota amount in {{currency}}', {
-                            currency: currencyLabel,
-                          })}
+                      {t('The benefit type cannot be changed after creation')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {benefitType === 'quota' ? (
+                <FormField
+                  control={form.control}
+                  name='quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{quotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={quotaPlaceholder}
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {tokensOnly
+                          ? t('Enter the quota amount in tokens')
+                          : t('Enter the quota amount in {{currency}}', {
+                              currency: currencyLabel,
+                            })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name='subscription_plan_id'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Subscription')}</FormLabel>
+                      {isUpdate ? (
+                        <FormControl>
+                          <Input
+                            value={
+                              currentRow?.subscription_plan_title ||
+                              t('Plan #{{id}}', {
+                                id: currentRow?.subscription_plan_id || '-',
+                              })
+                            }
+                            disabled
+                          />
+                        </FormControl>
+                      ) : (
+                        <Select
+                          items={plans.map((record) => ({
+                            value: String(record.plan.id),
+                            label: record.plan.title,
+                          }))}
+                          value={field.value}
+                          onValueChange={(value) =>
+                            value !== null && field.onChange(value)
+                          }
+                        >
+                          <FormControl>
+                            <SelectTrigger disabled={plansLoading}>
+                              <SelectValue
+                                placeholder={
+                                  plansLoading
+                                    ? t('Loading...')
+                                    : t('Select subscription plan')
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {plans.map((record) => (
+                                <SelectItem
+                                  key={record.plan.id}
+                                  value={String(record.plan.id)}
+                                >
+                                  {record.plan.title}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <FormDescription>
+                        {t(
+                          'Subscription benefits are frozen when codes are created'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
@@ -296,7 +492,9 @@ export function RedemptionsMutateDrawer({
                           max='100'
                           placeholder={t('Number of codes to create')}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 1)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 1
+                            )
                           }
                         />
                       </FormControl>
@@ -315,8 +513,12 @@ export function RedemptionsMutateDrawer({
           <SheetClose render={<Button variant='outline' />}>
             {t('Close')}
           </SheetClose>
-          <Button form='redemption-form' type='submit' disabled={isSubmitting}>
-            {isSubmitting ? t('Saving...') : t('Save changes')}
+          <Button
+            form='redemption-form'
+            type='submit'
+            disabled={isSubmitting || isLoadingRedemption}
+          >
+            {submitLabel}
           </Button>
         </SheetFooter>
       </SheetContent>

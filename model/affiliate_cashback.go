@@ -417,6 +417,7 @@ func GetAffiliateSummary(userId int) (*AffiliateSummary, error) {
 			userId,
 			common.RedemptionCodeStatusUsed,
 		).
+		Where("(redemptions.benefit_type = ? OR redemptions.benefit_type = '')", RedemptionBenefitQuota).
 		Scan(&redemptions).Error; err != nil {
 		return nil, err
 	}
@@ -646,6 +647,7 @@ func ListAffiliateInvitees(agentUserId int, pageInfo *common.PageInfo) ([]*Affil
 			common.RedemptionCodeStatusUsed,
 			userIds,
 		).
+		Where("(benefit_type = ? OR benefit_type = '')", RedemptionBenefitQuota).
 		Group("used_user_id").
 		Scan(&redemptionAggregates).Error; err != nil {
 		return nil, 0, err
@@ -745,6 +747,7 @@ func ListAllAffiliateInvitations(keyword string, pageInfo *common.PageInfo) ([]*
 			common.RedemptionCodeStatusUsed,
 			inviteeIds,
 		).
+		Where("(benefit_type = ? OR benefit_type = '')", RedemptionBenefitQuota).
 		Group("used_user_id").
 		Scan(&redemptionAggregates).Error; err != nil {
 		return nil, 0, err
@@ -795,7 +798,8 @@ func listAffiliateRedemptions(
 				"ON commission.redemption_id = redemptions.id "+
 				"AND commission.inviter_user_id = invitee_user.inviter_id",
 		).
-		Where("redemptions.status = ?", common.RedemptionCodeStatusUsed)
+		Where("redemptions.status = ?", common.RedemptionCodeStatusUsed).
+		Where("(redemptions.benefit_type = ? OR redemptions.benefit_type = '')", RedemptionBenefitQuota)
 	if inviterUserId > 0 {
 		base = base.Where("invitee_user.inviter_id = ?", inviterUserId)
 	}

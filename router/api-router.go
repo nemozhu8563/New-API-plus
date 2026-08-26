@@ -109,6 +109,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/affiliate/withdrawals", middleware.CriticalRateLimit(), controller.CreateAffiliateWithdrawal)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
+				selfRoute.POST("/redeem", middleware.CriticalRateLimit(), controller.RedeemCode)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
 				selfRoute.POST("/amount", controller.RequestAmount)

@@ -10,6 +10,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   getPublicPlans,
@@ -81,6 +82,12 @@ function PlanCard(props: {
   const quotaLabel = `$${Intl.NumberFormat(undefined).format(
     props.spec.weeklyQuota
   )}`
+  const fourWeekQuota = props.spec.weeklyQuota * 4
+  const priceAmount = Number(props.plan.price_amount || 0)
+  const discount =
+    Number.isFinite(priceAmount) && priceAmount > 0 && fourWeekQuota > 0
+      ? Math.floor((priceAmount / fourWeekQuota) * 100) / 10
+      : null
   const signInHref = `/sign-in?redirect=${encodeURIComponent('/#plans')}`
 
   return (
@@ -106,7 +113,18 @@ function PlanCard(props: {
         </p>
       </div>
 
-      <div className='mt-6 flex items-end gap-1.5 border-b border-white/12 pb-5'>
+      <div className='mt-6 min-h-5'>
+        {discount !== null && discount < 10 && (
+          <Badge
+            variant='warning'
+            className='border-[#ef884c]/40 bg-[#ef884c]/10 text-[#ffb17f]'
+          >
+            {t('{{discount}}/10 price', { discount })}
+          </Badge>
+        )}
+      </div>
+
+      <div className='mt-2 flex items-end gap-1.5 border-b border-white/12 pb-5'>
         <span className='text-4xl font-bold tracking-[-0.04em] text-white'>
           {formatSubscriptionPrice(
             Number(props.plan.price_amount || 0),
@@ -331,7 +349,10 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
         )}
 
         {plansQuery.isSuccess && (
-          <div className='mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+          <div
+            data-slot='landing-plans-grid'
+            className='mt-10 grid grid-cols-1 gap-4 min-[768px]:max-[1180px]:grid-cols-2 min-[1180px]:grid-cols-4'
+          >
             {landingPlans.map((record) => (
               <PlanCard
                 key={record.plan.id}

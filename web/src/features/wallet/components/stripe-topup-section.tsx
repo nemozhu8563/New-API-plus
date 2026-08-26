@@ -173,7 +173,7 @@ export function StripeTopupSection(props: StripeTopupSectionProps) {
           ) : (
             <ShieldCheck className='h-4 w-4' />
           )}
-          {t('Pay securely with Stripe')}
+          {t('Pay')}
         </Button>
       </aside>
     </div>

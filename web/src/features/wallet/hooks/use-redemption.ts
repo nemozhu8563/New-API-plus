@@ -5,11 +5,23 @@ import { toast } from 'sonner'
 import { getSelf } from '@/lib/api'
 import { formatQuota } from '@/lib/format'
 
-import { redeemTopupCode } from '../api'
+import { redeemCode as redeemTypedCode } from '../api'
+import type { RedemptionResult } from '../types'
 
 // ============================================================================
 // Redemption Hook
 // ============================================================================
+
+export function getRedemptionSuccessMessage(result: RedemptionResult): string {
+  if (result.type === 'subscription') {
+    return i18next.t('Subscription activated: {{plan}}', {
+      plan: result.plan_title,
+    })
+  }
+  return i18next.t('Redemption successful! Added: {{quota}}', {
+    quota: formatQuota(result.quota),
+  })
+}
 
 export function useRedemption() {
   const [redeeming, setRedeeming] = useState(false)
@@ -22,22 +34,17 @@ export function useRedemption() {
 
     try {
       setRedeeming(true)
-      const response = await redeemTopupCode({ key: code })
+      const response = await redeemTypedCode({ key: code })
 
       if (response.success && response.data) {
-        const quotaAdded = response.data
-        toast.success(
-          i18next.t('Redemption successful! Added: {{quota}}', {
-            quota: formatQuota(quotaAdded),
-          })
-        )
+        toast.success(getRedemptionSuccessMessage(response.data))
         await getSelf()
         return true
       }
 
       toast.error(response.message || i18next.t('Redemption failed'))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Redemption failed'))
       return false
     } finally {

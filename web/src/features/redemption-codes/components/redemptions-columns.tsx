@@ -1,4 +1,4 @@
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { MaskedValueDisplay } from '@/components/masked-value-display'
@@ -14,7 +14,7 @@ import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
 import { REDEMPTION_FILTER_EXPIRED, REDEMPTION_STATUSES } from '../constants'
 import { isRedemptionExpired, isTimestampExpired } from '../lib'
-import { type Redemption } from '../types'
+import type { Redemption } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
 export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
@@ -137,13 +137,15 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
       size: 320,
     },
     {
-      accessorKey: 'quota',
-      header: t('Quota'),
+      accessorKey: 'benefit_type',
+      header: t('Type'),
       cell: ({ row }) => {
-        const quota = row.getValue('quota') as number
+        const benefitType = row.original.benefit_type || 'quota'
         return (
           <StatusBadge
-            label={formatQuota(quota)}
+            label={
+              benefitType === 'subscription' ? t('Subscription') : t('Quota')
+            }
             variant='neutral'
             copyable={false}
             className='-ml-1.5'
@@ -151,6 +153,32 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
         )
       },
       size: 120,
+    },
+    {
+      id: 'benefit',
+      header: t('Benefit'),
+      cell: ({ row }) => {
+        const redemption = row.original
+        if (redemption.benefit_type === 'subscription') {
+          return (
+            <span className='text-sm'>
+              {redemption.subscription_plan_title ||
+                t('Plan #{{id}}', {
+                  id: redemption.subscription_plan_id,
+                })}
+            </span>
+          )
+        }
+        return (
+          <StatusBadge
+            label={formatQuota(redemption.quota)}
+            variant='neutral'
+            copyable={false}
+            className='-ml-1.5'
+          />
+        )
+      },
+      size: 180,
     },
     {
       accessorKey: 'created_time',
@@ -215,7 +243,7 @@ export function useRedemptionsColumns(): ColumnDef<Redemption>[] {
                   className='cursor-help'
                 />
               }
-            ></TooltipTrigger>
+            />
             <TooltipContent>
               <div className='space-y-1 text-xs'>
                 <div>

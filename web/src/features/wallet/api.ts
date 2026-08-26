@@ -8,6 +8,7 @@ import type {
   ApiResponse,
   TopupInfoResponse,
   RedemptionResponse,
+  LegacyRedemptionResponse,
   AmountResponse,
   PaymentResponse,
   StripePaymentResponse,
@@ -47,8 +48,18 @@ export async function getTopupInfo(): Promise<TopupInfoResponse> {
  */
 export async function redeemTopupCode(
   request: RedemptionRequest
-): Promise<RedemptionResponse> {
+): Promise<LegacyRedemptionResponse> {
   const res = await api.post('/api/user/topup', request)
+  return res.data
+}
+
+/**
+ * Redeem either a quota or subscription code and return a discriminated result.
+ */
+export async function redeemCode(
+  request: RedemptionRequest
+): Promise<RedemptionResponse> {
+  const res = await api.post('/api/user/redeem', request)
   return res.data
 }
 
