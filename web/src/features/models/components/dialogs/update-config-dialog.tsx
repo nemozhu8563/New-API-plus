@@ -320,7 +320,7 @@ export function UpdateConfigDialog({
                   <FormItem>
                     <FormLabel>{t('Command')}</FormLabel>
                     <FormControl>
-                      <Input placeholder='Optional' {...field} />
+                      <Input placeholder={t('Optional')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

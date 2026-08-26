@@ -68,6 +68,97 @@ after(() => {
 })
 
 describe('subscription plans quota copy', () => {
+  test('translates configured plan names and subtitles with the active locale', async () => {
+    const localizedI18n = createInstance()
+    await localizedI18n.use(initReactI18next).init({
+      lng: 'zh',
+      resources: {
+        zh: {
+          translation: {
+            Standard: '标准',
+            'For focused individual development': '适合专注开发的个人',
+          },
+        },
+      },
+    })
+
+    let completedRequests = 0
+    let resolveRequests: (() => void) | undefined
+    const requestsComplete = new Promise<void>((resolve) => {
+      resolveRequests = resolve
+    })
+
+    api.defaults.adapter = async (config) => {
+      completedRequests += 1
+      if (completedRequests === 2) resolveRequests?.()
+
+      const data =
+        config.url === '/api/subscription/plans'
+          ? {
+              success: true,
+              data: [
+                {
+                  plan: {
+                    id: 1,
+                    title: 'Standard',
+                    subtitle: 'For focused individual development',
+                    price_amount: 399,
+                    currency: 'CNY',
+                    duration_unit: 'day',
+                    duration_value: 28,
+                    quota_reset_period: 'custom',
+                    quota_reset_custom_seconds: 604_800,
+                    max_purchase_per_user: 0,
+                    total_amount: 55_000_000,
+                  },
+                },
+              ],
+            }
+          : {
+              success: true,
+              data: {
+                billing_preference: 'subscription_first',
+                subscriptions: [],
+                all_subscriptions: [],
+                stripe_subscriptions: [],
+                stripe_invoices: [],
+                billing_debt: 0,
+              },
+            }
+
+      return {
+        data,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      }
+    }
+
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={localizedI18n}>
+          <SubscriptionPlansCard topupInfo={null} />
+        </I18nextProvider>
+      )
+    })
+    await act(async () => {
+      await requestsComplete
+      await Promise.resolve()
+    })
+
+    const text = container.textContent || ''
+    assert.match(text, /标准/)
+    assert.match(text, /适合专注开发的个人/)
+    assert.doesNotMatch(text, /For focused individual development/)
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
   test('describes resettable subscription allowance as weekly quota', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined

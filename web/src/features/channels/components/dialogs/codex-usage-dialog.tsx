@@ -308,11 +308,11 @@ const PLAN_TYPE_BADGE: Record<
   string,
   { label: string; variant: StatusBadgeProps['variant'] }
 > = {
-  enterprise: { label: 'Enterprise', variant: 'success' },
-  team: { label: 'Team', variant: 'info' },
-  pro: { label: 'Pro', variant: 'blue' },
-  plus: { label: 'Plus', variant: 'purple' },
-  free: { label: 'Free', variant: 'warning' },
+  enterprise: { label: 'Enterprise plan', variant: 'success' },
+  team: { label: 'Team plan', variant: 'info' },
+  pro: { label: 'Pro plan', variant: 'blue' },
+  plus: { label: 'Plus plan', variant: 'purple' },
+  free: { label: 'Free plan', variant: 'warning' },
 }
 
 const RESET_CREDIT_STATUS_BADGE: Record<
@@ -329,12 +329,14 @@ function getAccountTypeBadge(
   t: (key: string) => string
 ): { label: string; variant: StatusBadgeProps['variant'] } {
   const normalized = normalizePlanType(value)
-  return (
-    PLAN_TYPE_BADGE[normalized] ?? {
-      label: String(value || '') || t('Unknown'),
-      variant: 'neutral' as const,
-    }
-  )
+  const badge = PLAN_TYPE_BADGE[normalized]
+  if (badge) {
+    return { ...badge, label: t(badge.label) }
+  }
+  return {
+    label: String(value || '') || t('Unknown'),
+    variant: 'neutral' as const,
+  }
 }
 
 function getResetCreditStatusBadge(

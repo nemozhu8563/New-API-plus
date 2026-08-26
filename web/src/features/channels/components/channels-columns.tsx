@@ -896,7 +896,7 @@ export function useChannelsColumns(
             if (hasEnabled) {
               return (
                 <StatusBadge
-                  label={`Active (${childrenCount})`}
+                  label={t('Active ({{count}})', { count: childrenCount })}
                   variant='success'
                   size='sm'
                   copyable={false}
@@ -906,7 +906,7 @@ export function useChannelsColumns(
             } else {
               return (
                 <StatusBadge
-                  label={`Inactive (${childrenCount})`}
+                  label={t('Inactive ({{count}})', { count: childrenCount })}
                   variant='neutral'
                   size='sm'
                   copyable={false}

@@ -45,15 +45,16 @@ export type ToolHeaderProps = {
   className?: string
 }
 
-const getStatusBadge = (status: ExtendedToolState) => {
+const ToolStatusBadge = ({ status }: { status: ExtendedToolState }) => {
+  const { t } = useTranslation()
   const labels: Record<ExtendedToolState, string> = {
-    'input-streaming': 'Pending',
-    'input-available': 'Running',
-    'approval-requested': 'Awaiting Approval',
-    'approval-responded': 'Responded',
-    'output-available': 'Completed',
-    'output-error': 'Error',
-    'output-denied': 'Denied',
+    'input-streaming': t('Pending'),
+    'input-available': t('Running'),
+    'approval-requested': t('Awaiting Approval'),
+    'approval-responded': t('Responded'),
+    'output-available': t('Completed'),
+    'output-error': t('Error'),
+    'output-denied': t('Denied'),
   }
 
   const icons: Record<ExtendedToolState, ReactNode> = {
@@ -80,24 +81,26 @@ export const ToolHeader = ({
   type,
   state,
   ...props
-}: ToolHeaderProps) => (
-  <CollapsibleTrigger
-    className={cn(
-      'group flex w-full items-center justify-between gap-4 p-3',
-      className
-    )}
-    {...props}
-  >
-    <div className='flex items-center gap-2'>
-      <WrenchIcon className='text-muted-foreground size-4' />
-      <span className='text-sm font-medium'>
-        {title ?? type.split('-').slice(1).join('-')}
-      </span>
-      {getStatusBadge(state)}
-    </div>
-    <ChevronDownIcon className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
-  </CollapsibleTrigger>
-)
+}: ToolHeaderProps) => {
+  return (
+    <CollapsibleTrigger
+      className={cn(
+        'group flex w-full items-center justify-between gap-4 p-3',
+        className
+      )}
+      {...props}
+    >
+      <div className='flex items-center gap-2'>
+        <WrenchIcon className='text-muted-foreground size-4' />
+        <span className='text-sm font-medium'>
+          {title ?? type.split('-').slice(1).join('-')}
+        </span>
+        <ToolStatusBadge status={state} />
+      </div>
+      <ChevronDownIcon className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
+    </CollapsibleTrigger>
+  )
+}
 
 export type ToolContentProps = ComponentProps<typeof CollapsibleContent>
 
@@ -140,6 +143,8 @@ export const ToolOutput = ({
   errorText,
   ...props
 }: ToolOutputProps) => {
+  const { t } = useTranslation()
+
   if (!(output || errorText)) {
     return null
   }
@@ -157,7 +162,7 @@ export const ToolOutput = ({
   return (
     <div className={cn('space-y-2 p-4', className)} {...props}>
       <h4 className='text-muted-foreground text-xs font-medium tracking-wide uppercase'>
-        {errorText ? 'Error' : 'Result'}
+        {errorText ? t('Error') : t('Result')}
       </h4>
       <div
         className={cn(

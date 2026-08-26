@@ -476,11 +476,11 @@ export function SubscriptionPlansCard({
                     <div className='mb-4 flex items-start justify-between gap-3'>
                       <div className='min-w-0'>
                         <h4 className='truncate text-lg leading-tight font-semibold'>
-                          {plan.title || t('Subscription Plans')}
+                          {t(plan.title || 'Subscription Plans')}
                         </h4>
                         {plan.subtitle && (
                           <p className='text-muted-foreground mt-1 line-clamp-2 min-h-10 text-sm leading-5'>
-                            {plan.subtitle}
+                            {t(plan.subtitle)}
                           </p>
                         )}
                       </div>

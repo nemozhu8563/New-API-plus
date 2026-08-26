@@ -427,7 +427,10 @@ export function ChannelsTable() {
           {
             columnId: 'status',
             title: t('Status'),
-            options: [...CHANNEL_STATUS_OPTIONS],
+            options: CHANNEL_STATUS_OPTIONS.map((option) => ({
+              ...option,
+              label: t(option.label),
+            })),
             singleSelect: true,
           },
           {

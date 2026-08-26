@@ -1,93 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { isLikelyUntranslated } from './i18n/untranslated-detection.mjs'
+
 // This script is executed from the web/ package root (see package.json script).
 const LOCALES_DIR = path.resolve('src/i18n/locales')
 const FALLBACK_COMPARE_LOCALE = 'en' // used for "still English" detection only
-const BRAND_AND_LITERAL_KEYS = new Set([
-  'AI Proxy',
-  'AIGC2D',
-  'Alipay',
-  'Anthropic',
-  'API URL',
-  'API2GPT',
-  'AccessKey / SecretAccessKey',
-  'AZURE_OPENAI_ENDPOINT *',
-  'Baidu V2',
-  'CC Switch',
-  'ChatGPT',
-  'ChatGPT Subscription (Codex)',
-  'Claude',
-  'Client ID',
-  'Client Secret',
-  'Cloudflare',
-  'Cohere',
-  'DeepSeek',
-  'Discord',
-  'DoubaoVideo',
-  'FastGPT',
-  'Gemini',
-  'Gemini Image 4K',
-  'GitHub',
-  'Jimeng',
-  'JustSong',
-  'LingYiWanWu',
-  'LinuxDO',
-  'MjProxy',
-  'MjProxyPlus',
-  'MiniMax',
-  'Mistral',
-  'MokaAI',
-  'Moonshot',
-  'New API',
-  'New API &lt;noreply@example.com&gt;',
-  'NewAPI',
-  'OAuth Client Secret',
-  'OhMyGPT',
-  'Ollama',
-  'One API',
-  'OpenAI',
-  'OpenAIMax',
-  'OpenRouter',
-  'Pancake',
-  'Passkey',
-  'Perplexity',
-  'QuantumNous',
-  'Quota:',
-  'Replicate',
-  'SiliconFlow',
-  'Stripe',
-  'Submodel',
-  'SunoAPI',
-  'Telegram',
-  'Tencent',
-  'TTFT P50',
-  'TTFT P95',
-  'TTFT P99',
-  'Uptime Kuma',
-  'Uptime Kuma URL',
-  'Vertex AI',
-  'VolcEngine',
-  'Waffo Pancake Dashboard',
-  'Waffo Pancake MoR',
-  'WeChat',
-  'WeChat Pay',
-  'Webhook URL',
-  'Webhook URL:',
-  'Well-Known URL',
-  'Worker URL',
-  'Xinference',
-  'Xunfei',
-  'Zhipu V4',
-  '"default": "us-central1", "claude-3-5-sonnet-20240620": "europe-west1"',
-  'edit_this',
-  'footer.columns.related.links.midjourney',
-  'footer.columns.related.links.newApiKeyTool',
-  'my-status',
-  'new-api-key-tool',
-  'price_xxx',
-  'whsec_xxx',
-])
 
 function isPlainObject(v) {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -166,45 +84,6 @@ function reorderLikeBase(
 
   // For primitives: prefer target if defined, else base.
   return target === undefined ? (fill ?? base) : target
-}
-
-function isLikelyUntranslated({ locale, baseValue, value }) {
-  if (typeof value !== 'string' || typeof baseValue !== 'string') return false
-  if (value !== baseValue) return false
-
-  // Skip short tokens / acronyms / ids
-  const s = baseValue.trim()
-  if (BRAND_AND_LITERAL_KEYS.has(s)) return false
-  if (
-    /^https?:\/\//.test(s) ||
-    /^\/[\w/-]+/.test(s) ||
-    /^[\w.-]+@[\w.-]+$/.test(s) ||
-    /^smtp\./i.test(s) ||
-    /^socks5:/i.test(s) ||
-    /^org-/.test(s) ||
-    /^gpt-/i.test(s) ||
-    /^checkout\./.test(s) ||
-    /^footer\./.test(s) ||
-    /^[A-Z0-9_ *./:-]+$/.test(s) ||
-    s.startsWith('{') ||
-    s.startsWith('[') ||
-    s.includes('&#10;')
-  ) {
-    return false
-  }
-  if (s.length < 6) return false
-  if (!/[A-Za-z]{3,}/.test(s)) return false
-
-  // For locales with non-latin scripts, equality with EN is a strong signal.
-  if (locale === 'ja' || locale === 'zh') return true
-  if (locale === 'ru') return true
-
-  // For fr/vi: still useful but noisier; keep it conservative.
-  if (locale === 'fr' || locale === 'vi') {
-    return /\b(the|and|or|to|with|please)\b/i.test(s)
-  }
-
-  return false
 }
 
 async function main() {
