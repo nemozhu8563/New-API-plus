@@ -1,4 +1,18 @@
 import type { PerfModelSummary } from '@/features/performance-metrics/types'
+import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
+
+export function getRemainingSubscriptionQuota(
+  subscriptions: UserSubscriptionRecord[]
+): number {
+  return subscriptions.reduce((remainingQuota, record) => {
+    const total = Number(record.subscription.amount_total)
+    if (!Number.isFinite(total) || total <= 0) return remainingQuota
+
+    const used = Number(record.subscription.amount_used)
+    const normalizedUsed = Number.isFinite(used) ? Math.max(0, used) : 0
+    return remainingQuota + Math.max(0, total - normalizedUsed)
+  }, 0)
+}
 
 export function getWeightedSuccessRate(
   models: PerfModelSummary[]

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
   CircleAlert,
+  Crown,
   Flame,
   WalletCards,
   type LucideIcon,
@@ -12,8 +13,12 @@ import { useTranslation } from 'react-i18next'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
-import { getErrorRate } from '@/features/dashboard/lib/overview-metrics'
+import {
+  getErrorRate,
+  getRemainingSubscriptionQuota,
+} from '@/features/dashboard/lib/overview-metrics'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
+import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -59,6 +64,14 @@ export function SummaryCards() {
     retry: false,
   })
 
+  const subscriptionQuery = useQuery({
+    queryKey: ['dashboard', 'overview', 'subscription-quota', user?.id],
+    queryFn: getSelfSubscriptionFull,
+    enabled: Boolean(user),
+    staleTime: 60 * 1000,
+    retry: false,
+  })
+
   const recentUsage = useMemo(
     () =>
       (usageQuery.data?.data ?? []).reduce(
@@ -68,6 +81,9 @@ export function SummaryCards() {
     [usageQuery.data?.data]
   )
   const errorRate = getErrorRate(performanceQuery.data?.data.models ?? [])
+  const remainingSubscriptionQuota = getRemainingSubscriptionQuota(
+    subscriptionQuery.data?.data?.subscriptions ?? []
+  )
   const errorRateDisplay = errorRate === null ? '—' : `${errorRate.toFixed(2)}%`
   let errorRateClass: string | undefined
   if (errorRate !== null && errorRate >= 10) {
@@ -96,6 +112,17 @@ export function SummaryCards() {
       loading: usageQuery.isLoading,
     },
     {
+      key: 'subscription',
+      title: t('Subscription'),
+      value: subscriptionQuery.isError
+        ? '—'
+        : formatQuota(remainingSubscriptionQuota),
+      description: t('Remaining quota'),
+      icon: Crown,
+      tone: 'primary',
+      loading: !user || subscriptionQuery.isLoading,
+    },
+    {
       key: 'requests',
       title: t('Request Count'),
       value: formatNumber(Number(user?.request_count ?? 0)),
@@ -119,12 +146,17 @@ export function SummaryCards() {
   return (
     <section
       aria-label={t('Account and traffic summary')}
-      className='bg-border grid gap-px overflow-hidden rounded-2xl border sm:grid-cols-2 xl:grid-cols-4'
+      className='bg-border grid gap-px overflow-hidden rounded-2xl border sm:grid-cols-2 xl:grid-cols-5'
     >
       {items.map((item) => {
         const Icon = item.icon
         return (
-          <div key={item.key} className='bg-card min-w-0 p-4 sm:p-5'>
+          <div
+            key={item.key}
+            role='group'
+            aria-label={item.title}
+            className='bg-card min-w-0 p-4 sm:p-5'
+          >
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
                 <p className='text-muted-foreground text-xs font-medium'>
