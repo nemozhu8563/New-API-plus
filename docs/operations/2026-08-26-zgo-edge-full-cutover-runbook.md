@@ -1,0 +1,428 @@
+# Zgo 边缘全量切换与 Caddy 升级执行手册（2026-08-26）
+
+> 状态：**计划已编写，尚未执行**。本文件不代表服务器、DNS、Cloudflare、Caddy、sing-box 或生产配置已经发生变化。
+>
+> 计划窗口：2026-08-26 晚间（Asia/Shanghai），实际开始时间以执行前明确的“开始”指令为准。
+>
+> 变更策略：不做业务流量灰度。完成只读盘点、备份和非正式 hostname 预检后，`api.tryvalo.com` 与 `new.tryvalo.com` 的灰云 DNS 记录连续全量切到 Zgo。
+
+## 1. 目标与边界
+
+本次在同一个维护窗口完成两类变更，但必须按检查点串行执行：
+
+1. GreenCloud Caddy 从现场版本升级到固定目标版本 `v2.11.4`。
+2. Zgo 释放 `80/443` 给 Caddy，作为 `api.tryvalo.com` 与 `new.tryvalo.com` 的无状态边缘入口。
+3. Zgo 通过固定 IP `173.249.203.66:443` 回源 GreenCloud，TLS SNI 和 HTTP Host 使用 `origin-api.tryvalo.com`，保持证书校验开启。
+4. Cloudflare 只提供 DNS-only（灰云）解析；API 业务流量不经过 Cloudflare HTTP 代理。
+
+目标拓扑：
+
+```text
+客户端
+  -> Cloudflare 灰云 DNS
+  -> Zgo Caddy :443
+  -> HTTPS 173.249.203.66:443
+     SNI/Host = origin-api.tryvalo.com
+  -> GreenCloud Caddy
+  -> new-api 127.0.0.1:3000
+  -> PostgreSQL / Redis / 私有 CPA
+```
+
+本次明确不做：
+
+- 不迁移或重建 `new-api`、PostgreSQL、Redis、CPA。
+- 不更新 `new-api` 镜像、数据库 schema、渠道配置、重试次数或熔断参数。
+- 不修改根域、`www`、MX、NS、Tunnel、CPA/test hostname。
+- 不把 `3000`、`3001`、`5432`、`6379`、`8317` 暴露公网。
+- 不复制数据库、Redis 或业务写入源，因此不存在数据迁移或双写步骤。
+- 不使用公网 IP 证书，不关闭 TLS 证书校验。
+
+## 2. 固定版本和角色
+
+| 项目 | 计划值 |
+| --- | --- |
+| GreenCloud | `nemo-Phoenix` / `173.249.203.66` |
+| GreenCloud Caddy 当前已知版本 | `2.6.2`；执行时重新读取，不以本文代替现场值 |
+| GreenCloud Caddy 目标版本 | `2.11.4` |
+| Zgo Caddy 目标版本 | `2.11.4` |
+| 正式入口 | `api.tryvalo.com`、`new.tryvalo.com` -> Zgo，`proxied=false` |
+| 回源身份 | `origin-api.tryvalo.com` -> `173.249.203.66`，`proxied=false` |
+| 预检入口 | `edge-api.tryvalo.com` -> Zgo，`proxied=false`，只用于运维预检，不承接灰度业务 |
+| Zgo Caddy | `80/tcp`、`443/tcp` |
+| sing-box VLESS Reality | 计划迁至 `10443/tcp` |
+| Hysteria2 | 保持/确认 `8443/udp`，以现场配置为准 |
+| DNS TTL | 目标 `300s`；若当前更高，必须先等待一个原 TTL，或明确接受更长回滚尾部 |
+
+`v2.11.4` 是计划编写日官方最新稳定版本。执行时必须再次核对官方 stable release 和 APT 候选版本；如果版本已变化，不能自动追随最新版本，仍使用 `2.11.4`，除非单独修改并记录本计划。
+
+## 3. 维护窗口和检查点
+
+建议预留 90 分钟操作窗口，保留 24 小时 DNS/配置回滚材料：
+
+| 时间 | 操作 | 检查点 |
+| --- | --- | --- |
+| T-60 ~ T-45 | 两台主机、DNS、端口、证书、版本只读盘点 | G0：实际状态与计划相符 |
+| T-45 ~ T-30 | 备份 GreenCloud Caddy；准备目标/回退二进制或包 | G1：旧版本可以恢复 |
+| T-30 ~ T-20 | 升级 GreenCloud Caddy 到 `2.11.4` | G2：原直连 API 完整可用 |
+| T-20 ~ T-10 | 迁移 sing-box 端口；安装和配置 Zgo Caddy | G3：代理与 VPN 两条路径都可用 |
+| T-10 ~ T0 | 添加 origin/edge hostname；预签正式证书；验证 Zgo -> GreenCloud | G4：全链路预检通过 |
+| T0 | `api`、`new` 两条灰云记录连续切向 Zgo | 全量切换 |
+| T0 ~ T+15 | TLS、GET、鉴权、非流式、SSE、日志和账单验收 | G5：正式入口通过 |
+| T+15 ~ T+60 | 观察错误率、断流、资源和证书 | G6：满足旧 TTL 条件后才允许关闭 GreenCloud 公网 443 |
+| T+24h | 复核流量和稳定性，结束快速回滚窗口 | G7：允许清理临时材料 |
+
+这是一次全量切换。`edge-api` 仅用于操作者在切流前验证配置和链路，不做用户流量比例灰度。
+
+## 4. G0：执行前只读盘点
+
+建立 cutover ID，例如：
+
+```text
+tryvalo-zgo-cutover-20260826T<HHMMSS>+0800
+```
+
+在 GreenCloud 记录但不输出 secret：
+
+```bash
+date -Is
+hostnamectl --static
+uptime
+free -h
+df -h /
+caddy version
+dpkg-query -W -f='${Package} ${Version}\n' caddy 2>/dev/null || true
+apt-cache policy caddy
+systemctl is-active caddy cliproxyapi cloudflared
+systemctl cat caddy
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+ss -lntp | grep -E ':(80|443|3000|3001|5432|6379|8317)\b' || true
+ufw status numbered
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/status
+```
+
+在 Zgo 记录：
+
+```bash
+date -Is
+hostnamectl --static
+uptime
+free -h
+df -h /
+uname -m
+systemctl status sing-box --no-pager
+ss -lntup | grep -E ':(22|80|443|8443|10443)\b' || true
+ufw status numbered
+```
+
+同时记录：
+
+- Zgo 公网入口 IP、Zgo 到 GreenCloud 时实际使用的固定出口 IP。
+- Cloudflare 中 `api`、`new` 的记录 ID、A/AAAA 值、TTL、灰云状态；导出或截图留档。
+- `origin-api`、`edge-api` 是否已存在；禁止覆盖用途不明的既有记录。
+- `dig @1.1.1.1`、`dig @8.8.8.8` 与权威 DNS 的当前 A/AAAA 结果。
+- 两个正式域名当前证书主体、签发者和到期时间。
+- 当前 5 分钟的请求数、5xx、SSE 请求和异常断开基线。
+
+停止条件：现场版本、安装来源、Zgo IP、DNS 权限、端口占用或 Caddy storage 路径任一无法确认，不进入升级或切流。
+
+不要使用 `ops/greencloud/scripts/host-preflight.sh` 作为本次通过条件。该脚本针对旧的宿主机 PostgreSQL/预部署阶段，与当前 Docker 生产基线冲突。
+
+## 5. G1：备份与 Caddy 回退材料
+
+GreenCloud 上创建仅 root 可读的本次目录，具体路径包含 cutover ID：
+
+```text
+/root/tryvalo-cutovers/<cutover-id>/greencloud-caddy/
+```
+
+必须保存：
+
+- `caddy version`、`dpkg-query`、`apt-cache policy caddy` 输出。
+- 当前 `/usr/bin/caddy` 二进制及 SHA-256。
+- `/etc/caddy/`、systemd unit/drop-in、服务环境变量文件的 root-only 备份。
+- 从 `systemctl cat caddy` 和运行用户确认后的实际 Caddy storage；不要凭文档假定路径。
+- 当前 Caddyfile 的 `caddy validate` 输出。
+- 当前包若仍能从仓库下载，保存精确旧版本 `.deb`；否则当前二进制备份是强制回退材料。
+- 官方 APT 仓库下载的目标 `.deb`、包版本和 SHA-256。
+
+禁止将证书私钥、环境变量或 storage 内容打印到终端、聊天、Git 或普通日志。
+
+升级前从目标 `.deb` 解包出新二进制，使用新二进制验证当前 Caddyfile。只有目标二进制验证成功，才允许安装：
+
+```bash
+<target-caddy-binary> validate --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+APT 中必须记录完整 Debian 包版本，不能把 Caddy 的上游版本 `2.11.4` 直接猜成安装参数。执行时先用 `apt-cache madison caddy` 找到且只找到一个上游版本为 `2.11.4` 的完整版本字符串，再依次执行：
+
+```text
+apt-get download caddy=<完整 Debian 包版本>
+dpkg-deb -x <目标 deb 文件> <mktemp 创建的临时目录>
+<临时目录>/usr/bin/caddy version
+<临时目录>/usr/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+apt-get install caddy=<同一个完整 Debian 包版本>
+```
+
+旧 `.deb` 的文件名、版本和 SHA-256 必须在安装前写入执行记录。若只能使用备份二进制紧急恢复，需同时记录“dpkg 数据库仍显示新版本”的漂移，并在服务恢复后补做旧包重装；不能把复制旧二进制当成已完成的包级回退。
+
+## 6. G2：先升级 GreenCloud Caddy
+
+顺序不能改变：
+
+1. 确认 G1 回退材料完整且有 SHA-256。
+2. 使用官方 stable APT 包安装执行时解析出的精确 `2.11.4` 包版本，不运行实验性的 `caddy upgrade`。
+3. 核对 `caddy version` 必须为 `v2.11.4`。
+4. 再次执行 `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`。
+5. 确认 `systemctl is-active caddy`、`journalctl -u caddy` 无启动/证书错误。
+6. 验证当前尚未切流的两个正式域名仍然返回 HTTP 200。
+7. 完成一个经批准的非流式请求和一条完整 SSE 请求，核对请求 ID 与消费日志。
+
+二进制升级需要新进程加载，不能把配置 `caddy reload` 的无中断语义误认为二进制升级也绝对无中断。窗口内接受短暂的服务重启，但持续不可用超过 60 秒立即恢复旧二进制/包、旧配置和旧 storage，并验证直连入口。
+
+升级通过后才进入 Zgo 变更。GreenCloud Caddy 升级失败时，DNS 尚未变化，不得继续切流。
+
+## 7. G3：迁移 sing-box 并安装 Zgo Caddy
+
+1. 备份 sing-box 配置、systemd unit、当前监听和 UFW 规则。
+2. 先放行并配置 `10443/tcp`，验证 VLESS Reality 新端口可用。
+3. 更新受控客户端配置并完成至少一次真实连接验证。
+4. 再释放 sing-box 的 `443/tcp`；确认旧进程没有继续占用 `80/443`。
+5. 保持 Hysteria2 UDP 端口不变；若现场不是 `8443/udp`，记录实际值，不顺手迁移。
+6. 从官方 stable APT 仓库安装固定版本 Caddy `2.11.4`，使用 systemd 原生运行，不安装完整 Docker 业务栈。
+7. 为 Caddy access log 配置轮转和磁盘上限；不得记录 Authorization、Cookie、请求体或敏感查询参数。
+
+Zgo 资源通过线：
+
+- Caddy 和 sing-box 均为 active，10 分钟内无重启。
+- `available` 内存至少 `200MiB`，无 OOM、持续 swap storm 或磁盘告警。
+- 只有预期的 `80/443`、sing-box/Hysteria2、管理端口监听公网。
+
+任一不通过时停止；DNS 保持 GreenCloud，不进入正式切换。
+
+## 8. G4：配置 origin 与边缘回源
+
+### 8.1 GreenCloud origin
+
+1. 创建/确认 `origin-api.tryvalo.com` 灰云 A 记录指向 `173.249.203.66`。
+2. GreenCloud Caddy 增加独立 `origin-api.tryvalo.com` 站点，复用当前 `new_api_proxy`，仍只反代 `127.0.0.1:3000`。
+3. 因后续会把 GreenCloud `443/tcp` 限制为仅 Zgo 可达，`origin-api` 的 ACME issuer 必须显式设置 `disable_tlsalpn_challenge`，保留 HTTP-01；不能只假设 Caddy 会自动选中 HTTP-01。
+4. 在 GreenCloud Caddy 的全局 `servers` 中只信任现场确认的 Zgo 固定出口 IP/CIDR，并启用 `trusted_proxies_strict`。禁止填写 Zgo 入口 IP、任意公网段或 `private_ranges` 作为替代。
+5. GreenCloud 转给 `new-api` 时把 `X-Forwarded-For` 重写为 Caddy 已验证的 `{client_ip}`，不要把客户端提供的原始转发链直接传给应用。这样应用继续只需信任同机 Caddy/现有私网 hop，不必在本窗口重启容器扩大 `TRUSTED_PROXIES`。
+6. 使用 `caddy validate` 后执行平滑 `caddy reload`，不要为普通配置变更 stop/start。
+7. 等待普通域名证书签发，验证证书链、hostname，并确认实际使用的是 HTTP-01。
+8. GreenCloud `80/tcp` 保持公网可达，供 `origin-api` 自动续期；`443/tcp` 在 DNS 收敛前仍保持原公网规则。
+
+执行前只读确认容器中的 `TRUSTED_PROXIES`。若现场值为 `none`，或 Caddy 到容器的实际 peer 不在其信任范围，真实客户端 IP 无法在“不重启 new-api”的边界内恢复，此时停止切流并单独制定应用环境变更，不能带病上线。
+
+### 8.2 Zgo edge
+
+Zgo Caddy 的最终配置必须满足：
+
+- `api.tryvalo.com`、`new.tryvalo.com`、`edge-api.tryvalo.com` 使用同一反代片段。
+- 上游连接地址固定为 `https://173.249.203.66`，不依赖回源 DNS 解析。
+- `tls_server_name origin-api.tryvalo.com`。
+- 上游 HTTP `Host` 显式设为 `origin-api.tryvalo.com`；Caddy `v2.11` 对 HTTPS upstream 会自动改写 Host 为 upstream host，而这里 upstream 是 IP，不能依赖默认值。原始 hostname 继续由默认的 `X-Forwarded-Host` 传递。
+- 证书校验保持开启；禁止 `tls_insecure_skip_verify`。
+- 请求体上限保持 `100MB`。
+- Zgo 外层读写超时不得短于 GreenCloud 当前 `600s`，计划值为 `660s`；连接超时 `30s`。
+- 不配置 `lb_retries`、POST/SSE 透明重试、缓存或响应压缩。
+- 保持当前已验证的 SSE 低延迟配置 `flush_interval -1`；本次不同时改变其取消语义。
+- 覆盖或安全构造转发头，GreenCloud 只把 Zgo 固定出口视为可信上游；从一条已知来源请求验证日志中的客户端 IP 没有全部退化为 Zgo IP。
+
+先为 `edge-api.tryvalo.com` 签发普通域名证书，并通过它验证：
+
+```text
+客户端 -> Zgo Caddy -> 173.249.203.66:443
+TLS SNI/Host origin-api.tryvalo.com -> GreenCloud Caddy -> new-api
+```
+
+至少完成：
+
+- `GET /api/status` 返回 HTTP 200。
+- 无效 token 返回预期鉴权错误，而不是代理/TLS 错误。
+- 一个经批准的有效 token 非流式请求成功。
+- 一条 SSE 请求收到完整结束事件。
+- GreenCloud/new-api 日志可找到对应 `X-Oneapi-Request-Id`，且一条测试请求只有一条消费/结算记录。
+
+`edge-api` 预检不等于正式流量灰度，不能省略正式域名切换后的再次验收。
+
+### 8.3 正式证书预签，不把签发等待留到切流后
+
+不允许在 DNS 已切到 Zgo 后再等待 `api`、`new` 首次签发证书。采用短时 HTTP-01 challenge handoff：
+
+1. 确认 GreenCloud 当前 `api`、`new` 证书不在续期动作中，且证书到期时间已经留档。
+2. GreenCloud 仅对 `/.well-known/acme-challenge/*` 临时反代到 `http://<ZGO_PUBLIC_IP>:80`，其他路径继续进入原 `new_api_proxy`。
+3. Zgo 为 `api.tryvalo.com`、`new.tryvalo.com` 加载最终站点配置，并在这两个站点的 ACME issuer 中显式 `disable_tlsalpn_challenge`，强制使用 HTTP-01。
+4. 此时公网 DNS 仍指向 GreenCloud；CA 的 HTTP-01 请求由 GreenCloud 转发给 Zgo，业务请求不进入 Zgo。
+5. 两张证书签发成功后，用 `curl --resolve` 将两个正式 hostname 直接固定到 Zgo，逐项完成 TLS、GET、鉴权、非流式和 SSE 预检。
+6. 从 GreenCloud 删除临时 challenge handoff，validate + reload，并再次确认原直连业务正常；Zgo 保留已签证书和最终配置等待 T0。
+
+任一正式证书无法预签、`curl --resolve` 仍拿不到正确证书，或 challenge handoff 影响 GreenCloud 现有入口时，立即撤销临时路由并停止发布。不得退回“先切 DNS，再等最多 10 分钟签证书”的做法。
+
+## 9. G5：两条正式域名一次性全量切换
+
+切换前最后检查：
+
+- GreenCloud `api`、`new` 直连仍为 HTTP 200。
+- Zgo `edge-api` 的 GET、鉴权、非流式、SSE 全部通过。
+- 两台 Caddy 都是 `v2.11.4`，配置 validate 通过。
+- `origin-api` 证书有效，Zgo 回源严格校验成功。
+- Zgo 已持有 `api`、`new` 的有效正式证书，两个 hostname 的 `curl --resolve` 全量预检通过。
+- Cloudflare 旧记录值和记录 ID 已留档，回滚写入方式已就绪。
+- 没有遗留 AAAA 指向错误主机。
+
+然后连续修改：
+
+```text
+api.tryvalo.com  A  <GreenCloud-old> -> <ZGO_PUBLIC_IP>  proxied=false
+new.tryvalo.com  A  <GreenCloud-old> -> <ZGO_PUBLIC_IP>  proxied=false
+```
+
+两条记录应在同一操作批次内连续完成，不做百分比路由。禁止同时改动根域、`www`、Tunnel、MX、NS、其他测试或 CPA hostname。
+
+DNS 修改后：
+
+1. 检查权威 DNS、`1.1.1.1`、`8.8.8.8` 均返回 Zgo。
+2. 确认 Zgo 已直接提供 G4 预签的 `api`、`new` 证书；不在此时 reload 未经预检的新配置。
+3. 旧 TTL 尚未过期期间，GreenCloud 公网 `443` 暂不关闭，让缓存旧 IP 的客户端继续完成请求；这属于 DNS 自然收敛，不是人为灰度。
+4. DNS 已解析到 Zgo 后，任一正式域名连续两次 TLS/GET 失败就立即回滚，不再为首次签发额外等待。
+
+## 10. 正式验收与观察
+
+两个域名分别执行，不得只测其中一个：
+
+1. A/AAAA、TLS hostname、证书链和有效期正确。
+2. 公网 GET `/api/status` HTTP 200；不能只用 `HEAD`。
+3. 管理员原账号可以登录，不重置管理员。
+4. CPA channel 解密和 `/v1/models` 授权行为正常。
+5. 一个经批准的有效 token 非流式请求成功。
+6. 一条 SSE 请求完整结束，无代理缓存、提前 600 秒断流或重复输出。
+7. 日志存在应用请求 ID 和上游请求 ID；测试请求只有一次消费/结算。
+8. Zgo、GreenCloud Caddy 日志没有持续 TLS、dial、502/503/504 或 reload 错误。
+9. Zgo 资源保持 G3 门槛，GreenCloud `new-api`、PostgreSQL、Redis、CPA 状态不变。
+10. 从至少两个不同网络/服务器验证，客户端 IP 没有全部被记录为 Zgo。
+
+建议自动观察 60 分钟，按 1 分钟窗口统计：
+
+- 请求总量、2xx/4xx/429/5xx。
+- 502/503/504、TLS 和连接 reset。
+- 流式请求数、完整结束数、客户端取消与异常断开。
+- TTFT P50/P95 和总耗时 P50/P95。
+- Zgo CPU、内存、重启、磁盘、RX/TX。
+
+立即回滚触发条件：
+
+- 任一正式域名 TLS 失败或连续两次 GET `/api/status` 失败。
+- 5 分钟窗口 5xx 超过 `2%`，且不是已确认的单一上游渠道故障。
+- 两条连续 SSE 验收请求提前断开、重复输出或结算异常。
+- 管理登录、CPA 私有通路、授权或计费行为异常。
+- Zgo Caddy/sing-box 反复重启、OOM、磁盘不足或可用内存持续低于 `200MiB`。
+- 客户端来源 IP 全部退化为 Zgo，导致审计或限流语义错误。
+
+本次上线通过条件是“功能与稳定性不退化”。线路是否真正改善，需要次日按同模型、同渠道对比 TTFT、断流和重连数据，不能用单个请求判断。
+
+## 11. G6：收紧 GreenCloud origin
+
+至少等待一个切换前的旧 TTL，并且自切换后已经连续观察满 60 分钟，确认两个正式域名均稳定走 Zgo 后：
+
+1. 先增加 `Zgo 固定出口 IP -> GreenCloud 443/tcp` 的 allow 规则。
+2. 从 Zgo 验证 `origin-api` HTTPS 回源正常。
+3. 再删除 GreenCloud 公网通用 `443/tcp` allow 规则。
+4. 保留公网 `80/tcp` 仅用于已强制为 HTTP-01 的 `origin-api` 自动续期。
+5. 从非 Zgo 服务器确认 GreenCloud `443` 被拒绝，从 Zgo 确认仍为 HTTP 200。
+
+如果以后需要关闭公网 `80`，另开变更切换 DNS-01；不在本窗口临时加入 Cloudflare DNS 插件和新的 API token。
+
+## 12. 回滚计划
+
+### 12.1 DNS/边缘回滚
+
+按以下顺序执行，不能先改 DNS 再恢复 GreenCloud 防火墙：
+
+1. 在 GreenCloud 恢复公网通用 `443/tcp` allow。
+2. 用 `curl --resolve` 从外部确认 GreenCloud 上 `api`、`new` 仍可直接提供有效 TLS 和 HTTP 200。
+3. 将两条 Cloudflare 灰云 A 记录恢复为 `173.249.203.66`，恢复原 TTL 和原有 AAAA 状态。
+4. 用权威 DNS、`1.1.1.1`、`8.8.8.8` 验证解析回退。
+5. 验证 GET、管理员登录、CPA、非流式、SSE 和账单日志。
+6. 保留 Zgo Caddy、日志和配置用于调查，不在故障中删除证据。
+
+应用和数据库始终在 GreenCloud，因此 DNS 回滚不需要停写、恢复数据库或回灌数据。
+
+### 12.2 GreenCloud Caddy 升级回滚
+
+如果故障可定位到 Caddy `2.11.4`：
+
+1. 先让正式流量回到已确认可服务的入口；必要时进入维护状态。
+2. 恢复 G1 保存的旧 Caddy 包或原 `/usr/bin/caddy`，以及旧 `/etc/caddy`、systemd unit/drop-in。
+3. 仅在证书/storage 确实因升级损坏时恢复 storage；正常情况下不覆盖更新后的证书状态。
+4. 使用旧二进制 validate 旧配置，再启动服务。
+5. 验证版本、systemd、80/443、证书、GET、非流式和 SSE。
+
+如果 GreenCloud `2.11.4` 在 DNS 切换前已通过完整直连验收，后续仅 Zgo/DNS 故障时不必自动降级 GreenCloud Caddy。先恢复用户入口，再单独定位版本问题。
+
+### 12.3 sing-box 回滚
+
+如果迁移 `10443/tcp` 后 VPN 路径不可用：
+
+1. 只有在 Zgo Caddy 已停止且 `443` 已释放时，才可将 sing-box 恢复到旧 `443/tcp`。
+2. 恢复备份配置、UFW 和客户端端口，验证 Reality；Hysteria2 不随之改动。
+3. 若正式 API 已切到 Zgo，不能直接抢占 Caddy `443`；应先完成 DNS 回滚再恢复 sing-box。
+
+## 13. 收尾和次日复核
+
+切换后 24 小时内保留：
+
+- Cloudflare 旧/新 DNS 快照和记录 ID。
+- 两台 Caddy 的旧/新版本、配置、二进制/包 SHA-256、systemd 状态和有限日志。
+- sing-box 旧配置与端口回滚材料。
+- cutover 时点前后 60 分钟的状态码、SSE、TTFT、重连和资源统计。
+
+GreenCloud 上 `api`、`new` 的旧证书只能作为其有效期内的直接 DNS 回滚材料；DNS 切到 Zgo 后它们无法继续独立完成域名验证。每日记录剩余有效期，在证书进入续期窗口前另行决定是否建设 DNS-01/ACME challenge handoff 的长期回滚能力，不能把“旧配置还在”误认为“永久可回滚”。
+
+测试结束后吊销本次使用的临时 API Key；不得把它写入本文件、shell history、Caddyfile 或日志。
+
+次日再决定：
+
+- 重连率、SSE 完整率和 TTFT 是否改善。
+- Zgo 500GB 套餐按单向还是双向流量计费，是否足够长期承载。
+- 是否保留 Zgo 边缘、增加第二边缘节点，或回退为 GreenCloud 直连。
+- 是否另开变更处理 `flush_interval -1` 的断开取消语义、渠道权重和短窗熔断；不把这些结论混入本次入口切换。
+
+清理备份、旧二进制、临时证书或日志前需要另行确认。
+
+## 14. 执行记录模板
+
+```text
+Cutover ID:
+开始时间:
+执行人:
+GreenCloud Caddy old -> new:
+Zgo Caddy version:
+GreenCloud Caddy config SHA-256:
+Zgo Caddy config SHA-256:
+sing-box old -> new port:
+DNS old -> new:
+切流时间:
+证书就绪时间:
+GET /api/status:
+非流式请求 ID:
+SSE 请求 ID:
+账单核对:
+5xx / SSE / 重连观察:
+是否触发回滚:
+回滚完成时间:
+24h 复核结论:
+```
+
+## 15. 依据
+
+- [GreenCloud 服务迁移 SOP](greencloud-service-migration-sop.md)
+- [GreenCloud 迁移执行手册](2026-07-11-greencloud-migration-runbook.md)
+- [`ops/greencloud/caddy/Caddyfile`](../../ops/greencloud/caddy/Caddyfile)
+- [Caddy 官方安装说明](https://caddyserver.com/docs/install)
+- [Caddy 官方命令行说明](https://caddyserver.com/docs/command-line)
+- [Caddy 全局 `trusted_proxies` 说明](https://caddyserver.com/docs/caddyfile/options#trusted-proxies)
+- [Caddy `tls` / ACME challenge 说明](https://caddyserver.com/docs/caddyfile/directives/tls)
+- [Caddy `reverse_proxy` 说明](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Caddy v2.11.4 release](https://github.com/caddyserver/caddy/releases/tag/v2.11.4)
