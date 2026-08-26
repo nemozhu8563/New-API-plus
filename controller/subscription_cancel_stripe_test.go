@@ -147,7 +147,7 @@ func TestCancelStripeSubscriptionRejectsMismatchedStripeResponse(t *testing.T) {
 	assert.False(t, order.StripeCancelAtPeriodEnd)
 }
 
-func TestGetSubscriptionSelfIncludesStripeBillingAndDebt(t *testing.T) {
+func TestGetSubscriptionSelfShowsOnlyCurrentStripeSubscriptionsAndKeepsHistoricalInvoices(t *testing.T) {
 	db := setupStripeWebhookTest(t)
 	setting.StripeApiSecret = "rk_test_placeholder"
 	user := &model.User{Username: "self-stripe-billing", AffCode: "self-stripe-billing-aff", BillingDebt: 25}
@@ -169,6 +169,44 @@ func TestGetSubscriptionSelfIncludesStripeBillingAndDebt(t *testing.T) {
 		PeriodStart: 1_000, PeriodEnd: 2_000, CreatedAt: 1_001,
 	}).Error)
 
+	historicalOrders := []struct {
+		tradeNo        string
+		subscriptionID string
+		stripeStatus   string
+		invoiceID      string
+		periodStart    int64
+		periodEnd      int64
+		userSubID      int
+	}{
+		{
+			tradeNo: "self-stripe-unknown-order", subscriptionID: "sub_self_billing_unknown",
+			invoiceID: "in_self_billing_unknown", periodStart: 500, periodEnd: 1_000, userSubID: 98,
+		},
+		{
+			tradeNo: "self-stripe-canceled-order", subscriptionID: "sub_self_billing_canceled",
+			stripeStatus: "canceled", invoiceID: "in_self_billing_canceled",
+			periodStart: 100, periodEnd: 500, userSubID: 97,
+		},
+	}
+	for index, historical := range historicalOrders {
+		historicalOrder := &model.SubscriptionOrder{
+			UserId: user.Id, TradeNo: historical.tradeNo, PlanId: 24 + index, PlanTitle: "Standard",
+			PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe,
+			ProviderCustomerId: "cus_self_billing", ProviderSubscriptionId: &historical.subscriptionID,
+			ProviderLivemode: false, StripeStatus: historical.stripeStatus,
+			StripeCurrentPeriodEnd: historical.periodEnd, Status: common.TopUpStatusSuccess,
+		}
+		require.NoError(t, db.Create(historicalOrder).Error)
+		require.NoError(t, db.Create(&model.StripeSubscriptionSettlement{
+			InvoiceId: historical.invoiceID, SubscriptionOrderId: historicalOrder.Id,
+			UserSubscriptionId: historical.userSubID, ProviderCustomerId: "cus_self_billing",
+			ProviderSubscriptionId: historical.subscriptionID, ProviderProductId: "price_self_billing_history",
+			Quantity: 1, UnitAmountMinor: 2_000, InvoiceTotalMinor: 2_000,
+			AmountPaidMinor: 2_000, Currency: "CNY", PeriodStart: historical.periodStart,
+			PeriodEnd: historical.periodEnd, CreatedAt: historical.periodStart + 1,
+		}).Error)
+	}
+
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/subscription/self", nil)
@@ -189,6 +227,8 @@ func TestGetSubscriptionSelfIncludesStripeBillingAndDebt(t *testing.T) {
 	assert.Equal(t, int64(25), response.Data.BillingDebt)
 	require.Len(t, response.Data.StripeSubscriptions, 1)
 	assert.Equal(t, subscriptionID, response.Data.StripeSubscriptions[0].SubscriptionId)
-	require.Len(t, response.Data.StripeInvoices, 1)
+	require.Len(t, response.Data.StripeInvoices, 3)
 	assert.Equal(t, "in_self_billing", response.Data.StripeInvoices[0].InvoiceId)
+	assert.Equal(t, "in_self_billing_unknown", response.Data.StripeInvoices[1].InvoiceId)
+	assert.Equal(t, "in_self_billing_canceled", response.Data.StripeInvoices[2].InvoiceId)
 }

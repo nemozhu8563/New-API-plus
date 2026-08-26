@@ -515,6 +515,11 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 			continue
 		}
 		orderTitles[order.Id] = order.PlanTitle
+		switch strings.TrimSpace(order.StripeStatus) {
+		case "active", "trialing", "past_due", "unpaid":
+		default:
+			continue
+		}
 		subscriptions = append(subscriptions, StripeSubscriptionSummary{
 			SubscriptionId:    *order.ProviderSubscriptionId,
 			CustomerId:        order.ProviderCustomerId,
