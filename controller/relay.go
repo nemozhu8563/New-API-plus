@@ -162,7 +162,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		contains, words := service.CheckSensitiveText(meta.CombineText)
 		if contains {
 			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
+			newAPIError = newContentPolicyViolationError()
 			return
 		}
 	}
@@ -294,6 +294,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
 	}
+}
+
+func newContentPolicyViolationError() *types.NewAPIError {
+	return types.NewErrorWithStatusCode(
+		errors.New("request blocked by content policy"),
+		types.ErrorCodeContentPolicyViolation,
+		http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(),
+	)
 }
 
 var upgrader = websocket.Upgrader{

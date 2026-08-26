@@ -3,7 +3,7 @@
 This file summarizes direct third-party dependencies used by distributed builds of this project.
 It is an engineering compliance artifact and should be kept with Docker images, standalone binaries, frontend bundles, and Electron installers.
 
-Scope: direct dependencies from `go.mod`, `web/package.json`, and `electron/package.json`.
+Scope: direct dependencies from `go.mod`, `web/package.json`, and `electron/package.json`, plus embedded third-party data.
 Transitive dependencies should be audited before a final external release.
 
 ## Dependency Inventory
@@ -15,6 +15,8 @@ Transitive dependencies should be audited before a final external release.
 | backend     | test        | Go        | `github.com/alicebob/miniredis/v2`                    | `v2.38.0`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/andybalholm/brotli`                       | `v1.1.1`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/anknown/ahocorasick`                      | `v0.0.0-20190904063843-d75dbd5169c0` | MIT                                                |
+| backend     | source data | GitHub    | `fwwdn/sensitive-stop-words`                          | `a7d06bb1c321e669943b6841570d9da6dad8ce2b` | Apache-2.0                                  |
+| backend     | source data | GitHub    | `coffee-and-fun/google-profanity-words`               | `0ae3460863120bc671361b9403cc65d5f2075b89` | MIT                                         |
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2`                        | `v1.41.5`                            | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2/credentials`            | `v1.19.10`                           | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2/service/bedrockruntime` | `v1.50.4`                            | Apache-2.0                                         |
@@ -141,6 +143,12 @@ Transitive dependencies should be audited before a final external release.
 | electron    | development | npm       | `cross-env`                                           | `7.0.3`                              | MIT                                                |
 | electron    | development | npm       | `electron`                                            | `39.8.5`                             | MIT                                                |
 | electron    | development | npm       | `electron-builder`                                    | `26.7.0`                             | MIT                                                |
+
+## Dependency-Specific Copyright Notices
+
+### coffee-and-fun/google-profanity-words
+
+Copyright (c) Robert James Gabriel / Coffee & Fun LLC
 
 ## License Texts
 

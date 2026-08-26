@@ -23,6 +23,20 @@ Copyright (c) 2014, Paul Querna
 This product includes software developed by
 Paul Querna (http://paul.querna.org/).
 
+fwwdn/sensitive-stop-words
+https://github.com/fwwdn/sensitive-stop-words
+Embedded dictionary data is derived from revision
+a7d06bb1c321e669943b6841570d9da6dad8ce2b and is licensed under Apache-2.0.
+
+==== MIT Embedded Data Notices ====
+
+coffee-and-fun/google-profanity-words
+https://github.com/coffee-and-fun/google-profanity-words
+Copyright (c) Robert James Gabriel / Coffee & Fun LLC
+Embedded English dictionary data is sourced from revision
+0ae3460863120bc671361b9403cc65d5f2075b89 and is licensed under MIT.
+The full license text is reproduced in THIRD-PARTY-LICENSES.md.
+
 ==== Electron / Chromium Notices ====
 
 Desktop distributions include Electron, which embeds Chromium, Node.js, V8,
