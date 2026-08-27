@@ -63,6 +63,13 @@ web/           — Frontend (React 19, Rsbuild, Base UI, Tailwind)
 - A separate function is appropriate when it represents reusable behavior, a required interface/framework callback, an exported API, a test fixture, or complex business logic that deserves direct tests.
 - If a single-use helper is kept, its name must describe a durable domain concept rather than a mechanical step extracted only to shorten the caller.
 
+### Production Deployment Records
+
+- After every production release, traffic cutover, rollback, or material infrastructure configuration change, update the corresponding deployment-status document or execution runbook in the same task before reporting completion.
+- The record MUST distinguish planned, executed, validated, and rolled-back states. A completed production change must never leave its document claiming that execution has not started.
+- Record the deployment time and timezone, affected hosts and routing topology, deployed versions and configuration digests, DNS/proxy/firewall state, validation evidence, known issues, and rollback location or result when applicable.
+- Never put API keys, tokens, cookies, certificate private keys, passwords, or other secrets in deployment records. Store only non-secret identifiers and evidence needed for audit and rollback.
+
 ### Backend Rules
 
 **relaykit module independence:** The `relaykit/` Go module MUST remain independently buildable.
