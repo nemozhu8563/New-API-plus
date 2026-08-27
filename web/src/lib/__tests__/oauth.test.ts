@@ -13,7 +13,7 @@ describe('buildOIDCOAuthUrl', () => {
 
     const url = new URL(authorizationUrl)
     expect(url.searchParams.get('redirect_uri')).toBe(
-      'https://api.tryvalo.com/oauth/oidc'
+      'https://api.tryvalo.com/api/oauth/oidc'
     )
     expect(url.searchParams.get('client_id')).toBe('google-client-id')
     expect(url.searchParams.get('state')).toBe('state-token')

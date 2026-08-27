@@ -54,7 +54,7 @@ export function buildOIDCOAuthUrl(
     throw new Error('OIDC callback server address is empty')
   }
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', `${callbackBase}/oauth/oidc`)
+  url.searchParams.set('redirect_uri', `${callbackBase}/api/oauth/oidc`)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('scope', 'openid profile email')
   url.searchParams.set('state', state)

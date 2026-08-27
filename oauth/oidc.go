@@ -56,7 +56,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	settings := system_setting.GetOIDCSettings()
-	redirectUri := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/") + "/oauth/oidc"
+	redirectUri := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/") + "/api/oauth/oidc"
 	values := url.Values{}
 	values.Set("client_id", settings.ClientId)
 	values.Set("client_secret", settings.ClientSecret)
