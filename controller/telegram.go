@@ -174,6 +174,12 @@ func TelegramBind(c *gin.Context) {
 		if session.UserAuthVersion != user.AuthVersion {
 			return service.ErrLoginSessionRevoked
 		}
+		if err := model.EnsureUserOAuthBindingAvailableWithTx(tx, user.Id, "telegram_id", 0); err != nil {
+			if errors.Is(err, model.ErrUserOAuthBindingExists) {
+				return errTelegramAccountAlreadyBound
+			}
+			return err
+		}
 		if user.TelegramId != "" {
 			return errTelegramAccountAlreadyBound
 		}

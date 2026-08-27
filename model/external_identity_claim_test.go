@@ -84,6 +84,94 @@ func TestUpdateUserBindColumnRejectsExternalIdentityClaimedByAnotherUser(t *test
 	assert.Empty(t, reloaded.GitHubId)
 }
 
+func TestUserCannotBindASecondOAuthChannel(t *testing.T) {
+	for _, testCase := range []struct {
+		name           string
+		firstColumn    string
+		firstSubject   string
+		secondColumn   string
+		secondProvider string
+		secondSubject  string
+	}{
+		{
+			name: "GitHub blocks Google OIDC", firstColumn: "github_id", firstSubject: "github-single-channel",
+			secondColumn: "oidc_id", secondProvider: ExternalIdentityProviderOIDC, secondSubject: "oidc-second-channel",
+		},
+		{
+			name: "Google OIDC blocks GitHub", firstColumn: "oidc_id", firstSubject: "oidc-single-channel",
+			secondColumn: "github_id", secondProvider: ExternalIdentityProviderGitHub, secondSubject: "github-second-channel",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncateTables(t)
+
+			user := User{Username: "single-oauth-channel", Password: "password", AffCode: "single-oauth-channel"}
+			require.NoError(t, DB.Create(&user).Error)
+			require.NoError(t, UpdateUserBindColumn(user.Id, testCase.firstColumn, testCase.firstSubject))
+
+			err := UpdateUserBindColumn(user.Id, testCase.secondColumn, testCase.secondSubject)
+			assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+
+			var reloaded User
+			require.NoError(t, DB.First(&reloaded, user.Id).Error)
+			assert.Equal(t, testCase.firstSubject, map[string]string{
+				"github_id": reloaded.GitHubId,
+				"oidc_id":   reloaded.OidcId,
+			}[testCase.firstColumn])
+			assert.Empty(t, map[string]string{
+				"github_id": reloaded.GitHubId,
+				"oidc_id":   reloaded.OidcId,
+			}[testCase.secondColumn])
+
+			var secondClaims int64
+			require.NoError(t, DB.Model(&ExternalIdentityClaim{}).
+				Where("provider = ? AND subject = ?", testCase.secondProvider, testCase.secondSubject).
+				Count(&secondClaims).Error)
+			assert.Zero(t, secondClaims)
+		})
+	}
+}
+
+func TestDifferentUsersCanUseDifferentOAuthChannels(t *testing.T) {
+	truncateTables(t)
+
+	githubUser := User{Username: "github-local-account", Password: "password", AffCode: "github-local-account"}
+	oidcUser := User{Username: "oidc-local-account", Password: "password", AffCode: "oidc-local-account"}
+	require.NoError(t, DB.Create(&githubUser).Error)
+	require.NoError(t, DB.Create(&oidcUser).Error)
+
+	require.NoError(t, UpdateUserBindColumn(githubUser.Id, "github_id", "github-independent"))
+	require.NoError(t, UpdateUserBindColumn(oidcUser.Id, "oidc_id", "oidc-independent"))
+}
+
+func TestCustomAndBuiltInOAuthBindingsShareOneUserSlot(t *testing.T) {
+	t.Run("built-in blocks custom", func(t *testing.T) {
+		truncateTables(t)
+
+		user := User{Username: "built-in-before-custom", Password: "password", AffCode: "built-in-before-custom"}
+		require.NoError(t, DB.Create(&user).Error)
+		require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "github-before-custom"))
+
+		err := CreateUserOAuthBinding(&UserOAuthBinding{
+			UserId: user.Id, ProviderId: 101, ProviderUserId: "custom-second-channel",
+		})
+		assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+	})
+
+	t.Run("custom blocks built-in", func(t *testing.T) {
+		truncateTables(t)
+
+		user := User{Username: "custom-before-built-in", Password: "password", AffCode: "custom-before-built-in"}
+		require.NoError(t, DB.Create(&user).Error)
+		require.NoError(t, CreateUserOAuthBinding(&UserOAuthBinding{
+			UserId: user.Id, ProviderId: 202, ProviderUserId: "custom-first-channel",
+		}))
+
+		err := UpdateUserBindColumn(user.Id, "oidc_id", "oidc-second-channel")
+		assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+	})
+}
+
 func TestUpdateUserBindColumnRejectsMissingUserWithoutCreatingClaim(t *testing.T) {
 	truncateTables(t)
 

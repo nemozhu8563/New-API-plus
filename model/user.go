@@ -232,11 +232,7 @@ func UpdateUserBindColumnWithTx(tx *gorm.DB, userId int, column string, value st
 	if !userBindColumns[column] {
 		return fmt.Errorf("invalid user bind column: %s", column)
 	}
-	var user User
-	if err := lockForUpdate(tx).
-		Select("id").
-		Where("id = ?", userId).
-		First(&user).Error; err != nil {
+	if err := EnsureUserOAuthBindingAvailableWithTx(tx, userId, column, 0); err != nil {
 		return err
 	}
 	if provider := externalIdentityProvidersByColumn[column]; provider != "" {

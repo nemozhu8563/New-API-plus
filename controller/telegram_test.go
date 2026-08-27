@@ -170,6 +170,7 @@ func TestTelegramBindCommitsFlowAssertionAndBindingAtomically(t *testing.T) {
 		&model.UserSession{},
 		&model.AuthFlow{},
 		&model.ExternalIdentityClaim{},
+		&model.UserOAuthBinding{},
 	))
 	model.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
