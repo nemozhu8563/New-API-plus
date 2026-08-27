@@ -1,12 +1,12 @@
-# Zgo 边缘全量切换与 Caddy 升级执行及状态记录（2026-08-26）
+# Tryvalo Zgo / GreenCloud 边缘路由执行及状态记录（2026-08-26 起）
 
-> 状态：**已执行、已切流、已通过发布验收，未触发回滚**。
+> 当前状态（2026-08-27）：**拓扑修正、CPA v7.2.143 升级与 CPA/CPAMP 双域名拆分均已执行，并通过当前可执行范围内的验收，未触发回滚**。
 >
-> Cutover ID：`tryvalo-zgo-cutover-20260826T205747+0800`。执行窗口：2026-08-26 晚间（Asia/Shanghai）。
+> 当前拓扑：`api.tryvalo.com -> Zgo 64.83.30.150 -> GreenCloud 173.249.203.66`；`cpa.tryvalo.com`、`cpamp.tryvalo.com` 与 `new.tryvalo.com` 均直接指向 GreenCloud `173.249.203.66`。
 >
-> 当前入口：`api.tryvalo.com` 与 `new.tryvalo.com` 均通过 Cloudflare 灰云 DNS 全量指向 Zgo `64.83.30.150`，再由 Zgo 使用固定 IP 和严格 TLS 校验回源 GreenCloud。
+> 最新 Release ID：`cpamp-two-domains-20260827T113329+0800`。原始全量 Zgo 切换记录：`tryvalo-zgo-cutover-20260826T205747+0800`。
 >
-> 后续事项：发布功能验收已完成；线路改善结论仍需用发布后 24 小时的 TTFT、断流和重连数据与发布前基线对比。
+> 路由原则：**仅 API 入口必须经过 Zgo；CPA、CPAMP 与 Web 入口不经过 Zgo**。线路改善仍需用 TTFT、断流和重连数据与发布前基线对比。
 
 ## 0. 最终部署状态
 
@@ -16,29 +16,72 @@
 
 | 项目 | 最终状态 |
 | --- | --- |
-| 正式 DNS | `api.tryvalo.com`、`new.tryvalo.com` 为 Cloudflare DNS-only（灰云）A 记录，TTL `300s`，均指向 `64.83.30.150` |
-| DNS 验证 | 权威 DNS、`1.1.1.1`、`8.8.8.8` 均已返回 Zgo 地址 |
-| Zgo Caddy | `v2.11.4`，active，监听 `80/tcp`、`443/tcp` |
+| 正式 DNS | Cloudflare DNS-only（灰云）A 记录：`api.tryvalo.com -> 64.83.30.150`；`cpa.tryvalo.com`、`cpamp.tryvalo.com`、`new.tryvalo.com -> 173.249.203.66`；TTL 为 Cloudflare 自动 |
+| DNS 验证 | `1.1.1.1`、`8.8.8.8` 均已返回上述最终地址 |
+| Zgo Caddy | `v2.11.4`，active，监听 `80/tcp`、`443/tcp`；正式业务仅承接 `api.tryvalo.com`，并保留 `edge-api.tryvalo.com` 运维预检入口 |
 | Zgo sing-box | `sing-box-10443` active/enabled；原占用 `443/tcp` 的 `sing-box` inactive/disabled |
 | Hysteria2 | 已删除，不再保留原 UDP 服务 |
-| GreenCloud Caddy | `v2.11.4`，active；业务容器仍由本机 Caddy 反代，不迁移应用或数据 |
-| 固定回源 | Zgo 连接 `173.249.203.66:443`，SNI 和 HTTP Host 均为 `origin-api.tryvalo.com`，保持严格证书校验，不依赖回源 DNS |
-| GreenCloud 防火墙 | `443/tcp` 仅允许 Zgo `64.83.30.150`；公网 `80/tcp` 保留给 HTTP-01 自动续期 |
-| GreenCloud 外部直连 | 非 Zgo 来源访问 `443/tcp` 已验证超时拒绝；Zgo 回源仍返回 HTTP 200 且 TLS 校验通过 |
-| 业务依赖 | `new-api`、PostgreSQL、Redis 均 healthy；本次未迁移数据库、Redis 或业务写入源 |
+| GreenCloud Caddy | `v2.11.4`，active；直接承接 `new.tryvalo.com`、`cpa.tryvalo.com` 和 `cpamp.tryvalo.com`，并继续接收 Zgo 的 API 回源 |
+| 固定 API 回源 | Zgo 连接 `173.249.203.66:443`，SNI 和 HTTP Host 均为 `origin-api.tryvalo.com`，保持严格证书校验，不依赖回源 DNS |
+| GreenCloud 防火墙 | 公网 `80/tcp`、`443/tcp` 保留；`8317/tcp`、`18317/tcp` 不直接暴露公网。由于 CPA/CPAMP/new 直连，不能再把公网 `443/tcp` 收紧为仅 Zgo |
+| GreenCloud 主机级隔离 | `api.tryvalo.com`、`origin-api.tryvalo.com` 对非 Zgo 来源返回 HTTP 404；`new.tryvalo.com`、`cpa.tryvalo.com`、`cpamp.tryvalo.com` 正常直接服务 |
+| CPA | CLIProxyAPI `7.2.143`，Commit `4b5f1eab`，BuiltAt `2026-08-26T21:32:30Z`；`cliproxyapi` active/enabled，仍只在本机 `8317` 提供后端监听 |
+| CPA-Manager-Plus | `v1.12.5`，镜像固定到 digest `sha256:02d16100da1dd3d717061cc314e30b430d3eea44e1019730ecaa9536593e975e`；容器 healthy，`127.0.0.1:18317` 仅供本机 Caddy 访问；入口为 `https://cpamp.tryvalo.com/management.html` |
+| 业务依赖 | `new-api`、PostgreSQL、Redis 状态未因本次路由变更或 CPA 二进制升级而迁移；CPA PostgreSQL store 连接正常 |
+| CPA 插件和统计面板 | 未安装动态库插件；CPA 官方 Management Center 保留在 `cpa.tryvalo.com`；CPA-Manager-Plus 独立消费统计面板已部署在 `cpamp.tryvalo.com` |
+| 本次未部署 | 内容拦截、自定义敏感词逻辑和 CPA 自定义并发控制均未在本次切流中上线 |
 
 ### 0.2 配置指纹和回滚材料
 
 | 项目 | 值 |
 | --- | --- |
-| Zgo Caddyfile SHA-256 | `9037672af45256d1e0eef5a15f396cda404243b0d6bf98ff25984682dd2c98e8` |
-| GreenCloud Caddyfile SHA-256 | `500de444ed28642a0fa06a47e48c2588f23d11e30e324338f995ccf93c82c636` |
-| Zgo 回滚目录 | `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/zgo-edge` |
-| GreenCloud 回滚目录 | `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/greencloud-caddy` |
+| 当前 Zgo Caddyfile SHA-256 | `3390e52ae4a1a6e8efb8dd3d428186bf41e177b4f57d817f126051cf14602667` |
+| 当前 GreenCloud Caddyfile SHA-256 | `fa1e1afd873bdad3ab7f32f2409baa9534ca30de983502cc1a3dc6436642fa52` |
+| 当前 CPA-Manager-Plus Compose SHA-256 | `7a00f76ef943a7dd5515e86dd9ca240ae57c20e2cebf4e47322279ed6986ab8a` |
+| CPA/CPAMP 双域名拆分回滚目录 | `/root/tryvalo-releases/cpamp-two-domains-20260827T113329+0800`；包含拆分前 Caddyfile 与 Compose |
+| 2026-08-27 两台主机回滚目录 | `/root/tryvalo-cutovers/cpa-direct-greencloud-20260827T090049+0800/` |
+| Zgo 过渡配置 SHA-256 | `c0f5c3e61694790923820b9756137130d05606891c8f1f9ae145df9c9ac94f39`，已保存为 `zgo.Caddyfile.intermediate` |
+| 2026-08-26 Zgo / GreenCloud 原始回滚目录 | `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/zgo-edge` / `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/greencloud-caddy` |
+| CPA v7.2.143 官方 Linux amd64 资产 SHA-256 | `9154f460a5684ae82d74f3643d7b3f9c8961659d33058458c9edc044f5f761ba`，与 GitHub Release API digest 及官方 `checksums.txt` 一致 |
+| CPA 二进制 SHA-256 | 升级前 `b04f1451df94ff22d848ee468824222863884f64d7d77bec6e78adc1aa29e89e`；升级后 `04e5a1d5397ef06ed3e629d6da51c87986ea8d9ab0062c8c22d76a5c24363cca` |
+| CPA 配置 SHA-256 | `64227d50add8ccedb3f313f3786a37487f5e1decb065347804cb1817c57e3211`，升级前后不变 |
+| CPA v7.2.143 回滚目录 | `/root/tryvalo-releases/cpa-v7.2.143-20260827T100501+0800`；包含旧二进制、配置、systemd、环境文件、PostgreSQL custom dump 与 pgstore runtime |
 
 ### 0.3 发布验收结果
 
-- 两个正式域名的 `/api/status` 均返回 HTTP 200；无效 Token 均返回预期 HTTP 401。
+2026-08-27 拓扑修正验收：
+
+- `1.1.1.1` 和 `8.8.8.8` 均返回最终路由：API 为 Zgo，CPA/new 为 GreenCloud。
+- `api.tryvalo.com/api/status` 通过 Zgo 返回 HTTP 200；TLS 校验结果为 0。
+- `new.tryvalo.com/api/status` 直接从 GreenCloud 返回 HTTP 200；TLS 校验结果为 0。
+- `cpa.tryvalo.com/healthz`、`/` 均返回 HTTP 200；无凭据访问 `/v1/models` 返回预期 HTTP 401；TLS 校验结果为 0。
+- 将 `api.tryvalo.com` 或 `origin-api.tryvalo.com` 强制解析到 GreenCloud，从非 Zgo 来源访问均返回 HTTP 404，绕过保护有效。
+- 公网访问 `173.249.203.66:8317` 超时，CPA 后端端口未暴露；两台 Caddy 均 validate 通过且 active。
+
+2026-08-27 CPA v7.2.143 升级验收：
+
+- `cliproxyapi` 为 active/enabled，进程自 10:05:02（Asia/Shanghai）起运行；loopback `/healthz` 正常。
+- `https://cpa.tryvalo.com/healthz` 返回 HTTP 200，TLS 校验结果为 0；`/management.html` 完整返回 HTTP 200。
+- Management Center 标题为 `CLI Proxy API Management Center`，HTML SHA-256 为 `68981cdc33ff6293371d186cf9f60fab892c01051cd77974ecde4de0ed1238bd`。
+- 无凭据访问 `/v1/models` 与 `/v0/management/config` 均返回预期 HTTP 401；公网 `8317/tcp` 仍不可达。
+- PostgreSQL store 可连接；升级前备份与升级后的 `auth_store` 均为 0 行，证明账号库原本就是空库，并非升级清空。
+- 启动后日志中 panic/fatal、error level 和插件加载失败均为 0；生产插件目录未发现动态库插件。
+- 因 `auth_store` 为空，已配置 API Key 的 `/v1/models` 只能返回空数组，`gpt-5.4` SSE 请求返回 `model_not_found`。真实模型、流式完整性和 usage 结算尚未完成验收，需添加上游账号后补测。
+
+2026-08-27 CPA/CPAMP 双域名拆分验收：
+
+- Cloudflare 新增 DNS-only A 记录 `cpamp.tryvalo.com -> 173.249.203.66`，TTL 自动；`1.1.1.1`、`8.8.8.8` 均已回读到 GreenCloud。
+- `cpa.tryvalo.com` 已恢复为纯 CPA：`/healthz` 与官方 `/management.html` 返回 HTTP 200，无凭据 `/v1/models` 返回预期 HTTP 401；持有 CPA Management Key 的本机管理接口返回 HTTP 200。
+- `cpamp.tryvalo.com` 全路径反代到 CPA-Manager-Plus：`/health` 与 `/management.html` 返回 HTTP 200，无凭据 `/status` 返回预期 HTTP 401，持有 CPAMP Admin Key 的 `/status` 返回 HTTP 200。
+- 两个面板已通过标题区分：CPA 为 `CLI Proxy API Management Center`，CPAMP 为 `CPA Manager Plus`；不再使用路径或 `Authorization` Header 进行同域分流。
+- CPAMP Collector 状态为 `running`，mode 为 `auto`，transport 为 `subscribe`，queue 为 `usage`，`lastError=null`，dead letters 为 0。
+- CPAMP 容器 healthy、restart count 为 0；CORS 只允许 `https://cpamp.tryvalo.com`，旧 `https://cpa.tryvalo.com` 不再获得 allow-origin 响应头。
+- 正式 Let's Encrypt 证书于 11:44:05（Asia/Shanghai）签发成功；两个域名的 HTTPS 校验结果均为 0。`18317` 只监听 `127.0.0.1`，未直接暴露公网。
+- 初次签发前因 DNS 尚未创建出现的 NXDOMAIN 已在 DNS 生效后通过强制平滑 reload 恢复；11:45 的两条 `use of closed network connection` 来自本次验收客户端主动超时中断大文件下载，不是上游进程故障。随后完整面板 GET 均成功。
+
+2026-08-26 原始 Zgo 全量切换的业务验收（历史）：
+
+- 当时两个正式域名的 `/api/status` 均返回 HTTP 200；无效 Token 均返回预期 HTTP 401。
 - `gpt-5.4` 共完成 4 次真实请求：2 次非流式、2 次 SSE，全部返回 HTTP 200。
 - 两次 SSE 均只出现一次 `response.completed`，没有失败事件、重复完成或提前断流。
 - 4 次请求均各自只有一条消费记录，没有重复结算。
@@ -46,7 +89,7 @@
 - 发布观察窗口最近 15 分钟的 Zgo access log 中 `5xx=0`；两端 Caddy 均 active，未发现新 OOM 或持续告警。
 - 发布过程中 Zgo Caddy 曾因 access log 目录权限导致一次 reload 失败，已在正式切流前修复；21:20（Asia/Shanghai）后未见同类新告警。
 
-验收请求 ID：
+历史验收请求 ID：
 
 ```text
 202608261402030717113508268d9d6GAqLOIGb
@@ -59,9 +102,23 @@
 
 - 渠道 29 虽声明支持 `gpt-5.4-mini`，但其上游账号实际不支持。该问题与本次 Zgo 线路切换无关，本次未修改渠道配置。
 - “线路是否改善”尚未由发布窗口内的少量请求证明。需要按同模型、同渠道对比发布前后 24 小时的 TTFT、SSE 完整率、异常断流和重连数据。
+- 内容拦截、自定义敏感词词库和 CPA 自定义并发控制尚未上线；双域名拆分只解决 CPA 与统计管理面的入口隔离，不等同于危险请求拦截。
+- CPA 官方管理面板和 CPA-Manager-Plus 独立消费统计面板均已可用；当前仍没有动态库插件。
+- CPA 账号库为空，暂时无法把进程健康、管理面板和鉴权验收等同于真实模型业务验收；需添加上游账号后补做非流式、SSE 和 usage 验证。
 - 本次临时 API Key 未写入文档，发布完成后必须在凭据管理端吊销。
 
-## 1. 目标与边界
+### 0.5 当前拓扑约束与回滚顺序
+
+- 只有 `api.tryvalo.com` 允许依赖 Zgo；`cpa.tryvalo.com`、`cpamp.tryvalo.com` 和 `new.tryvalo.com` 的正常路径必须直达 GreenCloud。
+- GreenCloud 公网 `443/tcp` 需要为 CPA/CPAMP/new 保持可达。API 隔离由 Caddy 的 hostname + Zgo 来源限制完成，不能再用“公网 443 仅允许 Zgo”的旧规则。
+- CPA 后端 `8317/tcp` 必须继续拒绝公网，只允许现有本机/容器桥接访问。
+- CPA-Manager-Plus 后端 `18317/tcp` 必须继续只监听 `127.0.0.1`；公网入口只能经过 `cpamp.tryvalo.com:443`。
+- 如果 CPA/new 需要回退到 Zgo，必须先恢复 Zgo 回滚目录中的 `zgo.Caddyfile.intermediate` 并验证证书与代理，再修改 DNS；不能先把 DNS 指回已经删除 CPA/new 站点的 Zgo 最终配置。
+- API 路由本次未切换；应用、数据库和 Redis 均未迁移，回滚不涉及数据恢复或双写处理。
+
+## 1. 2026-08-26 原始 Zgo 全量切换的目标与边界（历史）
+
+> 本节至第 13 节保留 2026-08-26 原始全量切换的计划、验收和回滚过程，用于审计与历史回退，不代表当前路由。当前生产事实以第 0 节、第 15 节和第 16 节为准；不得直接按历史步骤再次把 CPA/new 接入 Zgo。
 
 本次在同一个维护窗口完成两类变更，但必须按检查点串行执行：
 
@@ -92,7 +149,7 @@
 - 不复制数据库、Redis 或业务写入源，因此不存在数据迁移或双写步骤。
 - 不使用公网 IP 证书，不关闭 TLS 证书校验。
 
-## 2. 固定版本和角色
+## 2. 固定版本和角色（2026-08-26 历史状态）
 
 | 项目 | 最终状态 |
 | --- | --- |
@@ -314,7 +371,7 @@ TLS SNI/Host origin-api.tryvalo.com -> GreenCloud Caddy -> new-api
 
 任一正式证书无法预签、`curl --resolve` 仍拿不到正确证书，或 challenge handoff 影响 GreenCloud 现有入口时，立即撤销临时路由并停止发布。不得退回“先切 DNS，再等最多 10 分钟签证书”的做法。
 
-## 9. G5：两条正式域名一次性全量切换
+## 9. G5：两条正式域名一次性全量切换（2026-08-26 历史步骤）
 
 切换前最后检查：
 
@@ -342,7 +399,7 @@ DNS 修改后：
 3. 旧 TTL 尚未过期期间，GreenCloud 公网 `443` 暂不关闭，让缓存旧 IP 的客户端继续完成请求；这属于 DNS 自然收敛，不是人为灰度。
 4. DNS 已解析到 Zgo 后，任一正式域名连续两次 TLS/GET 失败就立即回滚，不再为首次签发额外等待。
 
-## 10. 正式验收与观察
+## 10. 正式验收与观察（2026-08-26 历史步骤）
 
 两个域名分别执行，不得只测其中一个：
 
@@ -376,7 +433,7 @@ DNS 修改后：
 
 本次上线通过条件是“功能与稳定性不退化”。线路是否真正改善，需要次日按同模型、同渠道对比 TTFT、断流和重连数据，不能用单个请求判断。
 
-## 11. G6：收紧 GreenCloud origin
+## 11. G6：收紧 GreenCloud origin（2026-08-26 历史步骤）
 
 至少等待一个切换前的旧 TTL，并且自切换后已经连续观察满 60 分钟，确认两个正式域名均稳定走 Zgo 后：
 
@@ -388,7 +445,7 @@ DNS 修改后：
 
 如果以后需要关闭公网 `80`，另开变更切换 DNS-01；不在本窗口临时加入 Cloudflare DNS 插件和新的 API token。
 
-## 12. 回滚计划
+## 12. 回滚计划（2026-08-26 历史步骤）
 
 ### 12.1 DNS/边缘回滚
 
@@ -423,7 +480,7 @@ DNS 修改后：
 2. 恢复备份配置、UFW 和客户端端口，验证 Reality；Hysteria2 已删除，不属于默认回滚范围。
 3. 若正式 API 已切到 Zgo，不能直接抢占 Caddy `443`；应先完成 DNS 回滚再恢复 sing-box。
 
-## 13. 收尾和次日复核
+## 13. 收尾和次日复核（2026-08-26 历史步骤）
 
 切换后 24 小时内保留：
 
@@ -445,7 +502,7 @@ GreenCloud 上 `api`、`new` 的旧证书只能作为其有效期内的直接 DN
 
 清理备份、旧二进制、临时证书或日志前需要另行确认。
 
-## 14. 本次执行记录
+## 14. 2026-08-26 原始切换执行记录（历史）
 
 ```text
 Cutover ID: tryvalo-zgo-cutover-20260826T205747+0800
@@ -467,14 +524,95 @@ GET /api/status: 两个正式域名均为 HTTP 200
 24h 复核结论: 待补充 TTFT、断流和重连对比
 ```
 
-## 15. 依据
+## 15. 2026-08-27 CPA/new 直连 GreenCloud 执行记录
+
+```text
+Cutover ID: cpa-direct-greencloud-20260827T090049+0800
+执行日期: 2026-08-27（Asia/Shanghai）
+最终 DNS: api.tryvalo.com -> 64.83.30.150（Zgo）
+最终 DNS: cpa.tryvalo.com / new.tryvalo.com -> 173.249.203.66（GreenCloud）
+Cloudflare: 三条记录均为 DNS-only；CPA/new 更新成功并由 1.1.1.1、8.8.8.8 回读确认
+Zgo 最终站点: edge-api.tryvalo.com、api.tryvalo.com
+Zgo 已删除: cpa_edge_proxy、CPA HTTP-01 临时路由、cpa.tryvalo.com、new.tryvalo.com
+Zgo Caddy config SHA-256: 3390e52ae4a1a6e8efb8dd3d428186bf41e177b4f57d817f126051cf14602667
+GreenCloud Caddy config SHA-256: c829155c1371161b95dca623468a38c2e249a695a9de813cc7c766f68c857558
+Zgo/GreenCloud Caddy: validate 通过，服务 active
+CPA TLS: 正式 Let's Encrypt 证书，客户端校验结果 0
+GET api.tryvalo.com/api/status: HTTP 200，经 Zgo
+GET new.tryvalo.com/api/status: HTTP 200，直连 GreenCloud
+GET cpa.tryvalo.com/healthz: HTTP 200，直连 GreenCloud
+GET cpa.tryvalo.com/: HTTP 200，直连 GreenCloud
+GET cpa.tryvalo.com/v1/models（无凭据）: HTTP 401
+GreenCloud API 绕过保护: api.tryvalo.com / origin-api.tryvalo.com 对非 Zgo 来源均为 HTTP 404
+CPA 后端公网保护: 173.249.203.66:8317 连接超时，未暴露公网
+两台主机回滚/发布快照: /root/tryvalo-cutovers/cpa-direct-greencloud-20260827T090049+0800/
+是否触发回滚: 否
+范围: 只变更 DNS、TLS、Caddy 和防火墙边界；未上线内容拦截或自定义并发控制
+```
+
+## 16. 2026-08-27 CPA v7.2.143 升级执行记录
+
+```text
+Release ID: cpa-v7.2.143-20260827T100501+0800
+执行时间: 2026-08-27 10:05:02（Asia/Shanghai）
+升级前版本: 7.2.47，Commit 00114bec
+升级后版本: 7.2.143，Commit 4b5f1eab，BuiltAt 2026-08-26T21:32:30Z
+官方资产: CLIProxyAPI_7.2.143_linux_amd64.tar.gz
+官方资产 SHA-256: 9154f460a5684ae82d74f3643d7b3f9c8961659d33058458c9edc044f5f761ba
+官方校验: GitHub Release API digest、下载文件和 checksums.txt 三者一致
+旧二进制 SHA-256: b04f1451df94ff22d848ee468824222863884f64d7d77bec6e78adc1aa29e89e
+新二进制 SHA-256: 04e5a1d5397ef06ed3e629d6da51c87986ea8d9ab0062c8c22d76a5c24363cca
+配置 SHA-256: 64227d50add8ccedb3f313f3786a37487f5e1decb065347804cb1817c57e3211（升级前后不变）
+服务状态: cliproxyapi active/enabled；loopback /healthz 正常
+公网验收: /healthz HTTP 200；/management.html HTTP 200；无凭据模型与管理 API HTTP 401；8317/tcp 不可达
+PostgreSQL: 连接正常；升级前后 auth_store 均为 0 行
+插件状态: 未安装动态库插件；插件加载失败 0
+管理面板: 官方 Management Center 可用；独立消费统计面板未部署
+日志验收: 启动后 panic/fatal=0，error level=0
+业务验收边界: 上游账号库为空；真实模型、SSE 完整性和 usage 结算待添加账号后补验
+回滚目录: /root/tryvalo-releases/cpa-v7.2.143-20260827T100501+0800
+PostgreSQL 备份: custom dump 已通过 pg_restore --list 验证
+是否触发回滚: 否
+```
+
+## 17. 2026-08-27 CPA/CPAMP 双域名拆分执行记录
+
+```text
+Release ID: cpamp-two-domains-20260827T113329+0800
+执行窗口: 2026-08-27 11:33-11:50（Asia/Shanghai）
+最终 DNS: cpa.tryvalo.com -> 173.249.203.66（GreenCloud）
+新增 DNS: cpamp.tryvalo.com -> 173.249.203.66（GreenCloud）
+Cloudflare: 两条记录均为 DNS-only，TTL 自动；1.1.1.1、8.8.8.8 回读正确
+入口分工: cpa.tryvalo.com 全路径进入 CPA；cpamp.tryvalo.com 全路径进入 CPA-Manager-Plus
+GreenCloud Caddy config SHA-256: fa1e1afd873bdad3ab7f32f2409baa9534ca30de983502cc1a3dc6436642fa52
+CPA-Manager-Plus Compose SHA-256: 7a00f76ef943a7dd5515e86dd9ca240ae57c20e2cebf4e47322279ed6986ab8a
+CPA-Manager-Plus version: v1.12.5
+CPA-Manager-Plus image digest: sha256:02d16100da1dd3d717061cc314e30b430d3eea44e1019730ecaa9536593e975e
+CPA-Manager-Plus runtime: healthy，restart count=0，仅监听 127.0.0.1:18317
+CORS: 仅允许 https://cpamp.tryvalo.com
+TLS: cpamp.tryvalo.com 的正式 Let's Encrypt 证书于 11:44:05 签发；两个正式入口客户端校验结果均为 0
+CPA 验收: /healthz HTTP 200；/management.html HTTP 200；无 Key /v1/models HTTP 401；有 Management Key 的管理接口 HTTP 200
+CPAMP 验收: /health HTTP 200；/management.html HTTP 200；无 Admin Key /status HTTP 401；有 Admin Key /status HTTP 200
+面板标题: CPA 为 CLI Proxy API Management Center；CPAMP 为 CPA Manager Plus
+Collector: running，mode=auto，transport=subscribe，queue=usage，lastError=null，dead letters=0
+Caddy 日志说明: 11:45 两条 closed connection 为验收客户端主动超时中断大文件下载；随后两个面板完整 GET 均成功
+回滚目录: /root/tryvalo-releases/cpamp-two-domains-20260827T113329+0800
+是否触发回滚: 否
+未上线范围: 内容拦截、自定义敏感词逻辑、CPA 自定义并发控制
+```
+
+## 18. 依据
 
 - [GreenCloud 服务迁移 SOP](greencloud-service-migration-sop.md)
 - [GreenCloud 迁移执行手册](2026-07-11-greencloud-migration-runbook.md)
 - [`ops/greencloud/caddy/Caddyfile`](../../ops/greencloud/caddy/Caddyfile)
+- [`ops/greencloud/cpa-manager-plus/compose.yaml`](../../ops/greencloud/cpa-manager-plus/compose.yaml)
 - [Caddy 官方安装说明](https://caddyserver.com/docs/install)
 - [Caddy 官方命令行说明](https://caddyserver.com/docs/command-line)
 - [Caddy 全局 `trusted_proxies` 说明](https://caddyserver.com/docs/caddyfile/options#trusted-proxies)
 - [Caddy `tls` / ACME challenge 说明](https://caddyserver.com/docs/caddyfile/directives/tls)
 - [Caddy `reverse_proxy` 说明](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - [Caddy v2.11.4 release](https://github.com/caddyserver/caddy/releases/tag/v2.11.4)
+- [CLIProxyAPI v7.2.143 release](https://github.com/router-for-me/CLIProxyAPI/releases/tag/v7.2.143)
+- [CPA-Manager-Plus 官方仓库](https://github.com/seakee/CPA-Manager-Plus)
+- [CPA-Manager-Plus v1.12.5 release](https://github.com/seakee/CPA-Manager-Plus/releases/tag/v1.12.5)

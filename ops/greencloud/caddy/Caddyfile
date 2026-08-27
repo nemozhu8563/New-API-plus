@@ -1,3 +1,10 @@
+{
+	servers {
+		trusted_proxies static 64.83.30.150
+		trusted_proxies_strict
+	}
+}
+
 (new_api_proxy) {
 	request_body {
 		max_size 100MB
@@ -5,6 +12,23 @@
 
 	reverse_proxy 127.0.0.1:3000 {
 		flush_interval -1
+		header_up X-Forwarded-For {client_ip}
+		transport http {
+			dial_timeout 30s
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}
+
+(cpa_proxy) {
+	request_body {
+		max_size 100MB
+	}
+
+	reverse_proxy 127.0.0.1:8317 {
+		flush_interval -1
+		header_up X-Forwarded-For {client_ip}
 		transport http {
 			dial_timeout 30s
 			read_timeout 600s
@@ -14,9 +38,61 @@
 }
 
 api.tryvalo.com {
+	@not_zgo not remote_ip 64.83.30.150
+	respond @not_zgo "Not Found" 404
 	import new_api_proxy
 }
 
 new.tryvalo.com {
 	import new_api_proxy
+}
+
+origin-api.tryvalo.com {
+	@not_zgo not remote_ip 64.83.30.150
+	respond @not_zgo "Not Found" 404
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+	import new_api_proxy
+}
+
+origin-cpa.tryvalo.com {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+	import cpa_proxy
+}
+
+cpa.tryvalo.com {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+	import cpa_proxy
+}
+
+cpamp.tryvalo.com {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+	encode zstd gzip
+	request_body {
+		max_size 100MB
+	}
+	reverse_proxy 127.0.0.1:18317 {
+		flush_interval -1
+		header_up X-Forwarded-For {client_ip}
+		transport http {
+			dial_timeout 30s
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
 }
