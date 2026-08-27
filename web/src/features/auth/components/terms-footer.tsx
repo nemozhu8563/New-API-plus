@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
@@ -16,11 +16,6 @@ export function TermsFooter({
   status,
 }: TermsFooterProps) {
   const { t } = useTranslation()
-  const text =
-    variant === 'sign-in'
-      ? 'By clicking sign in, you agree to our'
-      : 'By creating an account, you agree to our'
-
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
 
@@ -28,49 +23,45 @@ export function TermsFooter({
     return null
   }
 
-  const agreementLink = {
-    label: 'Terms of Service',
-    href: '/user-agreement',
+  let textKey: string
+  if (variant === 'sign-in') {
+    if (hasUserAgreement && hasPrivacyPolicy) {
+      textKey =
+        'By clicking sign in, you agree to our Terms of Service and Privacy Policy.'
+    } else if (hasUserAgreement) {
+      textKey = 'By clicking sign in, you agree to our Terms of Service.'
+    } else {
+      textKey = 'By clicking sign in, you agree to our Privacy Policy.'
+    }
+  } else if (hasUserAgreement && hasPrivacyPolicy) {
+    textKey =
+      'By creating an account, you agree to our Terms of Service and Privacy Policy.'
+  } else if (hasUserAgreement) {
+    textKey = 'By creating an account, you agree to our Terms of Service.'
+  } else {
+    textKey = 'By creating an account, you agree to our Privacy Policy.'
   }
-  const privacyLink = {
-    label: 'Privacy Policy',
-    href: '/privacy-policy',
-  }
-
-  const activeLinks =
-    hasUserAgreement || hasPrivacyPolicy
-      ? ([
-          hasUserAgreement ? agreementLink : null,
-          hasPrivacyPolicy ? privacyLink : null,
-        ].filter(Boolean) as Array<{ label: string; href: string }>)
-      : [agreementLink, privacyLink]
-
-  const [firstLink, secondLink] = activeLinks
 
   return (
     <p className={cn('text-muted-foreground text-center text-xs', className)}>
-      {text}{' '}
-      {firstLink && (
-        <a
-          href={firstLink.href}
-          className='hover:text-primary underline underline-offset-4'
-        >
-          {firstLink.label}
-        </a>
-      )}
-      {secondLink && (
-        <>
-          {' '}
-          {t('and')}{' '}
-          <a
-            href={secondLink.href}
-            className='hover:text-primary underline underline-offset-4'
-          >
-            {secondLink.label}
-          </a>
-        </>
-      )}
-      .
+      <Trans
+        t={t}
+        i18nKey={textKey}
+        components={{
+          terms: (
+            <a
+              href='/user-agreement'
+              className='hover:text-primary underline underline-offset-4'
+            />
+          ),
+          privacy: (
+            <a
+              href='/privacy-policy'
+              className='hover:text-primary underline underline-offset-4'
+            />
+          ),
+        }}
+      />
     </p>
   )
 }
