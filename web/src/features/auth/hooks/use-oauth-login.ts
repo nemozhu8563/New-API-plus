@@ -104,7 +104,13 @@ export function useOAuthLogin(
   }
 
   const handleOIDCLogin = async () => {
-    if (!status?.oidc_authorization_endpoint || !status?.oidc_client_id) return
+    if (
+      !status?.oidc_authorization_endpoint ||
+      !status?.oidc_client_id ||
+      !status?.server_address
+    ) {
+      return
+    }
 
     setIsLoading(true)
     try {
@@ -114,7 +120,8 @@ export function useOAuthLogin(
       const url = buildOIDCOAuthUrl(
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
-        state
+        state,
+        status.server_address
       )
       window.open(url, '_self')
     } catch {

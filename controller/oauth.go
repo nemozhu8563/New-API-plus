@@ -195,6 +195,10 @@ func HandleOAuth(c *gin.Context) {
 	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
+		if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+			common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
+			return
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -278,6 +282,10 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
 		err = model.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
+			if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+				common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
+				return
+			}
 			common.ApiError(c, err)
 			return
 		}
@@ -318,7 +326,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 					user.Id, legacyID, oauthUser.ProviderUserID))
 				if err := user.UpdateGitHubId(oauthUser.ProviderUserID); err != nil {
 					common.SysError(fmt.Sprintf("[OAuth] Failed to migrate user %d: %s", user.Id, err.Error()))
-					// Continue with login even if migration fails
+					return nil, err
 				}
 				return user, nil
 			}
@@ -402,16 +410,15 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				return err
 			}
 
-			// Set the provider user ID on the user model and update
+			// Set the provider user ID on the in-memory model and atomically
+			// claim/update the persisted binding.
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
-			if err := tx.Model(user).Updates(map[string]interface{}{
-				"github_id":   user.GitHubId,
-				"discord_id":  user.DiscordId,
-				"oidc_id":     user.OidcId,
-				"linux_do_id": user.LinuxDOId,
-				"wechat_id":   user.WeChatId,
-				"telegram_id": user.TelegramId,
-			}).Error; err != nil {
+			if err := model.UpdateUserBindColumnWithTx(
+				tx,
+				user.Id,
+				provider.ProviderUserIDColumn(),
+				oauthUser.ProviderUserID,
+			); err != nil {
 				return err
 			}
 

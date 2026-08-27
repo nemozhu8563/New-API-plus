@@ -10,7 +10,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const ExternalIdentityProviderTelegram = "telegram"
+const (
+	ExternalIdentityProviderGitHub   = "github"
+	ExternalIdentityProviderOIDC     = "oidc"
+	ExternalIdentityProviderTelegram = "telegram"
+)
 
 var ErrExternalIdentityAlreadyClaimed = errors.New("external identity is already claimed")
 
@@ -83,19 +87,33 @@ func releaseAllExternalIdentitiesWithTx(tx *gorm.DB, userId int) error {
 	return tx.Where("user_id = ?", userId).Delete(&ExternalIdentityClaim{}).Error
 }
 
-// InitializeExternalIdentityClaims imports legacy Telegram bindings after the
-// claim table is migrated. Existing duplicate ownership fails migration rather
-// than preserving an ambiguous login identity.
+// InitializeExternalIdentityClaims imports legacy built-in OAuth bindings after
+// the claim table is migrated. Existing duplicate ownership fails migration
+// rather than preserving an ambiguous login identity.
 func InitializeExternalIdentityClaims() error {
 	var users []User
-	if err := DB.Unscoped().Select("id", "telegram_id").
-		Where("telegram_id <> ?", "").Find(&users).Error; err != nil {
+	if err := DB.Unscoped().Select("id", "github_id", "oidc_id", "telegram_id").
+		Where("github_id <> ? OR oidc_id <> ? OR telegram_id <> ?", "", "", "").
+		Find(&users).Error; err != nil {
 		return err
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		for _, user := range users {
-			if err := ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.TelegramId, user.Id); err != nil {
-				return fmt.Errorf("backfill Telegram identity for user %d: %w", user.Id, err)
+			bindings := []struct {
+				provider string
+				subject  string
+			}{
+				{provider: ExternalIdentityProviderGitHub, subject: user.GitHubId},
+				{provider: ExternalIdentityProviderOIDC, subject: user.OidcId},
+				{provider: ExternalIdentityProviderTelegram, subject: user.TelegramId},
+			}
+			for _, binding := range bindings {
+				if strings.TrimSpace(binding.subject) == "" {
+					continue
+				}
+				if err := ClaimExternalIdentityWithTx(tx, binding.provider, binding.subject, user.Id); err != nil {
+					return fmt.Errorf("backfill %s identity for user %d: %w", binding.provider, user.Id, err)
+				}
 			}
 		}
 		return nil

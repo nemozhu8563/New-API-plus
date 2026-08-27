@@ -1,9 +1,11 @@
+import GoogleIcon from '@lobehub/icons/es/Google/components/Color'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
   IconDiscord,
   IconGithub,
+  IconGitlab,
   IconLinuxDo,
   IconTelegram,
   IconWeChat,
@@ -30,6 +32,28 @@ type ProviderButton = {
   onClick: () => void
   icon?: ReactNode
   disabled?: boolean
+}
+
+function OAuthProviderIcon(props: { name: string }) {
+  const iconName = props.name.trim()
+
+  switch (iconName.toLowerCase()) {
+    case 'google':
+      return <GoogleIcon aria-hidden='true' className='h-4 w-4' />
+    case 'github':
+      return <IconGithub aria-hidden='true' className='h-4 w-4' />
+    case 'gitlab':
+      return <IconGitlab aria-hidden='true' className='h-4 w-4' />
+    default:
+      return iconName ? (
+        <span
+          aria-hidden='true'
+          className='bg-muted text-muted-foreground flex size-4 items-center justify-center rounded-full text-[10px] font-semibold uppercase'
+        >
+          {iconName.charAt(0)}
+        </span>
+      ) : null
+  }
 }
 
 export function OAuthProviders({
@@ -96,6 +120,10 @@ export function OAuthProviders({
         name: oidcDisplayName,
       }),
       onClick: handleOIDCLogin,
+      icon:
+        oidcDisplayName.toLowerCase() === 'google' ? (
+          <OAuthProviderIcon name={oidcDisplayName} />
+        ) : undefined,
     })
   }
 
@@ -125,6 +153,9 @@ export function OAuthProviders({
         key: `custom-${provider.slug}`,
         label: t('Continue with {{name}}', { name: provider.name }),
         onClick: () => handleCustomOAuthLogin(provider),
+        icon: provider.icon ? (
+          <OAuthProviderIcon name={provider.icon} />
+        ) : undefined,
       })
     }
   }

@@ -165,11 +165,9 @@ func UpdateOption(c *gin.Context) {
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
-		if option.Value == "true" && common.GitHubClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
-			})
+		if option.Value == "true" && (strings.TrimSpace(common.GitHubClientId) == "" ||
+			strings.TrimSpace(common.GitHubClientSecret) == "") {
+			common.ApiErrorI18n(c, i18n.MsgOAuthGitHubConfigIncomplete)
 			return
 		}
 	case "discord.enabled":
@@ -181,11 +179,13 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
-			})
+		oidcSettings := system_setting.GetOIDCSettings()
+		if option.Value == "true" && (strings.TrimSpace(oidcSettings.ClientId) == "" ||
+			strings.TrimSpace(oidcSettings.ClientSecret) == "" ||
+			strings.TrimSpace(oidcSettings.AuthorizationEndpoint) == "" ||
+			strings.TrimSpace(oidcSettings.TokenEndpoint) == "" ||
+			strings.TrimSpace(oidcSettings.UserInfoEndpoint) == "") {
+			common.ApiErrorI18n(c, i18n.MsgOAuthOIDCConfigIncomplete)
 			return
 		}
 	case "LinuxDOOAuthEnabled":

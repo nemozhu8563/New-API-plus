@@ -105,6 +105,15 @@ type FlatOAuthDefaults = {
   WeChatAccountQRCodeImageURL: string
 }
 
+const oauthEnableKeys = new Set<keyof FlatOAuthDefaults>([
+  'GitHubOAuthEnabled',
+  'discord.enabled',
+  'oidc.enabled',
+  'TelegramOAuthEnabled',
+  'LinuxDOOAuthEnabled',
+  'WeChatAuthEnabled',
+])
+
 const oauthTabContentClassName =
   'grid min-w-0 gap-x-5 gap-y-6 lg:grid-cols-2 [&>[data-slot=form-item]]:min-w-0 lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2'
 
@@ -327,11 +336,17 @@ export function OAuthSection(props: OAuthSectionProps) {
       return
     }
 
-    for (const key of changedKeys) {
-      await updateOption.mutateAsync({
+    const orderedChangedKeys = [
+      ...changedKeys.filter((key) => !oauthEnableKeys.has(key)),
+      ...changedKeys.filter((key) => oauthEnableKeys.has(key)),
+    ]
+
+    for (const key of orderedChangedKeys) {
+      const result = await updateOption.mutateAsync({
         key,
         value: normalized[key],
       })
+      if (!result.success) return
     }
 
     baselineRef.current = normalized

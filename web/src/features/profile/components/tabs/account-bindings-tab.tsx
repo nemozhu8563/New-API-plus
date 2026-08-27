@@ -353,9 +353,15 @@ export function AccountBindingsTab({
         onBind: () => {
           const authorizationEndpoint = status?.oidc_authorization_endpoint
           const clientId = status?.oidc_client_id
-          if (authorizationEndpoint && clientId) {
+          const serverAddress = status?.server_address
+          if (authorizationEndpoint && clientId && serverAddress) {
             void startOAuthBinding('oidc', (state) =>
-              buildOIDCOAuthUrl(authorizationEndpoint, clientId, state)
+              buildOIDCOAuthUrl(
+                authorizationEndpoint,
+                clientId,
+                state,
+                serverAddress
+              )
             )
           }
         },

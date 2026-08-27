@@ -254,6 +254,8 @@ oauth.connect_failed: "无法连接至 {{.Provider}} 服务器，请稍后重试
 oauth.token_failed: "{{.Provider}} 获取 Token 失败，请检查设置"
 oauth.user_info_empty: "{{.Provider}} 获取用户信息为空，请检查设置"
 oauth.trust_level_low: "Linux DO 信任等级未达到管理员设置的最低信任等级"
+oauth.github_config_incomplete: "GitHub OAuth 的 Client ID 和 Client Secret 配置完整后才能启用"
+oauth.oidc_config_incomplete: "OIDC 的 Client ID、Client Secret、授权端点、Token 端点和 UserInfo 端点配置完整后才能启用"
 
 # Model layer error messages
 redeem.failed: "兑换失败，请稍后重试"
