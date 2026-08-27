@@ -489,6 +489,44 @@ func TestStripeSubscriptionCheckoutRejectsHiddenLegacyPlan(t *testing.T) {
 	assert.Zero(t, orders)
 }
 
+func TestStripeSubscriptionCheckoutRejectsUserWithActiveSubscription(t *testing.T) {
+	db := setupStripeCheckoutHandlerTest(t)
+	user := &model.User{Id: 1014, Username: "stripe_subscription_active", Email: "user@example.test", Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(user).Error)
+	plan := &model.SubscriptionPlan{
+		Title: "Stripe active plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
+		DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
+		QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
+		Enabled: true, StripePriceId: "price_subscription_placeholder",
+	}
+	require.NoError(t, db.Create(plan).Error)
+	now := common.GetTimestamp()
+	require.NoError(t, db.Create(&model.UserSubscription{
+		UserId: user.Id, PlanId: plan.Id, Status: "active",
+		StartTime: now - 60, EndTime: now + 3600,
+	}).Error)
+
+	retrieveCalled := false
+	retrieveStripePrice = func(_ context.Context, _ string) (*stripe.Price, error) {
+		retrieveCalled = true
+		return nil, errors.New("should not retrieve a Price")
+	}
+	createCalled := false
+	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		createCalled = true
+		return nil, errors.New("should not create Checkout")
+	}
+
+	response := invokeStripeCheckoutHandler(t, SubscriptionRequestStripePay, user.Id, `{"plan_id":1}`)
+
+	assert.Equal(t, "已有有效订阅，暂不支持变更套餐", response["message"])
+	assert.False(t, retrieveCalled)
+	assert.False(t, createCalled)
+	var orders int64
+	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Count(&orders).Error)
+	assert.Zero(t, orders)
+}
+
 func TestStripeAmountQuoteRejectsTopUpAboveMaximum(t *testing.T) {
 	db := setupStripeCheckoutHandlerTest(t)
 	user := &model.User{Id: 1008, Username: "stripe_topup_maximum", Group: "default", Status: common.UserStatusEnabled}

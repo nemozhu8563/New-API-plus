@@ -27,6 +27,19 @@ func requirePaymentCompliance(c *gin.Context) bool {
 	return true
 }
 
+func requireNoActiveSubscription(c *gin.Context, userId int) bool {
+	hasActiveSubscription, err := model.HasActiveUserSubscription(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	if hasActiveSubscription {
+		common.ApiErrorMsg(c, "已有有效订阅，暂不支持变更套餐")
+		return false
+	}
+	return true
+}
+
 func ConfirmPaymentCompliance(c *gin.Context) {
 	if c.GetBool("use_access_token") {
 		c.JSON(http.StatusForbidden, gin.H{

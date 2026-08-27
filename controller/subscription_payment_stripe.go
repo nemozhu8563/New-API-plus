@@ -59,6 +59,10 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "Stripe Webhook 未配置")
 		return
 	}
+	userId := c.GetInt("id")
+	if !requireNoActiveSubscription(c, userId) {
+		return
+	}
 	expectedAmountMinor, err := stripeSubscriptionAmountMinor(plan.PriceAmount)
 	expectedCurrency := strings.ToUpper(strings.TrimSpace(plan.Currency))
 	if err != nil || expectedCurrency == "" {
@@ -77,7 +81,6 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	userId := c.GetInt("id")
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
