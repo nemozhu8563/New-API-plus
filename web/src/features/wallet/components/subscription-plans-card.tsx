@@ -148,6 +148,15 @@ export function SubscriptionPlansCard({
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
 
+  const activePlanIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const sub of activeSubscriptions) {
+      const planId = sub?.subscription?.plan_id
+      if (planId) ids.add(planId)
+    }
+    return ids
+  }, [activeSubscriptions])
+
   const planPurchaseCountMap = useMemo(() => {
     const map = new Map<number, number>()
     for (const sub of allSubscriptions) {
@@ -354,7 +363,7 @@ export function SubscriptionPlansCard({
                       <div className='flex items-center gap-2'>
                         <span className='font-medium'>
                           {planTitle
-                            ? `${planTitle} · ${t('Subscription')} #${subscription?.id}`
+                            ? `${t(planTitle)} · ${t('Subscription')} #${subscription?.id}`
                             : `${t('Subscription')} #${subscription?.id}`}
                         </span>
                         {statusBadge}
@@ -422,6 +431,17 @@ export function SubscriptionPlansCard({
           />
         )}
 
+        {hasActive && plans.length > 0 && (
+          <p
+            className='bg-muted/30 text-muted-foreground rounded-lg border px-3 py-2 text-sm leading-5'
+            role='status'
+          >
+            {t(
+              'Plan changes are not supported while you have an active subscription.'
+            )}
+          </p>
+        )}
+
         {/* Available plans grid */}
         {plans.length > 0 ? (
           <div
@@ -441,6 +461,7 @@ export function SubscriptionPlansCard({
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
+              const isCurrentPlan = activePlanIds.has(plan.id)
               const quota =
                 totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')
               const hasWeeklyQuota =
@@ -526,7 +547,29 @@ export function SubscriptionPlansCard({
 
                     <Separator className='mb-4' />
 
-                    {reached ? (
+                    {hasActive && (
+                      <Tooltip>
+                        <TooltipTrigger render={<div />}>
+                          <Button
+                            variant='outline'
+                            size='lg'
+                            className='w-full'
+                            disabled
+                          >
+                            {isCurrentPlan
+                              ? t('Current plan')
+                              : t('Plan change unavailable')}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t(
+                            'Plan changes are not supported while you have an active subscription.'
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {!hasActive && reached && (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
                           <Button
@@ -542,7 +585,9 @@ export function SubscriptionPlansCard({
                           {t('Purchase limit reached')} ({count}/{limit})
                         </TooltipContent>
                       </Tooltip>
-                    ) : (
+                    )}
+
+                    {!hasActive && !reached && (
                       <Button
                         variant='outline'
                         size='lg'

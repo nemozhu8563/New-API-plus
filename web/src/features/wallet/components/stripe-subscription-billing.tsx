@@ -130,7 +130,9 @@ export function StripeSubscriptionBilling(
                   <div className='min-w-0'>
                     <div className='flex flex-wrap items-center gap-2'>
                       <span className='text-sm font-medium'>
-                        {subscription.plan_title || t('Stripe subscription')}
+                        {subscription.plan_title
+                          ? t(subscription.plan_title)
+                          : t('Stripe subscription')}
                       </span>
                       <StatusBadge
                         label={
@@ -209,7 +211,9 @@ export function StripeSubscriptionBilling(
               >
                 <div className='min-w-0'>
                   <p className='truncate font-medium'>
-                    {invoice.plan_title || t('Stripe invoice')}
+                    {invoice.plan_title
+                      ? t(invoice.plan_title)
+                      : t('Stripe invoice')}
                   </p>
                   <p className='text-muted-foreground mt-0.5'>
                     {t('{{start}} to {{end}}', {

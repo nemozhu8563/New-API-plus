@@ -68,7 +68,7 @@ after(() => {
 })
 
 describe('subscription plans quota copy', () => {
-  test('translates configured plan names and subtitles with the active locale', async () => {
+  test('translates configured plan names everywhere with the active locale', async () => {
     const localizedI18n = createInstance()
     await localizedI18n.use(initReactI18next).init({
       lng: 'zh',
@@ -92,6 +92,16 @@ describe('subscription plans quota copy', () => {
       completedRequests += 1
       if (completedRequests === 2) resolveRequests?.()
 
+      const subscription = {
+        id: 1,
+        user_id: 1,
+        plan_id: 1,
+        status: 'active',
+        start_time: 1_700_000_000,
+        end_time: 1_900_000_000,
+        amount_total: 55_000_000,
+        amount_used: 0,
+      }
       const data =
         config.url === '/api/subscription/plans'
           ? {
@@ -118,8 +128,8 @@ describe('subscription plans quota copy', () => {
               success: true,
               data: {
                 billing_preference: 'subscription_first',
-                subscriptions: [],
-                all_subscriptions: [],
+                subscriptions: [{ subscription }],
+                all_subscriptions: [{ subscription }],
                 stripe_subscriptions: [],
                 stripe_invoices: [],
                 billing_debt: 0,
@@ -153,6 +163,7 @@ describe('subscription plans quota copy', () => {
     const text = container.textContent || ''
     assert.match(text, /标准/)
     assert.match(text, /适合专注开发的个人/)
+    assert.doesNotMatch(text, /Standard/)
     assert.doesNotMatch(text, /For focused individual development/)
 
     await act(async () => root.unmount())

@@ -253,6 +253,91 @@ describe('subscription plans visibility', () => {
     container.remove()
   })
 
+  test('keeps plans visible but disables plan purchases while a subscription is active', async () => {
+    let completedRequests = 0
+    let resolveRequests: (() => void) | undefined
+    const requestsComplete = new Promise<void>((resolve) => {
+      resolveRequests = resolve
+    })
+
+    api.defaults.adapter = async (config) => {
+      completedRequests += 1
+      if (completedRequests === 2) resolveRequests?.()
+
+      const data =
+        config.url === '/api/subscription/plans'
+          ? {
+              success: true,
+              data: [
+                availablePlan,
+                {
+                  plan: {
+                    ...availablePlan.plan,
+                    id: 2,
+                    title: 'Professional',
+                    price_amount: 1_799,
+                  },
+                },
+              ],
+            }
+          : {
+              success: true,
+              data: {
+                billing_preference: 'subscription_first',
+                subscriptions: [activeSubscription],
+                all_subscriptions: [activeSubscription],
+                stripe_subscriptions: [],
+                stripe_invoices: [],
+                billing_debt: 0,
+              },
+            }
+
+      return {
+        data,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      }
+    }
+
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <SubscriptionPlansCard topupInfo={null} />
+        </I18nextProvider>
+      )
+    })
+    await act(async () => {
+      await requestsComplete
+      await Promise.resolve()
+    })
+
+    const buttons = [...container.querySelectorAll('button')]
+    const currentPlanButton = buttons.find((button) =>
+      button.textContent?.includes('Current plan')
+    )
+    const unavailableButton = buttons.find((button) =>
+      button.textContent?.includes('Plan change unavailable')
+    )
+    assert.ok(currentPlanButton)
+    assert.ok(unavailableButton)
+    assert.equal(currentPlanButton.disabled, true)
+    assert.equal(unavailableButton.disabled, true)
+    assert.match(container.textContent || '', /Standard/)
+    assert.match(container.textContent || '', /Professional/)
+    assert.match(
+      container.textContent || '',
+      /Plan changes are not supported while you have an active subscription\./
+    )
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
   test('does not offer wallet or subscription charge-order controls', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined

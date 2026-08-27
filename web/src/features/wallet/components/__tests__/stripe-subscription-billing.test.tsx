@@ -79,6 +79,8 @@ await i18n.use(initReactI18next).init({
     zhCN: {
       translation: {
         active: '活跃',
+        Builder: '构建者',
+        Professional: '专业',
       },
     },
   },
@@ -216,7 +218,7 @@ describe('Stripe subscription billing', () => {
     const invoice: StripeInvoiceSummary = {
       invoice_id: 'in_test_fulfilled',
       subscription_id: activeSubscription.subscription_id,
-      plan_title: 'Premium',
+      plan_title: 'Professional',
       amount_paid_minor: 89_900,
       currency: 'CNY',
       period_start: 1_787_303_037,
@@ -232,7 +234,10 @@ describe('Stripe subscription billing', () => {
         [invoice]
       )
 
-      assert.equal(container.textContent?.includes('Premium'), true)
+      assert.equal(container.textContent?.includes('构建者'), true)
+      assert.equal(container.textContent?.includes('专业'), true)
+      assert.equal(container.textContent?.includes('Builder'), false)
+      assert.equal(container.textContent?.includes('Professional'), false)
       await act(async () => root.unmount())
       container.remove()
     } finally {
