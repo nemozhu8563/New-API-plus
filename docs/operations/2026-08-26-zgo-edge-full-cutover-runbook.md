@@ -1,10 +1,65 @@
-# Zgo 边缘全量切换与 Caddy 升级执行手册（2026-08-26）
+# Zgo 边缘全量切换与 Caddy 升级执行及状态记录（2026-08-26）
 
-> 状态：**计划已编写，尚未执行**。本文件不代表服务器、DNS、Cloudflare、Caddy、sing-box 或生产配置已经发生变化。
+> 状态：**已执行、已切流、已通过发布验收，未触发回滚**。
 >
-> 计划窗口：2026-08-26 晚间（Asia/Shanghai），实际开始时间以执行前明确的“开始”指令为准。
+> Cutover ID：`tryvalo-zgo-cutover-20260826T205747+0800`。执行窗口：2026-08-26 晚间（Asia/Shanghai）。
 >
-> 变更策略：不做业务流量灰度。完成只读盘点、备份和非正式 hostname 预检后，`api.tryvalo.com` 与 `new.tryvalo.com` 的灰云 DNS 记录连续全量切到 Zgo。
+> 当前入口：`api.tryvalo.com` 与 `new.tryvalo.com` 均通过 Cloudflare 灰云 DNS 全量指向 Zgo `64.83.30.150`，再由 Zgo 使用固定 IP 和严格 TLS 校验回源 GreenCloud。
+>
+> 后续事项：发布功能验收已完成；线路改善结论仍需用发布后 24 小时的 TTFT、断流和重连数据与发布前基线对比。
+
+## 0. 最终部署状态
+
+以下状态为本次发布窗口内的最终核验结果，不包含任何 API Key、Cookie、证书私钥或其他 secret。
+
+### 0.1 当前拓扑和服务状态
+
+| 项目 | 最终状态 |
+| --- | --- |
+| 正式 DNS | `api.tryvalo.com`、`new.tryvalo.com` 为 Cloudflare DNS-only（灰云）A 记录，TTL `300s`，均指向 `64.83.30.150` |
+| DNS 验证 | 权威 DNS、`1.1.1.1`、`8.8.8.8` 均已返回 Zgo 地址 |
+| Zgo Caddy | `v2.11.4`，active，监听 `80/tcp`、`443/tcp` |
+| Zgo sing-box | `sing-box-10443` active/enabled；原占用 `443/tcp` 的 `sing-box` inactive/disabled |
+| Hysteria2 | 已删除，不再保留原 UDP 服务 |
+| GreenCloud Caddy | `v2.11.4`，active；业务容器仍由本机 Caddy 反代，不迁移应用或数据 |
+| 固定回源 | Zgo 连接 `173.249.203.66:443`，SNI 和 HTTP Host 均为 `origin-api.tryvalo.com`，保持严格证书校验，不依赖回源 DNS |
+| GreenCloud 防火墙 | `443/tcp` 仅允许 Zgo `64.83.30.150`；公网 `80/tcp` 保留给 HTTP-01 自动续期 |
+| GreenCloud 外部直连 | 非 Zgo 来源访问 `443/tcp` 已验证超时拒绝；Zgo 回源仍返回 HTTP 200 且 TLS 校验通过 |
+| 业务依赖 | `new-api`、PostgreSQL、Redis 均 healthy；本次未迁移数据库、Redis 或业务写入源 |
+
+### 0.2 配置指纹和回滚材料
+
+| 项目 | 值 |
+| --- | --- |
+| Zgo Caddyfile SHA-256 | `9037672af45256d1e0eef5a15f396cda404243b0d6bf98ff25984682dd2c98e8` |
+| GreenCloud Caddyfile SHA-256 | `500de444ed28642a0fa06a47e48c2588f23d11e30e324338f995ccf93c82c636` |
+| Zgo 回滚目录 | `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/zgo-edge` |
+| GreenCloud 回滚目录 | `/root/tryvalo-cutovers/tryvalo-zgo-cutover-20260826T205747+0800/greencloud-caddy` |
+
+### 0.3 发布验收结果
+
+- 两个正式域名的 `/api/status` 均返回 HTTP 200；无效 Token 均返回预期 HTTP 401。
+- `gpt-5.4` 共完成 4 次真实请求：2 次非流式、2 次 SSE，全部返回 HTTP 200。
+- 两次 SSE 均只出现一次 `response.completed`，没有失败事件、重复完成或提前断流。
+- 4 次请求均各自只有一条消费记录，没有重复结算。
+- 已从两个不同网络来源验证客户端 IP 正常传递，没有全部退化为 Zgo 地址。
+- 发布观察窗口最近 15 分钟的 Zgo access log 中 `5xx=0`；两端 Caddy 均 active，未发现新 OOM 或持续告警。
+- 发布过程中 Zgo Caddy 曾因 access log 目录权限导致一次 reload 失败，已在正式切流前修复；21:20（Asia/Shanghai）后未见同类新告警。
+
+验收请求 ID：
+
+```text
+202608261402030717113508268d9d6GAqLOIGb
+202608261402066298397548268d9d6q3YMzqdA
+202608261402104144185868268d9d6zhNoPhTA
+202608261402124690527318268d9d6poLnEflX
+```
+
+### 0.4 已知问题和待复核项
+
+- 渠道 29 虽声明支持 `gpt-5.4-mini`，但其上游账号实际不支持。该问题与本次 Zgo 线路切换无关，本次未修改渠道配置。
+- “线路是否改善”尚未由发布窗口内的少量请求证明。需要按同模型、同渠道对比发布前后 24 小时的 TTFT、SSE 完整率、异常断流和重连数据。
+- 本次临时 API Key 未写入文档，发布完成后必须在凭据管理端吊销。
 
 ## 1. 目标与边界
 
@@ -39,19 +94,18 @@
 
 ## 2. 固定版本和角色
 
-| 项目 | 计划值 |
+| 项目 | 最终状态 |
 | --- | --- |
 | GreenCloud | `nemo-Phoenix` / `173.249.203.66` |
-| GreenCloud Caddy 当前已知版本 | `2.6.2`；执行时重新读取，不以本文代替现场值 |
-| GreenCloud Caddy 目标版本 | `2.11.4` |
-| Zgo Caddy 目标版本 | `2.11.4` |
-| 正式入口 | `api.tryvalo.com`、`new.tryvalo.com` -> Zgo，`proxied=false` |
+| GreenCloud Caddy | 已从 `2.6.2` 升级到 `2.11.4` |
+| Zgo Caddy | `2.11.4` |
+| 正式入口 | `api.tryvalo.com`、`new.tryvalo.com` -> `64.83.30.150`，`proxied=false` |
 | 回源身份 | `origin-api.tryvalo.com` -> `173.249.203.66`，`proxied=false` |
-| 预检入口 | `edge-api.tryvalo.com` -> Zgo，`proxied=false`，只用于运维预检，不承接灰度业务 |
-| Zgo Caddy | `80/tcp`、`443/tcp` |
-| sing-box VLESS Reality | 计划迁至 `10443/tcp` |
-| Hysteria2 | 保持/确认 `8443/udp`，以现场配置为准 |
-| DNS TTL | 目标 `300s`；若当前更高，必须先等待一个原 TTL，或明确接受更长回滚尾部 |
+| 预检入口 | `edge-api.tryvalo.com` -> Zgo，`proxied=false`，只用于运维预检，不承接业务灰度 |
+| Zgo Caddy 监听 | `80/tcp`、`443/tcp` |
+| sing-box VLESS Reality | 已迁至 `10443/tcp`，active/enabled |
+| Hysteria2 | 已删除 |
+| DNS TTL | `300s` |
 
 `v2.11.4` 是计划编写日官方最新稳定版本。执行时必须再次核对官方 stable release 和 APT 候选版本；如果版本已变化，不能自动追随最新版本，仍使用 `2.11.4`，除非单独修改并记录本计划。
 
@@ -188,7 +242,7 @@ apt-get install caddy=<同一个完整 Debian 包版本>
 2. 先放行并配置 `10443/tcp`，验证 VLESS Reality 新端口可用。
 3. 更新受控客户端配置并完成至少一次真实连接验证。
 4. 再释放 sing-box 的 `443/tcp`；确认旧进程没有继续占用 `80/443`。
-5. 保持 Hysteria2 UDP 端口不变；若现场不是 `8443/udp`，记录实际值，不顺手迁移。
+5. 按本次最终决定删除 Hysteria2，并确认原 UDP 监听和对应服务已清理。
 6. 从官方 stable APT 仓库安装固定版本 Caddy `2.11.4`，使用 systemd 原生运行，不安装完整 Docker 业务栈。
 7. 为 Caddy access log 配置轮转和磁盘上限；不得记录 Authorization、Cookie、请求体或敏感查询参数。
 
@@ -366,7 +420,7 @@ DNS 修改后：
 如果迁移 `10443/tcp` 后 VPN 路径不可用：
 
 1. 只有在 Zgo Caddy 已停止且 `443` 已释放时，才可将 sing-box 恢复到旧 `443/tcp`。
-2. 恢复备份配置、UFW 和客户端端口，验证 Reality；Hysteria2 不随之改动。
+2. 恢复备份配置、UFW 和客户端端口，验证 Reality；Hysteria2 已删除，不属于默认回滚范围。
 3. 若正式 API 已切到 Zgo，不能直接抢占 Caddy `443`；应先完成 DNS 回滚再恢复 sing-box。
 
 ## 13. 收尾和次日复核
@@ -391,28 +445,26 @@ GreenCloud 上 `api`、`new` 的旧证书只能作为其有效期内的直接 DN
 
 清理备份、旧二进制、临时证书或日志前需要另行确认。
 
-## 14. 执行记录模板
+## 14. 本次执行记录
 
 ```text
-Cutover ID:
-开始时间:
-执行人:
-GreenCloud Caddy old -> new:
-Zgo Caddy version:
-GreenCloud Caddy config SHA-256:
-Zgo Caddy config SHA-256:
-sing-box old -> new port:
-DNS old -> new:
-切流时间:
-证书就绪时间:
-GET /api/status:
-非流式请求 ID:
-SSE 请求 ID:
-账单核对:
-5xx / SSE / 重连观察:
-是否触发回滚:
-回滚完成时间:
-24h 复核结论:
+Cutover ID: tryvalo-zgo-cutover-20260826T205747+0800
+变更批次建立时间: 2026-08-26T20:57:47+08:00（来自 Cutover ID）
+执行日期: 2026-08-26（Asia/Shanghai）
+GreenCloud Caddy old -> new: 2.6.2 -> 2.11.4
+Zgo Caddy version: 2.11.4
+GreenCloud Caddy config SHA-256: 500de444ed28642a0fa06a47e48c2588f23d11e30e324338f995ccf93c82c636
+Zgo Caddy config SHA-256: 9037672af45256d1e0eef5a15f396cda404243b0d6bf98ff25984682dd2c98e8
+sing-box old -> new port: 443/tcp -> 10443/tcp
+Hysteria2: deleted
+DNS new: api.tryvalo.com / new.tryvalo.com -> 64.83.30.150, proxied=false, TTL=300
+GET /api/status: 两个正式域名均为 HTTP 200
+有效模型请求: 2 次非流式 + 2 次 SSE，全部 HTTP 200
+账单核对: 4 次请求各一条消费记录
+客户端 IP: 两个不同网络来源验证通过
+发布观察: 最近 15 分钟 Zgo access log 5xx=0；两次 SSE 完整结束
+是否触发回滚: 否
+24h 复核结论: 待补充 TTFT、断流和重连对比
 ```
 
 ## 15. 依据
