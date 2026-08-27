@@ -2,11 +2,11 @@
 
 > 文档状态：代码交付与 GreenCloud 测试发布交接快照。
 >
-> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录，以及 GreenCloud 现场回读。它证明提交 `00f0f3598` 已发布到独立测试实例；不证明这些改动已经发布到生产，也不证明真实 Stripe、付费模型、管理员流程或全部用户路径已经完成 E2E。本文件自身是发布后的记录更新，不在该测试镜像内。
+> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录，以及 GreenCloud 现场回读。它证明 `origin/main` 的精确提交 `abce39b75f37a01fb205cab70bf643390c2e5895` 已于 2026-08-27 发布到独立测试实例；上一版 `00f0f3598` 的测试发布证据继续保留在下文。它不证明这些改动已经发布到生产，也不证明真实 GitHub/Google OAuth、Stripe、付费模型、管理员流程或全部用户路径已经完成 E2E。本文件自身是发布后的记录更新，不在该测试镜像内。
 
 ## 1. 当前结论
 
-原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。本次跟进又按职责拆成五个提交，均已推送到 `origin/main`；本次测试部署的精确代码交付点为 `00f0f359810cfd0a1e62d57c1bd9e64cfff8e935`。
+原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。后续订阅、运维、认证文案和 GitHub/Google 登录改动均已进入 `origin/main`；当前测试部署的精确代码交付点为 `abce39b75f37a01fb205cab70bf643390c2e5895`。
 
 当前可以确认：
 
@@ -21,6 +21,11 @@
 - 生产 `new-api` 未重建，发布前后镜像引用、镜像 ID 和健康状态一致；PostgreSQL 与 Redis 均保持 `healthy`。
 - 本次应用发布未修改生产容器、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 或 Redis 的部署配置。
 - Zgo 边缘全量切换的实际执行状态已由 `13af0b289` 更新到专门运行手册；本次应用测试发布没有再次执行或改动该切换。
+- GitHub 和 OIDC（测试环境用于 Google）登录现在使用数据库唯一 claim 原子占用外部身份；同一 provider 的同一外部账号不能再被另一个本地账号绑定，且并发注册不会生成两个归属不明的本地账号。
+- GitHub/OIDC 只有在 Client ID、Client Secret 和必要 endpoint 配置完整后才能启用；OIDC 前后端统一使用 `ServerAddress` 生成回调地址，登录页已渲染 Google 和 Custom Provider 图标。
+- GitHub/Google 登录代码已随 `main` 镜像发布到 `new-api-test`，但测试 OAuth Client 尚未创建或写入测试配置，开关仍应保持关闭，因此真实授权、回调、首次注册、重复绑定和再次登录尚未完成 E2E。
+- 当前测试实例运行镜像 `new-api:new-api-test-20260827T093802Z-abce39b75`，状态 `healthy`、重启次数 0；测试内网和公网 `/api/status`、首页及 `/sign-in` 均返回 HTTP 200。
+- 本次只重建 `new-api-test`。生产 `new-api` 的容器 ID、镜像引用、镜像 ID、健康状态和重启次数在发布前后保持一致；PostgreSQL 与 Redis 未重建。
 
 ## 2. 本轮提交
 
@@ -38,6 +43,10 @@
 | `13af0b289` | 将 Zgo 边缘运行手册由计划态更新为已执行、已验收状态 | 文档 diff 和敏感信息模式扫描通过 | 记录既有生产边缘事实；本次应用测试发布未改动 Zgo |
 | `47e458353` | 删除已被运行手册和主机回滚目录取代的临时候选 Caddyfile | 仓库引用搜索和 staged diff 检查通过 | 只清理仓库临时材料，不删除主机回滚材料 |
 | `00f0f3598` | 要求生产发布、切流、回滚及重大基础设施变更同步更新真实状态记录 | staged diff 和敏感信息模式扫描通过 | 本次不可变测试镜像的精确代码提交；该规则本身不改变运行时 |
+| `6fd43b270` | 记录 Tryvalo 入站邮件路由的当前状态 | 文档 diff 和敏感信息模式扫描通过 | 文档提交；未由本次测试发布修改邮件或 DNS |
+| `a01d82228` | 保留 CPA 直连路由的最终仓库配置与运行记录 | 文档及配置检查通过 | 进入 `main` 镜像构建上下文；本次未应用 Caddy、CPA 或边缘配置 |
+| `b6b0b49c9` | 登录与注册法律文案组件化并完成全 locale i18n | 目标 Vitest、i18n、构建和格式检查通过 | 当前测试实例已包含；未执行浏览器逐语言人工审校 |
+| `abce39b75` | GitHub/OIDC 身份原子归属、完整启用校验、统一 OIDC 回调和 OAuth provider 图标 | 目标 Go 测试、295 个前端测试、前端构建、i18n、格式与 diff 检查通过 | 当前测试镜像的精确 `main` 提交；真实 GitHub/Google E2E 待测试凭据 |
 
 ## 3. 本地验证记录
 
@@ -80,6 +89,22 @@ git diff --check
 - 本次 Vitest 为 3 个文件、12 个测试，覆盖有效订阅期间按钮禁用、提示文案和账单套餐名本地化。
 - `relaykit` 独立构建、前端类型检查与生产构建、i18n 同步、目标 lint/format、diff 检查均通过。
 - 当前测试发布镜像的 Docker 多阶段构建通过，包含 Bun 前端生产构建与 Go 二进制构建；构建上下文来自精确提交 `00f0f3598` 的隔离归档，而非工作树。
+
+本次 GitHub/Google 登录发布前又实际执行并通过：
+
+```text
+go test ./model ./oauth ./controller
+cd web && bun run test
+cd web && bun run build:check
+cd web && bun run i18n:sync
+cd web && bun run format:check
+git diff --check
+```
+
+- Go：`model`、`oauth`、`controller` 三个目标 package 全部通过。
+- Vitest：76 个测试文件、295 个测试全部通过。
+- 前端生产构建、i18n 同步、格式检查与 Git diff 检查全部通过。
+- 镜像从精确 `main` 提交 `abce39b75f37a01fb205cab70bf643390c2e5895` 的隔离归档构建为 `linux/amd64`，没有从功能分支或 dirty 工作树构建。
 
 ## 4. GreenCloud 测试发布记录
 
@@ -135,34 +160,88 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --fo
 
 如需恢复测试数据库，应先停止测试写入并另行制定恢复步骤；本次未执行数据库恢复演练。
 
+### 4.1 GitHub/Google 登录代码测试发布（当前）
+
+发布范围为 A 类测试应用发布，并单列 OAuth claim schema 风险检查。正式生产、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均不在变更范围内。
+
+不可变发布证据：
+
+| 项目 | 值 |
+| --- | --- |
+| 测试容器启动时间 | `2026-08-27 17:55:44`（Asia/Shanghai） |
+| 提交 | `abce39b75f37a01fb205cab70bf643390c2e5895`，发布前与 `origin/main` 一致 |
+| Release ID / 镜像 | `new-api-test-20260827T093802Z-abce39b75` / `new-api:new-api-test-20260827T093802Z-abce39b75` |
+| 平台 | `linux/amd64` |
+| 镜像 ID | `sha256:926b0a7ee78a5e54223fb6bb125a6dc8dbf4c4933e10405c43cdfcbb1d963b76` |
+| 镜像包 SHA-256 | `0900cebf482e62f19bd2ac03624510ca7effdf9b96839671679114f4a3c014f4` |
+| 镜像包大小 | `71,696,973` bytes |
+| GreenCloud 镜像包 | `/srv/new-api-test/releases/new-api-test-20260827T093802Z-abce39b75.tar.gz` |
+| 发布后测试 Compose SHA-256 | `d8ffd66152e355fe33e3e330c31b7b584a1c0b9c0dc974a0a7bcf815e1caad22` |
+| 发布前测试镜像 | `new-api:new-api-test-20260827T002357Z-00f0f3598`，镜像 ID `sha256:9e657ef349efb8282ccc0e9fe8d35b0a729869e89659da1f2ff3ebfe3f2a1d1b` |
+| Compose 备份 | `/srv/new-api-test/backups/new-api-test-20260827T093802Z-abce39b75/compose.yaml.before-new-api-test-20260827T093802Z-abce39b75` |
+| Compose 备份 SHA-256 | `a0b913daef917c0dc6217a638cf14f2b3bc2cc81d89789e12183349a8fa06dff` |
+| 测试库备份 | `/srv/new-api-test/backups/new-api-test-20260827T093802Z-abce39b75/newapi_test.before-new-api-test-20260827T093802Z-abce39b75.dump` |
+| 测试库备份 SHA-256 | `322907ac64f2c329b7f02fe4f1a24fd9f9de924b4cb5eb57b2a46bcacaf414d0` |
+
+发布前测试库只读检查结果：
+
+- `users.github_id`、`users.oidc_id`、`users.telegram_id` 的非空历史绑定数均为 0，重复 subject 分组数均为 0。
+- `external_identity_claims` 已存在，行数为 0；`(provider, subject)` 与 `(provider, user_id)` 两组唯一索引均已存在，未发现 legacy owner 冲突。
+- 测试服务固定为 `NODE_TYPE=slave`。从上一测试提交到当前 `main` 的数据库相关变化只有 GitHub/OIDC claim 回填；由于没有历史绑定、表和唯一索引已经就绪，本次没有启动临时 master，也没有执行手写数据迁移。
+
+远端先通过完整 SHA-256 和 `gzip -t` 校验镜像包，再执行 `docker load`。随后只把测试 Compose 的唯一镜像引用从上一测试 tag 替换为当前 tag，`docker compose config -q` 通过，并执行：
+
+```text
+docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test
+```
+
+2026-08-27 17:58（Asia/Shanghai）独立回读结果：
+
+- `new-api-test` 容器 ID 为 `597380c6fce4c094c9c39d554558166d04d289fa7efba629bf96d26e274149fc`，运行镜像 ID 与构建镜像一致，状态 `running/healthy`、重启次数 0。
+- 测试内网 `/api/status`、首页、`/sign-in` 均为 HTTP 200；公网 `https://test.tryvalo.com/api/status` 与 `/sign-in` 均为 HTTP 200，TLS 校验通过。
+- 最近 10 分钟关键启动日志中 `panic`、`fatal`、迁移/数据库关键错误计数为 0。
+- 测试 Compose 与发布前备份的差异只有旧、新两行镜像引用；PostgreSQL、Redis 未重建。
+- 生产 `new-api` 容器 ID 仍为 `dd32f52cf926231547112c0c7390a2f456e432fd4b312be9a8fd7388a4a44776`，镜像 ID 仍为 `sha256:915b85ceef61ef8bb35294d589b6d4a57f07ab49594ea0ba3c071c8b73e0df2d`，状态 `running/healthy`、重启次数 0；内网及公网 `api.tryvalo.com/api/status` 均为 HTTP 200。
+
+容器级回滚命令：
+
+```bash
+cp -p /srv/new-api-test/backups/new-api-test-20260827T093802Z-abce39b75/compose.yaml.before-new-api-test-20260827T093802Z-abce39b75 /srv/new-api-test/compose.yaml
+docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test
+```
+
+如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
+
 ## 5. 已知验证缺口
 
 - 没有运行整个仓库的 Go 和前端全量测试套件；当前代码证据是与本轮改动对应的定向测试、构建和格式检查。
 - 本次订阅跟进涉及的目标文件已通过 `oxlint`；上一轮更广范围检查仍发现 4 个既有文件中有 17 个 error 和 3 个 warning，均不在当轮改动行，本次没有顺带清理。
 - `setting/data/google_profanity_en.txt` 为第三方上游的精确快照，保留了 43 行上游尾随空格；运行时解析会 `TrimSpace`，相关测试已通过。
 - 没有执行真实 Stripe 付款/回调、Creem/Epay/Waffo Pancake 真实下单、付费模型请求、管理员登录、多个真实账号 Dashboard 展示或完整浏览器 E2E。
+- 没有创建或配置测试 GitHub/Google OAuth Client，因此尚未验证授权页、回调、首次注册、再次登录、重复绑定失败和解绑后的行为；代码已发布不等于第三方登录已测通。
 - 没有实现或验证订阅升级、按比例计费、原订阅取消和权益迁移；当前明确采用“有效订阅期间可比较套餐但禁止再次购买”的产品边界。
 - `/api/status` 当前返回的 `version` 为空，不能单独证明运行提交；本次以不可变镜像 tag、镜像 ID、构建提交和包哈希建立对应关系。
-- 测试容器启动和健康检查通过，但没有执行数据库 schema diff、恢复演练或 MySQL 实例验证。
+- 测试容器启动和健康检查通过，已核对本次依赖的 claim 表与唯一索引，但没有执行全库 schema diff、恢复演练或 MySQL 实例验证。
 - 没有完成产品文案和各语言翻译的人工语义审校；同步报告为结构和未翻译检测结果，不等同于人工质量验收。
 
 ## 6. 发布与运维状态
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 本地代码 | 本次五批订阅/运维提交已完成定向验证，并从干净的精确提交归档构建镜像 |
-| 远端仓库 | 应用测试交付点 `00f0f3598` 已推送到 `origin/main`；本文件为其后的发布记录更新 |
-| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260827T002357Z-00f0f3598` |
+| 本地代码 | GitHub/Google 登录改动已完成目标 Go/前端验证，并从干净的精确 `main` 提交归档构建镜像 |
+| 远端仓库 | 当前测试交付点 `abce39b75` 已推送到 `origin/main`；本文件为其后的发布记录更新 |
+| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260827T093802Z-abce39b75` |
 | 生产部署 | 本轮未执行；生产容器身份与健康状态已回读为不变 |
 | 生产业务回读 | 未执行管理员、Stripe、模型请求或账单 E2E，生产业务行为不能由容器健康替代证明 |
 | Zgo / DNS / Cloudflare | Zgo 全量切换已在专门运行手册中记录为已执行和已验收；本次应用测试发布未触碰边缘配置 |
 
-此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交；构建 `00f0f3598` 镜像前，本地 `HEAD` 与 `origin/main` 一致且工作树干净。
+此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交。构建当前镜像前，本地 `main` 与 `origin/main` 均为 `abce39b75f37a01fb205cab70bf643390c2e5895` 且主干工作树干净；镜像加载和 Compose 重建全程通过 SSH 与 Docker Compose 执行，没有使用浏览器或云控制台作为部署入口。
 
 ## 7. 后续门槛
 
-1. 在测试实例用批准的测试账号完成管理员登录、无订阅/有有效订阅两种套餐界面、四个支付入口拒绝路径、内容策略拒绝路径和 Stripe Sandbox 业务 E2E。
-2. 如测试需要真实上游模型或长连接/SSE，先明确 token、费用与观察范围，再执行并核对请求日志及单次计费。
-3. 正式生产发布必须作为单独动作，以固定提交重新构建/复用已审计镜像，执行生产备份、迁移检查、健康与业务回读，并记录独立回滚窗口。
-4. 若未来要支持升级，必须先明确各支付渠道的订阅变更 API、proration、失败回滚、原订阅取消时序和本地权益迁移规则，再补后端原子性与真实 Sandbox E2E；当前不得把再次购买当作升级。
-5. Zgo、DNS、Cloudflare、Caddy 和防火墙后续变更继续使用各自的执行门槛，不能由本次测试实例成功推导为可直接变更。
+1. 分别创建仅用于 `https://test.tryvalo.com/oauth/github` 和 `https://test.tryvalo.com/oauth/oidc` 的测试 OAuth Client，将凭据只写入本地受限文件和测试配置；保持生产配置不变。随后完成 GitHub/Google 首次注册、再次登录、同一外部账号重复绑定失败、另一个外部账号可独立注册以及解绑路径 E2E。
+2. 在测试实例用批准的测试账号完成管理员登录、无订阅/有有效订阅两种套餐界面、四个支付入口拒绝路径、内容策略拒绝路径和 Stripe Sandbox 业务 E2E。
+3. 如测试需要真实上游模型或长连接/SSE，先明确 token、费用与观察范围，再执行并核对请求日志及单次计费。
+4. 正式生产发布必须作为单独动作，以固定提交重新构建/复用已审计镜像，执行生产备份、迁移检查、健康与业务回读，并记录独立回滚窗口。
+5. 若未来要支持升级，必须先明确各支付渠道的订阅变更 API、proration、失败回滚、原订阅取消时序和本地权益迁移规则，再补后端原子性与真实 Sandbox E2E；当前不得把再次购买当作升级。
+6. Zgo、DNS、Cloudflare、Caddy 和防火墙后续变更继续使用各自的执行门槛，不能由本次测试实例成功推导为可直接变更。
