@@ -25,7 +25,7 @@ func TestOIDCProvider_GetName(t *testing.T) {
 	assert.Equal(t, "Acme SSO", p.GetName())
 }
 
-func TestOIDCProvider_ExchangeTokenUsesAPICallback(t *testing.T) {
+func TestOIDCProvider_ExchangeTokenUsesBrowserCallback(t *testing.T) {
 	settings := system_setting.GetOIDCSettings()
 	originalSettings := *settings
 	originalServerAddress := system_setting.ServerAddress
@@ -55,5 +55,5 @@ func TestOIDCProvider_ExchangeTokenUsesAPICallback(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, token)
 	assert.Equal(t, "test-token", token.AccessToken)
-	assert.Equal(t, "https://api.tryvalo.com/api/oauth/oidc", <-redirectURI)
+	assert.Equal(t, "https://api.tryvalo.com/oauth/oidc", <-redirectURI)
 }
