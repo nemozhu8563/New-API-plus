@@ -60,10 +60,12 @@ const stripePlan: PublicPlanRecord = {
     id: 1,
     title: 'Test plan',
     price_amount: 20,
-    currency: 'USD',
+    currency: 'CNY',
     duration_unit: 'month',
     duration_value: 1,
-    quota_reset_period: 'never',
+    quota_reset_period: 'billing_cycle',
+    quota_reset_custom_seconds: 0,
+    recommended: false,
     max_purchase_per_user: 0,
     total_amount: 1_000_000,
     stripe_checkout_available: true,
@@ -99,6 +101,9 @@ test('labels the Stripe Checkout action as Pay', async () => {
   )
   assert.ok(buttonLabels.has('Pay'))
   assert.equal(buttonLabels.has('Stripe'), false)
+  assert.match(document.body.textContent || '', /Monthly billing/)
+  assert.match(document.body.textContent || '', /Monthly Quota/)
+  assert.doesNotMatch(document.body.textContent || '', /Reset Period/)
 
   await act(async () => root.unmount())
   container.remove()

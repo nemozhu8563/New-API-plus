@@ -1,12 +1,6 @@
-import {
-  ArrowRight01Icon,
-  Building03Icon,
-  Loading03Icon,
-  Tick02Icon,
-} from '@hugeicons/core-free-icons'
+import { Loading03Icon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -19,6 +13,7 @@ import {
 import { formatSubscriptionPrice } from '@/features/subscriptions/lib'
 import type { PublicSubscriptionPlan } from '@/features/subscriptions/types'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
+import { formatQuota } from '@/lib/format'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -31,85 +26,78 @@ interface LandingPlansSectionProps {
   redirectToCheckout?: typeof redirectToHostedCheckout
 }
 
-interface LandingPlanSpec {
-  title: string
-  subtitle: string
-  priceAmount: number
-  weeklyQuota: number
-  recommended?: boolean
-}
-
-const LANDING_PLAN_SPECS: readonly LandingPlanSpec[] = [
-  {
-    title: 'Standard',
-    subtitle: 'For focused individual development',
-    priceAmount: 399,
-    weeklyQuota: 110,
-  },
-  {
-    title: 'Premium',
-    subtitle: 'The first choice for professional developers',
-    priceAmount: 899,
-    weeklyQuota: 260,
-    recommended: true,
-  },
-  {
-    title: 'Professional',
-    subtitle: 'For intensive development and teams',
-    priceAmount: 1799,
-    weeklyQuota: 530,
-  },
-]
-
-function isFourWeekWeeklyPlan(plan: PublicSubscriptionPlan): boolean {
-  return (
-    plan.currency.trim().toUpperCase() === 'CNY' &&
-    plan.duration_unit === 'day' &&
-    Number(plan.duration_value) === 28 &&
-    plan.quota_reset_period === 'custom' &&
-    Number(plan.quota_reset_custom_seconds) === 604800
-  )
-}
-
 function PlanCard(props: {
   plan: PublicSubscriptionPlan
-  spec: LandingPlanSpec
+  quotaPerUnit: number
   isAuthenticated: boolean
   pending: boolean
   onSubscribe: (planId: number) => void
 }) {
   const { t } = useTranslation()
-  const quotaLabel = `$${Intl.NumberFormat(undefined).format(
-    props.spec.weeklyQuota
-  )}`
-  const fourWeekQuota = props.spec.weeklyQuota * 4
+  const totalAmount = Number(props.plan.total_amount || 0)
+  const monthlyQuota = totalAmount / props.quotaPerUnit
+  const quotaLabel =
+    totalAmount > 0 && Number.isFinite(monthlyQuota)
+      ? formatQuota(totalAmount)
+      : t('Unlimited')
   const priceAmount = Number(props.plan.price_amount || 0)
   const discount =
-    Number.isFinite(priceAmount) && priceAmount > 0 && fourWeekQuota > 0
-      ? Math.floor((priceAmount / fourWeekQuota) * 100) / 10
+    Number.isFinite(priceAmount) && priceAmount > 0 && monthlyQuota > 0
+      ? Math.floor((priceAmount / monthlyQuota) * 100) / 10
       : null
   const signInHref = `/sign-in?redirect=${encodeURIComponent('/#plans')}`
+  const actionClassName = `mt-6 h-11 w-full rounded-xl ${
+    props.plan.recommended
+      ? 'bg-[#5d3dff] text-white hover:bg-[#6c50ff]'
+      : 'bg-white/12 text-white hover:bg-white/18'
+  }`
+  let planAction = (
+    <Button
+      className='mt-6 h-11 w-full rounded-xl bg-white/12 text-white'
+      disabled
+    >
+      {t('Not available')}
+    </Button>
+  )
+
+  if (props.plan.stripe_checkout_available) {
+    if (props.isAuthenticated) {
+      planAction = (
+        <Button
+          className={actionClassName}
+          onClick={() => props.onSubscribe(props.plan.id)}
+          disabled={props.pending}
+        >
+          {props.pending ? t('Opening checkout...') : t('Subscribe now')}
+        </Button>
+      )
+    } else {
+      planAction = (
+        <Button className={actionClassName} render={<a href={signInHref} />}>
+          {t('Sign in to subscribe')}
+        </Button>
+      )
+    }
+  }
 
   return (
     <article
       className={`relative flex min-h-[430px] flex-col rounded-[24px] border bg-[#181d25] p-6 shadow-2xl shadow-black/10 ${
-        props.spec.recommended
+        props.plan.recommended
           ? 'border-[#7d7bff] ring-1 ring-[#7d7bff]'
           : 'border-white/12'
       }`}
     >
-      {props.spec.recommended && (
+      {props.plan.recommended && (
         <span className='absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#6657ff] px-4 py-1 text-xs font-semibold whitespace-nowrap text-white'>
           {t('Recommended')}
         </span>
       )}
 
       <div>
-        <h3 className='text-xl font-semibold text-white'>
-          {t(props.spec.title)}
-        </h3>
+        <h3 className='text-xl font-semibold text-white'>{props.plan.title}</h3>
         <p className='mt-1.5 min-h-6 text-sm text-white/55'>
-          {t(props.spec.subtitle)}
+          {props.plan.subtitle || null}
         </p>
       </div>
 
@@ -131,21 +119,21 @@ function PlanCard(props: {
             props.plan.currency
           )}
         </span>
-        <span className='pb-1 text-sm text-white/55'>/{t('4 weeks')}</span>
+        <span className='pb-1 text-sm text-white/55'>/{t('month')}</span>
       </div>
 
       <ul className='mt-5 flex-1 space-y-3 text-sm leading-6 text-white/78'>
         {[
-          t('Weekly quota {{quota}}', { quota: quotaLabel }),
-          t('Credits refresh every 7 days'),
-          t('Renews automatically every 4 weeks'),
+          t('Monthly quota {{quota}}', { quota: quotaLabel }),
+          t('Credits refresh with each monthly renewal'),
+          t('Renews automatically every month'),
         ].map((benefit) => (
           <li key={benefit} className='flex items-start gap-3'>
             <HugeiconsIcon
               icon={Tick02Icon}
               strokeWidth={2}
               className={
-                props.spec.recommended
+                props.plan.recommended
                   ? 'mt-1 size-4 shrink-0 text-[#8584ff]'
                   : 'mt-1 size-4 shrink-0 text-white/55'
               }
@@ -156,89 +144,7 @@ function PlanCard(props: {
         ))}
       </ul>
 
-      {props.isAuthenticated ? (
-        <Button
-          className={`mt-6 h-11 w-full rounded-xl ${
-            props.spec.recommended
-              ? 'bg-[#5d3dff] text-white hover:bg-[#6c50ff]'
-              : 'bg-white/12 text-white hover:bg-white/18'
-          }`}
-          onClick={() => props.onSubscribe(props.plan.id)}
-          disabled={props.pending || !props.plan.stripe_checkout_available}
-        >
-          {props.pending ? t('Opening checkout...') : t('Subscribe now')}
-        </Button>
-      ) : (
-        <Button
-          className={`mt-6 h-11 w-full rounded-xl ${
-            props.spec.recommended
-              ? 'bg-[#5d3dff] text-white hover:bg-[#6c50ff]'
-              : 'bg-white/12 text-white hover:bg-white/18'
-          }`}
-          render={<a href={signInHref} />}
-        >
-          {t('Sign in to subscribe')}
-        </Button>
-      )}
-    </article>
-  )
-}
-
-function EnterpriseCard() {
-  const { t } = useTranslation()
-
-  return (
-    <article className='relative flex min-h-[430px] flex-col overflow-hidden rounded-[24px] border border-[#ef884c]/55 bg-[#211b1d] p-6 shadow-2xl shadow-[#ef884c]/10'>
-      <div className='flex size-12 items-center justify-center rounded-2xl bg-[#ef884c] text-white shadow-lg shadow-[#ef884c]/20'>
-        <HugeiconsIcon
-          icon={Building03Icon}
-          strokeWidth={1.8}
-          className='size-6'
-          aria-hidden='true'
-        />
-      </div>
-      <span className='absolute top-6 right-6 rounded-full border border-[#ef884c]/45 bg-[#ef884c]/10 px-3 py-1 text-xs font-medium text-[#ffb17f]'>
-        {t('Enterprise')}
-      </span>
-
-      <h3 className='mt-6 text-xl font-semibold text-white'>
-        {t('Enterprise plan')}
-      </h3>
-      <p className='mt-1.5 text-sm leading-6 text-white/55'>
-        {t('Tailored quotas and concurrency for your team.')}
-      </p>
-
-      <ul className='mt-5 flex-1 space-y-3 text-sm leading-6 text-white/78'>
-        {[
-          'Custom weekly quota and concurrency',
-          'Dedicated API access and usage management',
-          'Priority support and incident handling',
-          'Contracts, invoices, and company billing',
-        ].map((benefit) => (
-          <li key={benefit} className='flex items-start gap-3'>
-            <HugeiconsIcon
-              icon={Tick02Icon}
-              strokeWidth={2}
-              className='mt-1 size-4 shrink-0 text-[#ef884c]'
-              aria-hidden='true'
-            />
-            <span>{t(benefit)}</span>
-          </li>
-        ))}
-      </ul>
-
-      <Button
-        className='mt-6 h-11 w-full rounded-xl bg-[#ef884c] text-white hover:bg-[#f39a63]'
-        render={<a href='mailto:contract@tryvalo.com' />}
-      >
-        {t('Contact sales')}
-        <HugeiconsIcon
-          icon={ArrowRight01Icon}
-          strokeWidth={2}
-          data-icon='inline-end'
-          aria-hidden='true'
-        />
-      </Button>
+      {planAction}
     </article>
   )
 }
@@ -266,20 +172,7 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
       return response.data || []
     },
   })
-  const landingPlans = useMemo(() => {
-    const publicPlans = plansQuery.data || []
-    return LANDING_PLAN_SPECS.flatMap((spec) => {
-      const expectedQuota = spec.weeklyQuota * quotaPerUnit
-      const record = publicPlans.find(
-        ({ plan }) =>
-          isFourWeekWeeklyPlan(plan) &&
-          plan.stripe_checkout_available &&
-          Math.abs(Number(plan.price_amount) - spec.priceAmount) < 0.001 &&
-          Math.abs(Number(plan.total_amount) - expectedQuota) < 0.5
-      )
-      return record ? [{ plan: record.plan, spec }] : []
-    })
-  }, [plansQuery.data, quotaPerUnit])
+  const landingPlans = plansQuery.data || []
   const checkoutMutation = useMutation({
     mutationFn: async (planId: number) => {
       const response = await createCheckout({ plan_id: planId })
@@ -306,7 +199,7 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
           </h2>
           <p className='mt-4 text-sm leading-7 text-white/55 sm:text-base'>
             {t(
-              'All plans renew every 4 weeks and refresh the included credits every 7 days.'
+              'Every plan includes one monthly quota pool, refreshed after each successful monthly renewal.'
             )}
           </p>
           <p className='mt-6 text-xs font-semibold tracking-[0.18em] text-[#ef884c] uppercase'>
@@ -348,16 +241,16 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
           </div>
         )}
 
-        {plansQuery.isSuccess && (
+        {plansQuery.isSuccess && landingPlans.length > 0 && (
           <div
             data-slot='landing-plans-grid'
-            className='mt-10 grid grid-cols-1 gap-4 min-[768px]:max-[1180px]:grid-cols-2 min-[1180px]:grid-cols-4'
+            className='mt-10 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'
           >
             {landingPlans.map((record) => (
               <PlanCard
                 key={record.plan.id}
                 plan={record.plan}
-                spec={record.spec}
+                quotaPerUnit={quotaPerUnit}
                 isAuthenticated={props.isAuthenticated}
                 pending={
                   checkoutMutation.isPending &&
@@ -366,7 +259,6 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
                 onSubscribe={(planId) => checkoutMutation.mutate(planId)}
               />
             ))}
-            <EnterpriseCard />
           </div>
         )}
       </div>

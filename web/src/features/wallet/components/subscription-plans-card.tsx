@@ -23,11 +23,7 @@ import {
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import {
-  formatDuration,
-  formatResetPeriod,
-  formatSubscriptionPrice,
-} from '@/features/subscriptions/lib'
+import { formatSubscriptionPrice } from '@/features/subscriptions/lib'
 import type {
   PublicPlanRecord,
   StripeInvoiceSummary,
@@ -185,10 +181,6 @@ export function SubscriptionPlansCard({
       const totalAmount = Number(plan?.total_amount || 0)
       if (
         !plan ||
-        plan.duration_unit !== 'day' ||
-        Number(plan.duration_value) !== 28 ||
-        plan.quota_reset_period !== 'custom' ||
-        Number(plan.quota_reset_custom_seconds) !== 604_800 ||
         !Number.isFinite(priceAmount) ||
         !Number.isFinite(totalAmount) ||
         priceAmount <= 0 ||
@@ -197,8 +189,8 @@ export function SubscriptionPlansCard({
         continue
       }
 
-      const fourWeekQuota = (totalAmount / quotaPerUnit) * 4
-      const discount = Math.floor((priceAmount / fourWeekQuota) * 100) / 10
+      const monthlyQuota = totalAmount / quotaPerUnit
+      const discount = Math.floor((priceAmount / monthlyQuota) * 100) / 10
       if (discount > 0 && discount < 10) {
         discountByPlanId.set(plan.id, discount)
       }
@@ -363,7 +355,7 @@ export function SubscriptionPlansCard({
                       <div className='flex items-center gap-2'>
                         <span className='font-medium'>
                           {planTitle
-                            ? `${t(planTitle)} · ${t('Subscription')} #${subscription?.id}`
+                            ? `${planTitle} · ${t('Subscription')} #${subscription?.id}`
                             : `${t('Subscription')} #${subscription?.id}`}
                         </span>
                         {statusBadge}
@@ -389,7 +381,7 @@ export function SubscriptionPlansCard({
                       </div>
                     )}
                     <div className='text-muted-foreground mt-1'>
-                      {t('Weekly Quota')}:{' '}
+                      {t('Monthly Quota')}:{' '}
                       {totalAmount > 0 ? (
                         <Tooltip>
                           <TooltipTrigger
@@ -448,7 +440,7 @@ export function SubscriptionPlansCard({
             data-slot='subscription-plans-grid'
             className={subscriptionPlansGridClassName}
           >
-            {plans.map((p, index) => {
+            {plans.map((p) => {
               const plan = p?.plan
               if (!plan) return null
               const totalAmount = Number(plan.total_amount || 0)
@@ -456,27 +448,24 @@ export function SubscriptionPlansCard({
                 Number(plan.price_amount || 0),
                 plan.currency
               )
-              const isPopular = index === 1
+              const isPopular = plan.recommended
               const discount = planDiscountMap.get(plan.id)
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
               const isCurrentPlan = activePlanIds.has(plan.id)
+              const purchaseAvailable =
+                (enableStripe && plan.stripe_checkout_available) ||
+                (enableCreem && plan.creem_checkout_available) ||
+                (enableWaffoPancake && plan.waffo_checkout_available) ||
+                (enableOnlineTopUp && epayMethods.length > 0)
               const quota =
                 totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')
-              const hasWeeklyQuota =
-                plan.quota_reset_period === 'weekly' ||
-                (plan.quota_reset_period === 'custom' &&
-                  Number(plan.quota_reset_custom_seconds) === 604_800)
 
               const benefits = [
-                `${t('Validity Period')}: ${formatDuration(plan, t)}`,
-                formatResetPeriod(plan, t) !== t('No Reset')
-                  ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
-                  : null,
-                hasWeeklyQuota
-                  ? t('Weekly quota {{quota}}', { quota })
-                  : `${t('Quota')}: ${quota}`,
+                t('Monthly billing'),
+                t('Monthly quota {{quota}}', { quota }),
+                t('Credits refresh with each monthly renewal'),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
@@ -497,11 +486,11 @@ export function SubscriptionPlansCard({
                     <div className='mb-4 flex items-start justify-between gap-3'>
                       <div className='min-w-0'>
                         <h4 className='truncate text-lg leading-tight font-semibold'>
-                          {t(plan.title || 'Subscription Plans')}
+                          {plan.title || t('Subscription Plans')}
                         </h4>
                         {plan.subtitle && (
                           <p className='text-muted-foreground mt-1 line-clamp-2 min-h-10 text-sm leading-5'>
-                            {t(plan.subtitle)}
+                            {plan.subtitle}
                           </p>
                         )}
                       </div>
@@ -587,7 +576,18 @@ export function SubscriptionPlansCard({
                       </Tooltip>
                     )}
 
-                    {!hasActive && !reached && (
+                    {!hasActive && !reached && !purchaseAvailable && (
+                      <Button
+                        variant='outline'
+                        size='lg'
+                        className='w-full'
+                        disabled
+                      >
+                        {t('Not available')}
+                      </Button>
+                    )}
+
+                    {!hasActive && !reached && purchaseAvailable && (
                       <Button
                         variant='outline'
                         size='lg'

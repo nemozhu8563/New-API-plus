@@ -15,6 +15,101 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestCompleteStripeSubscriptionInvoiceGrantsFreshQuotaForEachPaidPeriod(t *testing.T) {
+	previousDB, previousLogDB := DB, LOG_DB
+	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	DB, LOG_DB = db, db
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
+	require.NoError(t, db.AutoMigrate(
+		&User{},
+		&Log{},
+		&TopUp{},
+		&StripePaymentReference{},
+		&StripePaymentRecovery{},
+		&StripePaymentAdjustment{},
+		&SubscriptionOrder{},
+		&UserSubscription{},
+		&StripeSubscriptionSettlement{},
+		&StripeSubscriptionLock{},
+	))
+	t.Cleanup(func() {
+		DB, LOG_DB = previousDB, previousLogDB
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
+		_ = sqlDB.Close()
+	})
+
+	user := &User{
+		Username: "stripe-monthly-renewal-user",
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(user).Error)
+	subscriptionID := "sub_monthly_renewal"
+	order := &SubscriptionOrder{
+		UserId: user.Id, PlanId: 1, Money: 399, TradeNo: "trade_monthly_renewal",
+		PaymentMethod: PaymentMethodStripe, PaymentProvider: PaymentProviderStripe,
+		ProviderOrderId: "cs_monthly_renewal", ProviderProductId: "price_monthly_renewal",
+		ProviderCustomerId: "cus_monthly_renewal", ProviderSubscriptionId: &subscriptionID,
+		ExpectedAmountMinor: 39900, ExpectedCurrency: SubscriptionCurrencyCNY,
+		PlanTitle: "Monthly plan", PlanDurationUnit: SubscriptionDurationMonth,
+		PlanDurationValue: 1, PlanTotalAmount: 2000, PlanResetPeriod: SubscriptionResetBillingCycle,
+		PlanAllowWalletOverflow: true, Status: common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(order).Error)
+
+	firstStart := time.Date(2026, time.January, 31, 0, 0, 0, 0, time.UTC).Unix()
+	firstEnd := time.Date(2026, time.February, 28, 0, 0, 0, 0, time.UTC).Unix()
+	secondEnd := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC).Unix()
+	firstInvoice := StripeInvoiceSettlementInput{
+		InvoiceId: "in_monthly_renewal_first", TradeNo: order.TradeNo,
+		CustomerId: order.ProviderCustomerId, SubscriptionId: subscriptionID,
+		ProductId: order.ProviderProductId, Quantity: 1, UnitAmountMinor: order.ExpectedAmountMinor,
+		InvoiceTotalMinor: order.ExpectedAmountMinor, AmountPaidMinor: order.ExpectedAmountMinor,
+		Currency: order.ExpectedCurrency, PeriodStart: firstStart, PeriodEnd: firstEnd, EventCreated: firstStart,
+	}
+	require.NoError(t, CompleteStripeSubscriptionInvoice(firstInvoice))
+
+	var firstSubscription UserSubscription
+	require.NoError(t, db.Where("provider_invoice_id = ?", firstInvoice.InvoiceId).First(&firstSubscription).Error)
+	require.NoError(t, db.Model(&firstSubscription).Update("amount_used", 700).Error)
+
+	secondInvoice := firstInvoice
+	secondInvoice.InvoiceId = "in_monthly_renewal_second"
+	secondInvoice.TradeNo = ""
+	secondInvoice.PeriodStart = firstEnd
+	secondInvoice.PeriodEnd = secondEnd
+	secondInvoice.EventCreated = firstEnd
+	require.NoError(t, CompleteStripeSubscriptionInvoice(secondInvoice))
+
+	var subscriptions []UserSubscription
+	require.NoError(t, db.
+		Where("provider_subscription_id = ?", subscriptionID).
+		Order("start_time asc").
+		Find(&subscriptions).Error)
+	require.Len(t, subscriptions, 2)
+
+	assert.Equal(t, firstStart, subscriptions[0].StartTime)
+	assert.Equal(t, firstEnd, subscriptions[0].EndTime)
+	assert.EqualValues(t, 2000, subscriptions[0].AmountTotal)
+	assert.EqualValues(t, 700, subscriptions[0].AmountUsed)
+	assert.Equal(t, firstEnd, subscriptions[1].StartTime)
+	assert.Equal(t, secondEnd, subscriptions[1].EndTime)
+	assert.EqualValues(t, 2000, subscriptions[1].AmountTotal)
+	assert.Zero(t, subscriptions[1].AmountUsed)
+	for _, subscription := range subscriptions {
+		assert.Equal(t, SubscriptionResetBillingCycle, subscription.QuotaResetPeriod)
+		assert.Zero(t, subscription.LastResetTime)
+		assert.Zero(t, subscription.NextResetTime)
+	}
+}
+
 func TestCompleteStripeSubscriptionInvoiceConcurrentOverlappingPeriodsSettlesOnce(t *testing.T) {
 	previousDB, previousLogDB := DB, LOG_DB
 	previousMainDatabaseType, previousLogDatabaseType := common.MainDatabaseType(), common.LogDatabaseType()

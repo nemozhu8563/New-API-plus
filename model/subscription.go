@@ -28,11 +28,12 @@ const SubscriptionCurrencyCNY = "CNY"
 
 // Subscription quota reset period
 const (
-	SubscriptionResetNever   = "never"
-	SubscriptionResetDaily   = "daily"
-	SubscriptionResetWeekly  = "weekly"
-	SubscriptionResetMonthly = "monthly"
-	SubscriptionResetCustom  = "custom"
+	SubscriptionResetNever        = "never"
+	SubscriptionResetDaily        = "daily"
+	SubscriptionResetWeekly       = "weekly"
+	SubscriptionResetMonthly      = "monthly"
+	SubscriptionResetCustom       = "custom"
+	SubscriptionResetBillingCycle = "billing_cycle"
 )
 
 var (
@@ -162,8 +163,14 @@ type SubscriptionPlan struct {
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
 
-	Enabled   bool `json:"enabled" gorm:"default:true"`
+	Enabled   bool `json:"enabled"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
+
+	// PublicVisible controls whether the plan is returned by the public pricing API.
+	// A pointer preserves the distinction between an explicitly hidden plan and a
+	// legacy row that predates this setting.
+	PublicVisible *bool `json:"public_visible"`
+	Recommended   bool  `json:"recommended"`
 
 	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
 	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
@@ -192,7 +199,33 @@ type SubscriptionPlan struct {
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
+const subscriptionPlanRecommendationLockName = "recommendation"
+
+// SubscriptionPlanLock provides a database-level serialization point for
+// global plan settings that must be changed atomically across app instances.
+type SubscriptionPlanLock struct {
+	Name      string `json:"-" gorm:"type:varchar(32);primaryKey"`
+	CreatedAt int64  `json:"-" gorm:"type:bigint"`
+}
+
+func LockSubscriptionPlanRecommendation(tx *gorm.DB) error {
+	if tx == nil {
+		return errors.New("subscription plan transaction is nil")
+	}
+	lockRow := SubscriptionPlanLock{
+		Name:      subscriptionPlanRecommendationLockName,
+		CreatedAt: common.GetTimestamp(),
+	}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&lockRow).Error; err != nil {
+		return err
+	}
+	return lockForUpdate(tx).
+		Where("name = ?", subscriptionPlanRecommendationLockName).
+		First(&lockRow).Error
+}
+
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
+	p.NormalizeDefaults()
 	now := common.GetTimestamp()
 	p.CreatedAt = now
 	p.UpdatedAt = now
@@ -212,6 +245,19 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
+	if p.PublicVisible == nil {
+		p.PublicVisible = common.GetPointer(true)
+	}
+}
+
+// NormalizeMonthlyBilling keeps the product contract explicit: one successful
+// monthly billing period grants one quota pool, with no in-period reset.
+func (p *SubscriptionPlan) NormalizeMonthlyBilling() {
+	p.DurationUnit = SubscriptionDurationMonth
+	p.DurationValue = 1
+	p.CustomSeconds = 0
+	p.QuotaResetPeriod = SubscriptionResetBillingCycle
+	p.QuotaResetCustomSeconds = 0
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -716,7 +762,7 @@ func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
 
 func NormalizeResetPeriod(period string) string {
 	switch strings.TrimSpace(period) {
-	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetCustom:
+	case SubscriptionResetDaily, SubscriptionResetWeekly, SubscriptionResetMonthly, SubscriptionResetCustom, SubscriptionResetBillingCycle:
 		return strings.TrimSpace(period)
 	default:
 		return SubscriptionResetNever
@@ -733,6 +779,8 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	}
 	var next time.Time
 	switch period {
+	case SubscriptionResetBillingCycle:
+		return 0
 	case SubscriptionResetDaily:
 		next = time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, base.Location()).
 			AddDate(0, 0, 1)
@@ -1257,7 +1305,8 @@ func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error
 		}
 		sub := &UserSubscription{
 			UserId: order.UserId, PlanId: order.PlanId, AmountTotal: plan.TotalAmount,
-			StartTime: startTime, EndTime: endTime, Status: "active", Source: "stripe_invoice",
+			AmountUsed: 0,
+			StartTime:  startTime, EndTime: endTime, Status: "active", Source: "stripe_invoice",
 			LastResetTime: lastReset, NextResetTime: nextReset,
 			UpgradeGroup: strings.TrimSpace(plan.UpgradeGroup), PrevUserGroup: prevGroup,
 			DowngradeGroup: strings.TrimSpace(plan.DowngradeGroup), AllowWalletOverflow: order.PlanAllowWalletOverflow,
@@ -1853,7 +1902,8 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 		period = plan.QuotaResetPeriod
 		customSeconds = plan.QuotaResetCustomSeconds
 	}
-	if NormalizeResetPeriod(period) == SubscriptionResetNever {
+	normalizedPeriod := NormalizeResetPeriod(period)
+	if normalizedPeriod == SubscriptionResetNever || normalizedPeriod == SubscriptionResetBillingCycle {
 		return nil
 	}
 	baseUnix := sub.LastResetTime
@@ -2019,7 +2069,12 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	}
 	now := GetDBTimestamp()
 	var subs []UserSubscription
-	if err := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
+	if err := DB.Where(
+		"next_reset_time > 0 AND next_reset_time <= ? AND status = ? AND quota_reset_period <> ?",
+		now,
+		"active",
+		SubscriptionResetBillingCycle,
+	).
 		Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {

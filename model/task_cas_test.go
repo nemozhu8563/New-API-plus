@@ -58,6 +58,8 @@ func TestMain(m *testing.M) {
 		&UserSubscription{},
 		&StripeSubscriptionSettlement{},
 		&StripeSubscriptionLock{},
+		&SubscriptionPlanLock{},
+		&SubscriptionPreConsumeRecord{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
@@ -103,6 +105,8 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM user_subscriptions")
 		DB.Exec("DELETE FROM stripe_subscription_settlements")
 		DB.Exec("DELETE FROM stripe_subscription_locks")
+		DB.Exec("DELETE FROM subscription_plan_locks")
+		DB.Exec("DELETE FROM subscription_pre_consume_records")
 		DB.Exec("DELETE FROM perf_metrics")
 		DB.Exec("DELETE FROM system_instances")
 		DB.Exec("DELETE FROM system_task_locks")

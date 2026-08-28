@@ -44,10 +44,8 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         '{{discount}}/10 price': '{{discount}}/10 price',
-        Quota: 'Quota',
-        'Total Quota': 'Total Quota',
-        'Weekly Quota': 'Weekly Quota',
-        'Weekly quota {{quota}}': 'Weekly quota {{quota}}',
+        'Monthly Quota': 'Monthly Quota',
+        'Monthly quota {{quota}}': 'Monthly quota {{quota}}',
       },
     },
   },
@@ -68,7 +66,7 @@ after(() => {
 })
 
 describe('subscription plans quota copy', () => {
-  test('translates configured plan names everywhere with the active locale', async () => {
+  test('renders backend plan names literally in every subscription view', async () => {
     const localizedI18n = createInstance()
     await localizedI18n.use(initReactI18next).init({
       lng: 'zh',
@@ -99,7 +97,7 @@ describe('subscription plans quota copy', () => {
         status: 'active',
         start_time: 1_700_000_000,
         end_time: 1_900_000_000,
-        amount_total: 55_000_000,
+        amount_total: 220_000_000,
         amount_used: 0,
       }
       const data =
@@ -114,12 +112,16 @@ describe('subscription plans quota copy', () => {
                     subtitle: 'For focused individual development',
                     price_amount: 399,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 28,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: true,
                     max_purchase_per_user: 0,
-                    total_amount: 55_000_000,
+                    total_amount: 220_000_000,
+                    stripe_checkout_available: true,
+                    creem_checkout_available: false,
+                    waffo_checkout_available: false,
                   },
                 },
               ],
@@ -161,16 +163,15 @@ describe('subscription plans quota copy', () => {
     })
 
     const text = container.textContent || ''
-    assert.match(text, /标准/)
-    assert.match(text, /适合专注开发的个人/)
-    assert.doesNotMatch(text, /Standard/)
-    assert.doesNotMatch(text, /For focused individual development/)
+    assert.match(text, /Standard/)
+    assert.match(text, /For focused individual development/)
+    assert.doesNotMatch(text, /标准|适合专注开发的个人/)
 
     await act(async () => root.unmount())
     container.remove()
   })
 
-  test('describes resettable subscription allowance as weekly quota', async () => {
+  test('describes the billing-period allowance as monthly quota', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined
     const requestsComplete = new Promise<void>((resolve) => {
@@ -188,7 +189,7 @@ describe('subscription plans quota copy', () => {
         status: 'active',
         start_time: 1_700_000_000,
         end_time: 1_900_000_000,
-        amount_total: 55_000_000,
+        amount_total: 220_000_000,
         amount_used: 5_000_000,
       }
       const data =
@@ -202,12 +203,16 @@ describe('subscription plans quota copy', () => {
                     title: 'Standard',
                     price_amount: 399,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 28,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: false,
                     max_purchase_per_user: 0,
-                    total_amount: 55_000_000,
+                    total_amount: 220_000_000,
+                    stripe_checkout_available: true,
+                    creem_checkout_available: false,
+                    waffo_checkout_available: false,
                   },
                 },
                 {
@@ -218,10 +223,14 @@ describe('subscription plans quota copy', () => {
                     currency: 'CNY',
                     duration_unit: 'month',
                     duration_value: 1,
-                    quota_reset_period: 'monthly',
+                    quota_reset_period: 'billing_cycle',
                     quota_reset_custom_seconds: 0,
+                    recommended: true,
                     max_purchase_per_user: 0,
                     total_amount: 20_000_000,
+                    stripe_checkout_available: true,
+                    creem_checkout_available: false,
+                    waffo_checkout_available: false,
                   },
                 },
               ],
@@ -263,26 +272,24 @@ describe('subscription plans quota copy', () => {
     })
 
     const text = container.textContent || ''
-    assert.match(text, /Weekly Quota:/)
-    assert.doesNotMatch(text, /Total Quota/)
+    assert.match(text, /Monthly Quota:/)
 
     const cardTextByTitle = new Map<string, string>()
     for (const heading of container.querySelectorAll('h4')) {
       const card = heading.closest('[data-slot="card"]')
       cardTextByTitle.set(heading.textContent || '', card?.textContent || '')
     }
-    assert.match(cardTextByTitle.get('Standard') || '', /Weekly quota \$110/)
-    assert.match(cardTextByTitle.get('Monthly allowance') || '', /Quota: \$40/)
-    assert.doesNotMatch(
+    assert.match(cardTextByTitle.get('Standard') || '', /Monthly quota \$440/)
+    assert.match(
       cardTextByTitle.get('Monthly allowance') || '',
-      /Weekly quota/
+      /Monthly quota \$40/
     )
 
     await act(async () => root.unmount())
     container.remove()
   })
 
-  test('shows one-decimal discounts rounded down from each price versus four weekly quotas', async () => {
+  test('shows one-decimal discounts rounded down from each monthly quota', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined
     const requestsComplete = new Promise<void>((resolve) => {
@@ -304,12 +311,13 @@ describe('subscription plans quota copy', () => {
                     title: 'Standard',
                     price_amount: 399,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 28,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: false,
                     max_purchase_per_user: 0,
-                    total_amount: 55_000_000,
+                    total_amount: 220_000_000,
                   },
                 },
                 {
@@ -318,12 +326,13 @@ describe('subscription plans quota copy', () => {
                     title: 'Premium',
                     price_amount: 899,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 28,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: true,
                     max_purchase_per_user: 0,
-                    total_amount: 130_000_000,
+                    total_amount: 520_000_000,
                   },
                 },
                 {
@@ -332,26 +341,28 @@ describe('subscription plans quota copy', () => {
                     title: 'Professional',
                     price_amount: 1_799,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 28,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: false,
                     max_purchase_per_user: 0,
-                    total_amount: 265_000_000,
+                    total_amount: 1_060_000_000,
                   },
                 },
                 {
                   plan: {
                     id: 4,
-                    title: 'Thirty day plan',
+                    title: 'Full price plan',
                     price_amount: 100,
                     currency: 'CNY',
-                    duration_unit: 'day',
-                    duration_value: 30,
-                    quota_reset_period: 'custom',
-                    quota_reset_custom_seconds: 604_800,
+                    duration_unit: 'month',
+                    duration_value: 1,
+                    quota_reset_period: 'billing_cycle',
+                    quota_reset_custom_seconds: 0,
+                    recommended: false,
                     max_purchase_per_user: 0,
-                    total_amount: 55_000_000,
+                    total_amount: 50_000_000,
                   },
                 },
               ],
@@ -402,7 +413,7 @@ describe('subscription plans quota copy', () => {
     assert.match(cardTextByTitle.get('Premium') || '', /8\.6\/10 price/)
     assert.match(cardTextByTitle.get('Professional') || '', /8\.4\/10 price/)
     assert.doesNotMatch(
-      cardTextByTitle.get('Thirty day plan') || '',
+      cardTextByTitle.get('Full price plan') || '',
       /\/10 price/
     )
     assert.doesNotMatch(container.textContent || '', /You save|%/)

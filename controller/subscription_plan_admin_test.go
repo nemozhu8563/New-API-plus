@@ -36,7 +36,10 @@ func setupSubscriptionPlanAdminTest(t *testing.T) *gorm.DB {
 	sqlDB, err = db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}))
+	require.NoError(t, db.AutoMigrate(
+		&model.SubscriptionPlan{},
+		&model.SubscriptionPlanLock{},
+	))
 	model.DB = db
 	gin.SetMode(gin.TestMode)
 	return db
@@ -50,7 +53,7 @@ func performSubscriptionPlanRequest(
 	handler gin.HandlerFunc,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf(`{"plan":{"title":"Four week plan","price_amount":399,%s"duration_unit":"day","duration_value":28,"enabled":true,"total_amount":55000000,"quota_reset_period":"custom","quota_reset_custom_seconds":604800}}`, currencyField)
+	body := fmt.Sprintf(`{"plan":{"title":"Monthly plan","price_amount":399,%s"duration_unit":"day","duration_value":28,"enabled":true,"public_visible":true,"recommended":true,"total_amount":55000000,"quota_reset_period":"custom","quota_reset_custom_seconds":604800}}`, currencyField)
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
@@ -80,10 +83,40 @@ func TestAdminCreateSubscriptionPlanDefaultsToCNY(t *testing.T) {
 	var plan model.SubscriptionPlan
 	require.NoError(t, db.First(&plan).Error)
 	require.Equal(t, "CNY", plan.Currency)
-	require.Equal(t, model.SubscriptionDurationDay, plan.DurationUnit)
-	require.Equal(t, 28, plan.DurationValue)
-	require.Equal(t, model.SubscriptionResetCustom, plan.QuotaResetPeriod)
-	require.Equal(t, int64(604800), plan.QuotaResetCustomSeconds)
+	require.Equal(t, model.SubscriptionDurationMonth, plan.DurationUnit)
+	require.Equal(t, 1, plan.DurationValue)
+	require.Equal(t, model.SubscriptionResetBillingCycle, plan.QuotaResetPeriod)
+	require.Zero(t, plan.QuotaResetCustomSeconds)
+	require.NotNil(t, plan.PublicVisible)
+	assert.True(t, *plan.PublicVisible)
+	assert.True(t, plan.Recommended)
+}
+
+func TestAdminCreateSubscriptionPlanKeepsOnlyLatestRecommendedPlan(t *testing.T) {
+	db := setupSubscriptionPlanAdminTest(t)
+
+	first := performSubscriptionPlanRequest(
+		t,
+		http.MethodPost,
+		"/plans",
+		"",
+		AdminCreateSubscriptionPlan,
+	)
+	require.Contains(t, first.Body.String(), `"success":true`)
+
+	second := performSubscriptionPlanRequest(
+		t,
+		http.MethodPost,
+		"/plans",
+		"",
+		AdminCreateSubscriptionPlan,
+	)
+	require.Contains(t, second.Body.String(), `"success":true`)
+
+	var recommendedPlans []model.SubscriptionPlan
+	require.NoError(t, db.Where("recommended = ?", true).Find(&recommendedPlans).Error)
+	require.Len(t, recommendedPlans, 1)
+	assert.Equal(t, 2, recommendedPlans[0].Id)
 }
 
 func TestAdminUpdateSubscriptionPlanPreservesCNY(t *testing.T) {
@@ -107,10 +140,11 @@ func TestAdminUpdateSubscriptionPlanPreservesCNY(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 	require.NoError(t, db.First(&plan, plan.Id).Error)
 	require.Equal(t, "CNY", plan.Currency)
-	require.Equal(t, 28, plan.DurationValue)
+	require.Equal(t, 1, plan.DurationValue)
+	require.Equal(t, model.SubscriptionResetBillingCycle, plan.QuotaResetPeriod)
 }
 
-func TestAdminUpdateSubscriptionPlanPreservesExistingCurrencyWhenCurrencyOmitted(t *testing.T) {
+func TestAdminUpdateSubscriptionPlanDefaultsOmittedCurrencyToCNY(t *testing.T) {
 	db := setupSubscriptionPlanAdminTest(t)
 	plan := model.SubscriptionPlan{
 		Title: "Legacy USD plan", PriceAmount: 1, Currency: "USD",
@@ -130,7 +164,7 @@ func TestAdminUpdateSubscriptionPlanPreservesExistingCurrencyWhenCurrencyOmitted
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 	require.NoError(t, db.First(&plan, plan.Id).Error)
-	require.Equal(t, "USD", plan.Currency)
+	require.Equal(t, model.SubscriptionCurrencyCNY, plan.Currency)
 }
 
 func TestAdminCreateSubscriptionPlanRejectsNonCNYCurrency(t *testing.T) {
@@ -155,11 +189,12 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 	db := setupSubscriptionPlanAdminTest(t)
 	plan := model.SubscriptionPlan{
 		Title:                   "Public plan",
-		Subtitle:                "Four weeks",
+		Subtitle:                "Monthly quota",
+		Recommended:             true,
 		PriceAmount:             399,
 		Currency:                model.SubscriptionCurrencyCNY,
-		DurationUnit:            model.SubscriptionDurationDay,
-		DurationValue:           28,
+		DurationUnit:            model.SubscriptionDurationMonth,
+		DurationValue:           1,
 		Enabled:                 true,
 		SortOrder:               300,
 		AllowWalletOverflow:     common.GetPointer(false),
@@ -170,8 +205,8 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 		UpgradeGroup:            "premium",
 		DowngradeGroup:          "default",
 		TotalAmount:             55000000,
-		QuotaResetPeriod:        model.SubscriptionResetCustom,
-		QuotaResetCustomSeconds: 604800,
+		QuotaResetPeriod:        model.SubscriptionResetBillingCycle,
+		QuotaResetCustomSeconds: 0,
 	}
 	require.NoError(t, db.Create(&plan).Error)
 
@@ -193,6 +228,7 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 	require.Len(t, response.Data, 1)
 	publicPlan := response.Data[0].Plan
 	assert.Equal(t, true, publicPlan["stripe_checkout_available"])
+	assert.Equal(t, true, publicPlan["recommended"])
 	assert.Equal(t, false, publicPlan["creem_checkout_available"])
 	assert.Equal(t, false, publicPlan["waffo_checkout_available"])
 	for _, internalField := range []string{
@@ -203,6 +239,7 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 		"allow_wallet_overflow",
 		"downgrade_group",
 		"enabled",
+		"public_visible",
 		"sort_order",
 		"created_at",
 		"updated_at",
@@ -211,32 +248,37 @@ func TestGetSubscriptionPlansReturnsOnlyPublicCheckoutFields(t *testing.T) {
 	}
 }
 
-func TestGetSubscriptionPlansFiltersIncompatiblePlans(t *testing.T) {
+func TestGetSubscriptionPlansFiltersDisabledAndHiddenPlans(t *testing.T) {
 	db := setupSubscriptionPlanAdminTest(t)
 	for _, plan := range []model.SubscriptionPlan{
 		{
-			Title: "CNY plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-			DurationUnit: model.SubscriptionDurationDay, DurationValue: 28, Enabled: true,
-			QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-			StripePriceId: "price_cny_plan",
+			Title: "Visible plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
+			DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+			QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+			StripePriceId:    "price_visible_plan", SortOrder: 20,
 		},
 		{
-			Title: "Legacy USD plan", PriceAmount: 99, Currency: "USD",
-			DurationUnit: model.SubscriptionDurationDay, DurationValue: 28, Enabled: true,
-			QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-			StripePriceId: "price_legacy_usd",
+			Title: "Visible without Stripe", PriceAmount: 99, Currency: model.SubscriptionCurrencyCNY,
+			DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+			QuotaResetPeriod: model.SubscriptionResetBillingCycle, SortOrder: 10,
 		},
 		{
-			Title: "Thirty day plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-			DurationUnit: model.SubscriptionDurationDay, DurationValue: 30, Enabled: true,
-			QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-			StripePriceId: "price_thirty_days",
+			Title: "Hidden plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
+			DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+			QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+			PublicVisible:    common.GetPointer(false), StripePriceId: "price_hidden",
 		},
 		{
-			Title: "Daily quota plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-			DurationUnit: model.SubscriptionDurationDay, DurationValue: 28, Enabled: true,
-			QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 86400,
-			StripePriceId: "price_daily_quota",
+			Title: "Disabled plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
+			DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: false,
+			QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+			StripePriceId:    "price_disabled",
+		},
+		{
+			Title: "USD plan", PriceAmount: 399, Currency: "USD",
+			DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+			QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+			StripePriceId:    "price_usd",
 		},
 	} {
 		require.NoError(t, db.Create(&plan).Error)
@@ -257,7 +299,10 @@ func TestGetSubscriptionPlansFiltersIncompatiblePlans(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
-	require.Len(t, response.Data, 1)
-	assert.Equal(t, "CNY plan", response.Data[0].Plan.Title)
+	require.Len(t, response.Data, 2)
+	assert.Equal(t, "Visible plan", response.Data[0].Plan.Title)
 	assert.Equal(t, model.SubscriptionCurrencyCNY, response.Data[0].Plan.Currency)
+	assert.True(t, response.Data[0].Plan.StripeCheckoutAvailable)
+	assert.Equal(t, "Visible without Stripe", response.Data[1].Plan.Title)
+	assert.False(t, response.Data[1].Plan.StripeCheckoutAvailable)
 }

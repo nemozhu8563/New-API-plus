@@ -210,6 +210,7 @@ func TestValidateStripeSubscriptionPriceRequiresExactFixedRecurringContract(t *t
 	plan := &model.SubscriptionPlan{
 		StripePriceId: "price_local_subscription", PriceAmount: 12, Currency: "USD",
 		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
 	}
 	validPrice := &stripe.Price{
 		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeRecurring,
@@ -233,6 +234,10 @@ func TestValidateStripeSubscriptionPriceRequiresExactFixedRecurringContract(t *t
 		{name: "amount", mutate: func(price *stripe.Price) { price.UnitAmount++ }},
 		{name: "currency", mutate: func(price *stripe.Price) { price.Currency = stripe.CurrencyEUR }},
 		{name: "interval", mutate: func(price *stripe.Price) { price.Recurring.Interval = stripe.PriceRecurringIntervalYear }},
+		{name: "four week interval", mutate: func(price *stripe.Price) {
+			price.Recurring.Interval = stripe.PriceRecurringIntervalWeek
+			price.Recurring.IntervalCount = 4
+		}},
 		{name: "interval count", mutate: func(price *stripe.Price) { price.Recurring.IntervalCount = 2 }},
 		{name: "livemode", mutate: func(price *stripe.Price) { price.Livemode = true }},
 	}
@@ -248,16 +253,17 @@ func TestValidateStripeSubscriptionPriceRequiresExactFixedRecurringContract(t *t
 	}
 }
 
-func TestValidateStripeSubscriptionPriceAcceptsFourWeekCNYContract(t *testing.T) {
+func TestValidateStripeSubscriptionPriceAcceptsMonthlyCNYContract(t *testing.T) {
 	plan := &model.SubscriptionPlan{
-		StripePriceId: "price_four_weeks", PriceAmount: 399, Currency: "CNY",
-		DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
+		StripePriceId: "price_monthly", PriceAmount: 399, Currency: "CNY",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
 	}
 	stripePrice := &stripe.Price{
 		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeRecurring,
 		BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 39900,
 		Recurring: &stripe.PriceRecurring{
-			Interval: stripe.PriceRecurringIntervalWeek, IntervalCount: 4,
+			Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
 			UsageType: stripe.PriceRecurringUsageTypeLicensed,
 		},
 	}
@@ -332,7 +338,7 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 			ID: priceId, Active: true, Type: stripe.PriceTypeRecurring,
 			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 39900,
 			Recurring: &stripe.PriceRecurring{
-				Interval: stripe.PriceRecurringIntervalWeek, IntervalCount: 4,
+				Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
 				UsageType: stripe.PriceRecurringUsageTypeLicensed,
 			},
 		}, nil
@@ -448,9 +454,9 @@ func TestStripeSubscriptionEndpointRequiresCompleteConfiguration(t *testing.T) {
 			db := setupStripeCheckoutHandlerTest(t)
 			plan := &model.SubscriptionPlan{
 				Title: "Stripe configuration plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-				DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
-				QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-				Enabled: true, StripePriceId: "price_subscription_placeholder",
+				DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+				QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+				Enabled:          true, StripePriceId: "price_subscription_placeholder",
 			}
 			require.NoError(t, db.Create(plan).Error)
 			setting.StripeApiSecret = testCase.apiSecret
@@ -495,9 +501,9 @@ func TestStripeSubscriptionCheckoutRejectsUserWithActiveSubscription(t *testing.
 	require.NoError(t, db.Create(user).Error)
 	plan := &model.SubscriptionPlan{
 		Title: "Stripe active plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-		DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
-		QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-		Enabled: true, StripePriceId: "price_subscription_placeholder",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+		Enabled:          true, StripePriceId: "price_subscription_placeholder",
 	}
 	require.NoError(t, db.Create(plan).Error)
 	now := common.GetTimestamp()
@@ -632,10 +638,10 @@ func TestStripeSubscriptionCheckoutFailureLeavesExpiredLocalOrder(t *testing.T) 
 		Title:                   "Stripe checkout plan",
 		PriceAmount:             399,
 		Currency:                model.SubscriptionCurrencyCNY,
-		DurationUnit:            model.SubscriptionDurationDay,
-		DurationValue:           28,
-		QuotaResetPeriod:        model.SubscriptionResetCustom,
-		QuotaResetCustomSeconds: 604800,
+		DurationUnit:            model.SubscriptionDurationMonth,
+		DurationValue:           1,
+		QuotaResetPeriod:        model.SubscriptionResetBillingCycle,
+		QuotaResetCustomSeconds: 0,
 		Enabled:                 true,
 		StripePriceId:           "price_subscription_placeholder",
 	}
@@ -660,9 +666,9 @@ func TestStripeSubscriptionCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *
 	require.NoError(t, db.Create(user).Error)
 	plan := &model.SubscriptionPlan{
 		Title: "Stripe mismatched plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-		DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
-		QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-		Enabled: true, StripePriceId: "price_subscription_placeholder",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+		Enabled:          true, StripePriceId: "price_subscription_placeholder",
 	}
 	require.NoError(t, db.Create(plan).Error)
 	retrieveStripePrice = func(_ context.Context, priceId string) (*stripe.Price, error) {
@@ -670,7 +676,7 @@ func TestStripeSubscriptionCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *
 			ID: priceId, Active: true, Type: stripe.PriceTypeRecurring,
 			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 40000,
 			Recurring: &stripe.PriceRecurring{
-				Interval: stripe.PriceRecurringIntervalWeek, IntervalCount: 4,
+				Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
 				UsageType: stripe.PriceRecurringUsageTypeLicensed,
 			},
 		}, nil
@@ -696,9 +702,9 @@ func TestStripeSubscriptionCheckoutSuccessBindsImmutableSnapshot(t *testing.T) {
 	require.NoError(t, db.Create(user).Error)
 	plan := &model.SubscriptionPlan{
 		Title: "Stripe checkout plan", PriceAmount: 399, Currency: model.SubscriptionCurrencyCNY,
-		DurationUnit: model.SubscriptionDurationDay, DurationValue: 28,
-		QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 604800,
-		Enabled: true, StripePriceId: "price_subscription_placeholder",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
+		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
+		Enabled:          true, StripePriceId: "price_subscription_placeholder",
 	}
 	require.NoError(t, db.Create(plan).Error)
 	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {

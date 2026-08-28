@@ -47,7 +47,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if !isTryvaloStripeSubscriptionPlan(plan) {
+	if !isStripeSubscriptionPlanPurchasable(plan) {
 		common.ApiErrorMsg(c, "该套餐当前不可通过 Stripe 购买")
 		return
 	}
@@ -205,24 +205,12 @@ func validateStripeSubscriptionPrice(plan *model.SubscriptionPlan, stripePrice *
 		return fmt.Errorf("Stripe Price amount, currency, or livemode does not match the plan")
 	}
 
-	intervalCount := stripePrice.Recurring.IntervalCount
-	if plan.DurationValue <= 0 || intervalCount <= 0 {
-		return fmt.Errorf("subscription interval is invalid")
-	}
-	intervalMatches := false
-	switch plan.DurationUnit {
-	case model.SubscriptionDurationYear:
-		intervalMatches = stripePrice.Recurring.Interval == stripe.PriceRecurringIntervalYear && intervalCount == int64(plan.DurationValue)
-	case model.SubscriptionDurationMonth:
-		intervalMatches = stripePrice.Recurring.Interval == stripe.PriceRecurringIntervalMonth && intervalCount == int64(plan.DurationValue)
-	case model.SubscriptionDurationDay:
-		intervalMatches = stripePrice.Recurring.Interval == stripe.PriceRecurringIntervalDay && intervalCount == int64(plan.DurationValue)
-		if plan.DurationValue%7 == 0 && stripePrice.Recurring.Interval == stripe.PriceRecurringIntervalWeek {
-			intervalMatches = intervalCount == int64(plan.DurationValue/7)
-		}
-	}
-	if !intervalMatches {
-		return fmt.Errorf("Stripe Price recurrence does not match the plan duration")
+	if plan.DurationUnit != model.SubscriptionDurationMonth || plan.DurationValue != 1 ||
+		model.NormalizeResetPeriod(plan.QuotaResetPeriod) != model.SubscriptionResetBillingCycle ||
+		plan.QuotaResetCustomSeconds != 0 ||
+		stripePrice.Recurring.Interval != stripe.PriceRecurringIntervalMonth ||
+		stripePrice.Recurring.IntervalCount != 1 {
+		return fmt.Errorf("Stripe Price must recur once per month")
 	}
 	return nil
 }

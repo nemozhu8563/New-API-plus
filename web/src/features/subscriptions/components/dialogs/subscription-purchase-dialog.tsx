@@ -25,11 +25,7 @@ import {
   paySubscriptionEpay,
   paySubscriptionWaffoPancake,
 } from '../../api'
-import {
-  formatDuration,
-  formatResetPeriod,
-  formatSubscriptionPrice,
-} from '../../lib'
+import { formatSubscriptionPrice } from '../../lib'
 import type { PublicPlanRecord } from '../../types'
 
 interface PaymentMethod {
@@ -228,24 +224,16 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
           <div className='flex items-center justify-between'>
             <span className='text-muted-foreground text-sm'>
-              {t('Validity Period')}
+              {t('Billing')}
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <CalendarClock className='h-3.5 w-3.5' />
-              {formatDuration(plan, t)}
+              {t('Monthly billing')}
             </span>
           </div>
-          {formatResetPeriod(plan, t) !== t('No Reset') && (
-            <div className='flex justify-between'>
-              <span className='text-muted-foreground text-sm'>
-                {t('Reset Period')}
-              </span>
-              <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
-            </div>
-          )}
           <div className='flex items-center justify-between'>
             <span className='text-muted-foreground text-sm'>
-              {t('Plan Quota')}
+              {t('Monthly Quota')}
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <Package className='h-3.5 w-3.5' />

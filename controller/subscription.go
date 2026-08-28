@@ -24,6 +24,7 @@ type PublicSubscriptionPlan struct {
 	Id                      int     `json:"id"`
 	Title                   string  `json:"title"`
 	Subtitle                string  `json:"subtitle"`
+	Recommended             bool    `json:"recommended"`
 	PriceAmount             float64 `json:"price_amount"`
 	Currency                string  `json:"currency"`
 	DurationUnit            string  `json:"duration_unit"`
@@ -50,6 +51,7 @@ func newPublicSubscriptionPlanDTO(plan model.SubscriptionPlan) PublicSubscriptio
 			Id:                      plan.Id,
 			Title:                   plan.Title,
 			Subtitle:                plan.Subtitle,
+			Recommended:             plan.Recommended,
 			PriceAmount:             plan.PriceAmount,
 			Currency:                plan.Currency,
 			DurationUnit:            plan.DurationUnit,
@@ -60,7 +62,7 @@ func newPublicSubscriptionPlanDTO(plan model.SubscriptionPlan) PublicSubscriptio
 			TotalAmount:             plan.TotalAmount,
 			QuotaResetPeriod:        plan.QuotaResetPeriod,
 			QuotaResetCustomSeconds: plan.QuotaResetCustomSeconds,
-			StripeCheckoutAvailable: isTryvaloStripeSubscriptionPlan(&plan),
+			StripeCheckoutAvailable: isStripeSubscriptionPlanPurchasable(&plan),
 			CreemCheckoutAvailable:  false,
 			WaffoCheckoutAvailable:  false,
 		},
@@ -79,17 +81,17 @@ func normalizeSubscriptionPlanCurrency(currency string) (string, bool) {
 	return normalized, normalized == model.SubscriptionCurrencyCNY
 }
 
-func isTryvaloStripeSubscriptionPlan(plan *model.SubscriptionPlan) bool {
-	if plan == nil || !plan.Enabled || strings.TrimSpace(plan.StripePriceId) == "" {
+func isStripeSubscriptionPlanPurchasable(plan *model.SubscriptionPlan) bool {
+	if plan == nil || !plan.Enabled || plan.PriceAmount <= 0 || strings.TrimSpace(plan.StripePriceId) == "" {
 		return false
 	}
 	currency, isCNY := normalizeSubscriptionPlanCurrency(plan.Currency)
 	return isCNY &&
 		currency == model.SubscriptionCurrencyCNY &&
-		plan.DurationUnit == model.SubscriptionDurationDay &&
-		plan.DurationValue == 28 &&
-		model.NormalizeResetPeriod(plan.QuotaResetPeriod) == model.SubscriptionResetCustom &&
-		plan.QuotaResetCustomSeconds == 604800
+		plan.DurationUnit == model.SubscriptionDurationMonth &&
+		plan.DurationValue == 1 &&
+		model.NormalizeResetPeriod(plan.QuotaResetPeriod) == model.SubscriptionResetBillingCycle &&
+		plan.QuotaResetCustomSeconds == 0
 }
 
 // ---- User APIs ----
@@ -101,23 +103,15 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Where(
-		"enabled = ? AND currency = ? AND duration_unit = ? AND duration_value = ? AND quota_reset_period = ? AND quota_reset_custom_seconds = ?",
-		true,
-		model.SubscriptionCurrencyCNY,
-		model.SubscriptionDurationDay,
-		28,
-		model.SubscriptionResetCustom,
-		int64(604800),
-	).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
+	if err := model.DB.
+		Where("enabled = ? AND public_visible = ? AND currency = ?", true, true, model.SubscriptionCurrencyCNY).
+		Order("sort_order desc, id desc").
+		Find(&plans).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	result := make([]PublicSubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		if !isTryvaloStripeSubscriptionPlan(&p) {
-			continue
-		}
 		result = append(result, newPublicSubscriptionPlanDTO(p))
 	}
 	common.ApiSuccess(c, result)
@@ -201,25 +195,7 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 }
 
 type AdminUpsertSubscriptionPlanRequest struct {
-	Plan             model.SubscriptionPlan `json:"plan"`
-	currencyProvided bool
-}
-
-func (r *AdminUpsertSubscriptionPlanRequest) UnmarshalJSON(data []byte) error {
-	type requestAlias AdminUpsertSubscriptionPlanRequest
-	var decoded requestAlias
-	if err := common.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	var fields struct {
-		Plan map[string]any `json:"plan"`
-	}
-	if err := common.Unmarshal(data, &fields); err != nil {
-		return err
-	}
-	*r = AdminUpsertSubscriptionPlanRequest(decoded)
-	_, r.currencyProvided = fields.Plan["currency"]
-	return nil
+	Plan model.SubscriptionPlan `json:"plan"`
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -233,6 +209,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = 0
+	req.Plan.Title = strings.TrimSpace(req.Plan.Title)
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
@@ -251,15 +228,8 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Currency = currency
-	if req.Plan.AllowWalletOverflow == nil {
-		req.Plan.AllowWalletOverflow = common.GetPointer(true)
-	}
-	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
-	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
-		req.Plan.DurationValue = 1
-	}
+	req.Plan.NormalizeDefaults()
+	req.Plan.NormalizeMonthlyBilling()
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
@@ -282,12 +252,20 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
-		return
-	}
-	err := model.DB.Create(&req.Plan).Error
+	req.Plan.StripePriceId = strings.TrimSpace(req.Plan.StripePriceId)
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if req.Plan.Recommended {
+			if err := model.LockSubscriptionPlanRecommendation(tx); err != nil {
+				return err
+			}
+			if err := tx.Model(&model.SubscriptionPlan{}).
+				Where("recommended = ?", true).
+				Update("recommended", false).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Create(&req.Plan).Error
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -311,7 +289,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if strings.TrimSpace(req.Plan.Title) == "" {
+	req.Plan.Title = strings.TrimSpace(req.Plan.Title)
+	if req.Plan.Title == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return
 	}
@@ -324,20 +303,13 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = id
-	if req.currencyProvided {
-		currency, validCurrency := normalizeSubscriptionPlanCurrency(req.Plan.Currency)
-		if !validCurrency {
-			common.ApiErrorMsg(c, "套餐币种仅支持 CNY")
-			return
-		}
-		req.Plan.Currency = currency
+	currency, validCurrency := normalizeSubscriptionPlanCurrency(req.Plan.Currency)
+	if !validCurrency {
+		common.ApiErrorMsg(c, "套餐币种仅支持 CNY")
+		return
 	}
-	if req.Plan.DurationUnit == "" {
-		req.Plan.DurationUnit = model.SubscriptionDurationMonth
-	}
-	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
-		req.Plan.DurationValue = 1
-	}
+	req.Plan.Currency = currency
+	req.Plan.NormalizeMonthlyBilling()
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
@@ -360,23 +332,35 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
-	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
-	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
-		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
-		return
-	}
+	req.Plan.StripePriceId = strings.TrimSpace(req.Plan.StripePriceId)
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var existing model.SubscriptionPlan
+		if err := tx.Where("id = ?", id).First(&existing).Error; err != nil {
+			return err
+		}
+		if req.Plan.Recommended {
+			if err := model.LockSubscriptionPlanRecommendation(tx); err != nil {
+				return err
+			}
+			if err := tx.Model(&model.SubscriptionPlan{}).
+				Where("id <> ? AND recommended = ?", id, true).
+				Update("recommended", false).Error; err != nil {
+				return err
+			}
+		}
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
+			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,
 			"custom_seconds":             req.Plan.CustomSeconds,
 			"enabled":                    req.Plan.Enabled,
 			"sort_order":                 req.Plan.SortOrder,
+			"recommended":                req.Plan.Recommended,
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
@@ -388,11 +372,11 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),
 		}
-		if req.currencyProvided {
-			updateMap["currency"] = req.Plan.Currency
-		}
 		if req.Plan.AllowWalletOverflow != nil {
 			updateMap["allow_wallet_overflow"] = *req.Plan.AllowWalletOverflow
+		}
+		if req.Plan.PublicVisible != nil {
+			updateMap["public_visible"] = *req.Plan.PublicVisible
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err

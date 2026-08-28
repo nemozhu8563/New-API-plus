@@ -297,6 +297,7 @@ func migrateDB() error {
 		&UserSubscription{},
 		&StripeSubscriptionSettlement{},
 		&StripeSubscriptionLock{},
+		&SubscriptionPlanLock{},
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
@@ -324,6 +325,9 @@ func migrateDB() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := migrateSubscriptionPlansToMonthlyBilling(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -374,6 +378,7 @@ func migrateDBFast() error {
 		{&UserSubscription{}, "UserSubscription"},
 		{&StripeSubscriptionSettlement{}, "StripeSubscriptionSettlement"},
 		{&StripeSubscriptionLock{}, "StripeSubscriptionLock"},
+		{&SubscriptionPlanLock{}, "SubscriptionPlanLock"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
@@ -419,6 +424,9 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := migrateSubscriptionPlansToMonthlyBilling(); err != nil {
+		return err
 	}
 	common.SysLog("database migrated")
 	return nil
@@ -621,6 +629,8 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`custom_seconds`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`enabled`" + ` numeric DEFAULT 1,
 ` + "`sort_order`" + ` integer DEFAULT 0,
+` + "`public_visible`" + ` numeric,
+` + "`recommended`" + ` numeric DEFAULT 0,
 ` + "`allow_wallet_overflow`" + ` numeric DEFAULT 1,
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
 ` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
@@ -657,6 +667,8 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "custom_seconds", DDL: "`custom_seconds` bigint NOT NULL DEFAULT 0"},
 		{Name: "enabled", DDL: "`enabled` numeric DEFAULT 1"},
 		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
+		{Name: "public_visible", DDL: "`public_visible` numeric"},
+		{Name: "recommended", DDL: "`recommended` numeric DEFAULT 0"},
 		{Name: "allow_wallet_overflow", DDL: "`allow_wallet_overflow` numeric DEFAULT 1"},
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
 		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},
@@ -679,6 +691,38 @@ PRIMARY KEY (` + "`id`" + `)
 		}
 	}
 	return nil
+}
+
+// migrateSubscriptionPlansToMonthlyBilling performs the one-way development
+// migration from legacy rolling-reset plans to monthly billing-cycle quota.
+// Public visibility is backfilled once from the existing enabled state, then
+// remains independently configurable.
+func migrateSubscriptionPlansToMonthlyBilling() error {
+	if !DB.Migrator().HasTable(&SubscriptionPlan{}) {
+		return nil
+	}
+	if err := DB.Model(&SubscriptionPlan{}).
+		Where("public_visible IS NULL").
+		UpdateColumn("public_visible", gorm.Expr("enabled")).Error; err != nil {
+		return err
+	}
+	return DB.Model(&SubscriptionPlan{}).
+		Where(
+			"duration_unit IS NULL OR duration_unit <> ? OR duration_value IS NULL OR duration_value <> ? OR custom_seconds IS NULL OR custom_seconds <> ? OR quota_reset_period IS NULL OR quota_reset_period <> ? OR quota_reset_custom_seconds IS NULL OR quota_reset_custom_seconds <> ?",
+			SubscriptionDurationMonth,
+			1,
+			0,
+			SubscriptionResetBillingCycle,
+			0,
+		).
+		Updates(map[string]interface{}{
+			"duration_unit":              SubscriptionDurationMonth,
+			"duration_value":             1,
+			"custom_seconds":             0,
+			"quota_reset_period":         SubscriptionResetBillingCycle,
+			"quota_reset_custom_seconds": 0,
+			"updated_at":                 common.GetTimestamp(),
+		}).Error
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text

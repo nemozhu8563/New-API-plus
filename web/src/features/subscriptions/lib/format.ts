@@ -48,6 +48,7 @@ export function formatResetPeriod(
   if (period === 'daily') return t('Daily')
   if (period === 'weekly') return t('Weekly')
   if (period === 'monthly') return t('Monthly')
+  if (period === 'billing_cycle') return t('Each billing cycle')
   if (period === 'custom') {
     const seconds = Number(plan?.quota_reset_custom_seconds || 0)
     if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('days')}`

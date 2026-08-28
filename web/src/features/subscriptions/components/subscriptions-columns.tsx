@@ -38,7 +38,23 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const plan = row.original.plan
           return (
             <div className='max-w-full min-w-0'>
-              <div className='truncate font-medium'>{plan.title}</div>
+              <div className='flex items-center gap-1.5'>
+                <span className='truncate font-medium'>{plan.title}</span>
+                {plan.recommended && (
+                  <StatusBadge
+                    label={t('Recommended')}
+                    variant='info'
+                    copyable={false}
+                  />
+                )}
+                {!plan.public_visible && (
+                  <StatusBadge
+                    label={t('Hidden')}
+                    variant='neutral'
+                    copyable={false}
+                  />
+                )}
+              </div>
               {plan.subtitle && (
                 <div className='text-muted-foreground truncate text-xs'>
                   {plan.subtitle}

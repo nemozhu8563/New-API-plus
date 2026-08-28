@@ -54,13 +54,28 @@ const availablePlan = {
     title: 'Standard',
     price_amount: 399,
     currency: 'CNY',
-    duration_unit: 'day',
-    duration_value: 28,
-    quota_reset_period: 'custom',
-    quota_reset_custom_seconds: 604_800,
+    duration_unit: 'month',
+    duration_value: 1,
+    quota_reset_period: 'billing_cycle',
+    quota_reset_custom_seconds: 0,
+    recommended: true,
     max_purchase_per_user: 0,
     total_amount: 55_000_000,
+    stripe_checkout_available: false,
+    creem_checkout_available: false,
+    waffo_checkout_available: false,
   },
+}
+
+const stripeTopupInfo = {
+  enable_online_topup: false,
+  enable_stripe_topup: true,
+  enable_stripe_subscription: true,
+  pay_methods: [],
+  min_topup: 1,
+  stripe_min_topup: 20,
+  amount_options: [],
+  discount: {},
 }
 
 const activeSubscription = {
@@ -86,7 +101,7 @@ after(() => {
 })
 
 describe('subscription plans visibility', () => {
-  test('hides subscription and Stripe billing status when the user has no subscription', async () => {
+  test('hides billing status and disables a plan without a configured checkout', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined
     const requestsComplete = new Promise<void>((resolve) => {
@@ -151,7 +166,7 @@ describe('subscription plans visibility', () => {
     await act(async () => {
       root.render(
         <I18nextProvider i18n={i18n}>
-          <SubscriptionPlansCard topupInfo={null} />
+          <SubscriptionPlansCard topupInfo={stripeTopupInfo} />
         </I18nextProvider>
       )
     })
@@ -165,6 +180,11 @@ describe('subscription plans visibility', () => {
     assert.doesNotMatch(text, /My Subscriptions/)
     assert.doesNotMatch(text, /Stripe billing/)
     assert.doesNotMatch(text, /Billing history/)
+    const unavailableButton = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.includes('Not available')
+    )
+    assert.ok(unavailableButton)
+    assert.equal(unavailableButton.disabled, true)
 
     await act(async () => root.unmount())
     container.remove()

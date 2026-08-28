@@ -63,7 +63,7 @@ const CAPABILITIES = [
   {
     title: 'Clear usage controls',
     description:
-      'Track your remaining credits and next weekly refresh from the dashboard.',
+      'Track your remaining monthly quota and billing period from the dashboard.',
     icon: Gauge,
   },
 ] as const
@@ -103,7 +103,7 @@ export function TryvaloLandingPage() {
               </h1>
               <p className='text-muted-foreground mt-6 max-w-2xl text-base leading-7 text-pretty sm:text-lg'>
                 {t(
-                  'Build against an OpenAI-compatible endpoint with broad model access and predictable four-week plans.'
+                  'Build against an OpenAI-compatible endpoint with broad model access and predictable monthly plans.'
                 )}
               </p>
               <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
@@ -125,16 +125,17 @@ export function TryvaloLandingPage() {
                 </Button>
               </div>
               <div className='text-muted-foreground mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs'>
-                {[
-                  'OpenAI-compatible',
-                  'Weekly refreshed credits',
-                  'Four-week subscriptions',
-                ].map((item) => (
-                  <span key={item} className='inline-flex items-center gap-1.5'>
-                    <Check className='text-success size-3.5' />
-                    {t(item)}
-                  </span>
-                ))}
+                {['OpenAI-compatible', 'Monthly Quota', 'Monthly billing'].map(
+                  (item) => (
+                    <span
+                      key={item}
+                      className='inline-flex items-center gap-1.5'
+                    >
+                      <Check className='text-success size-3.5' />
+                      {t(item)}
+                    </span>
+                  )
+                )}
               </div>
             </div>
 

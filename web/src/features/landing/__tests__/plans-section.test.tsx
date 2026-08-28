@@ -53,22 +53,25 @@ function createPlan(
   title: string,
   subtitle: string,
   price: number,
-  weeklyQuota: number
+  monthlyQuota: number,
+  recommended = false,
+  stripeCheckoutAvailable = true
 ): PublicPlanRecord {
   return {
     plan: {
       id,
       title,
       subtitle,
+      recommended,
       price_amount: price,
       currency: 'CNY',
-      duration_unit: 'day',
-      duration_value: 28,
-      quota_reset_period: 'custom',
-      quota_reset_custom_seconds: 604800,
+      duration_unit: 'month',
+      duration_value: 1,
+      quota_reset_period: 'billing_cycle',
+      quota_reset_custom_seconds: 0,
       max_purchase_per_user: 0,
-      total_amount: weeklyQuota * 500000,
-      stripe_checkout_available: true,
+      total_amount: monthlyQuota * 500000,
+      stripe_checkout_available: stripeCheckoutAvailable,
       creem_checkout_available: false,
       waffo_checkout_available: false,
     },
@@ -76,20 +79,21 @@ function createPlan(
 }
 
 const plans = [
-  createPlan(1, 'Standard', 'For focused individual development', 399, 110),
+  createPlan(1, 'Standard', 'For focused individual development', 399, 440),
   createPlan(
     2,
     'Premium',
     'The first choice for professional developers',
     899,
-    260
+    1040
   ),
   createPlan(
     3,
     'Professional',
     'For intensive development and teams',
     1799,
-    530
+    2120,
+    true
   ),
 ]
 
@@ -109,6 +113,8 @@ async function renderPlans(options?: {
   }>
   redirectToCheckout?: (checkoutUrl: string) => void
   quotaPerUnit?: number
+  quotaDisplayType?: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM'
+  usdExchangeRate?: number
 }) {
   useSystemConfigStore.setState((state) => ({
     config: {
@@ -117,6 +123,10 @@ async function renderPlans(options?: {
         ...state.config.currency,
         quotaPerUnit:
           options?.quotaPerUnit ?? DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
+        quotaDisplayType:
+          options?.quotaDisplayType ?? DEFAULT_CURRENCY_CONFIG.quotaDisplayType,
+        usdExchangeRate:
+          options?.usdExchangeRate ?? DEFAULT_CURRENCY_CONFIG.usdExchangeRate,
       },
     },
   }))
@@ -172,6 +182,8 @@ async function renderPlans(options?: {
           currency: {
             ...state.config.currency,
             quotaPerUnit: DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
+            quotaDisplayType: DEFAULT_CURRENCY_CONFIG.quotaDisplayType,
+            usdExchangeRate: DEFAULT_CURRENCY_CONFIG.usdExchangeRate,
           },
         },
       }))
@@ -210,7 +222,7 @@ after(() => {
 })
 
 describe('landing subscription plans', { concurrent: false }, () => {
-  test('renders backend plan totals and marks the second plan as recommended', async () => {
+  test('renders backend monthly quotas and uses the configured recommendation', async () => {
     const view = await renderPlans({
       loadPlans: async () => ({ success: true, data: plans }),
     })
@@ -218,7 +230,7 @@ describe('landing subscription plans', { concurrent: false }, () => {
       await waitForPlansQuery(view.queryClient, 'success')
 
       assert.match(view.container.textContent || '', /¥399/)
-      assert.match(view.container.textContent || '', /Weekly quota \$110/)
+      assert.match(view.container.textContent || '', /Monthly quota \$440/)
       assert.doesNotMatch(
         view.container.textContent || '',
         /per[- ]?(?:token|model|request)|unit price/i
@@ -230,7 +242,7 @@ describe('landing subscription plans', { concurrent: false }, () => {
       const sectionSubtitle = [...view.container.querySelectorAll('p')].find(
         (paragraph) =>
           paragraph.textContent ===
-          'All plans renew every 4 weeks and refresh the included credits every 7 days.'
+          'Every plan includes one monthly quota pool, refreshed after each successful monthly renewal.'
       )
       const sectionLabel = [...view.container.querySelectorAll('p')].find(
         (paragraph) => paragraph.textContent === 'Subscription plans'
@@ -246,22 +258,24 @@ describe('landing subscription plans', { concurrent: false }, () => {
         sectionSubtitle.compareDocumentPosition(sectionLabel) &
           Node.DOCUMENT_POSITION_FOLLOWING
       )
+      const professionalHeading = [
+        ...view.container.querySelectorAll('h3'),
+      ].find((heading) => heading.textContent === 'Professional')
+      const professionalCard = professionalHeading?.closest('article')
+      assert.ok(professionalCard)
+      assert.match(professionalCard.textContent || '', /Recommended/)
       const premiumHeading = [...view.container.querySelectorAll('h3')].find(
         (heading) => heading.textContent === 'Premium'
       )
       const premiumCard = premiumHeading?.closest('article')
       assert.ok(premiumCard)
-      assert.match(premiumCard.textContent || '', /Recommended/)
-      assert.doesNotMatch(
-        premiumCard.previousElementSibling?.textContent || '',
-        /Recommended/
-      )
+      assert.doesNotMatch(premiumCard.textContent || '', /Recommended/)
     } finally {
       await view.cleanup()
     }
   })
 
-  test('shows each subscription plan discount against four weeks of weekly quota', async () => {
+  test('calculates each discount from the configured monthly quota', async () => {
     const view = await renderPlans({
       loadPlans: async () => ({ success: true, data: plans }),
     })
@@ -280,19 +294,12 @@ describe('landing subscription plans', { concurrent: false }, () => {
         assert.ok(card)
         assert.ok(card.textContent?.includes(discount))
       }
-
-      const enterpriseHeading = [...view.container.querySelectorAll('h3')].find(
-        (heading) => heading.textContent === 'Enterprise plan'
-      )
-      const enterpriseCard = enterpriseHeading?.closest('article')
-      assert.ok(enterpriseCard)
-      assert.doesNotMatch(enterpriseCard.textContent || '', /\/10 price/)
     } finally {
       await view.cleanup()
     }
   })
 
-  test('keeps all four offers in one balanced responsive grid', async () => {
+  test('renders every configured plan in one responsive grid', async () => {
     const view = await renderPlans({
       loadPlans: async () => ({ success: true, data: plans }),
     })
@@ -304,23 +311,15 @@ describe('landing subscription plans', { concurrent: false }, () => {
       )
       assert.ok(grid)
       assert.ok(grid.classList.contains('grid-cols-1'))
-      assert.ok(grid.classList.contains('min-[768px]:max-[1180px]:grid-cols-2'))
-      assert.ok(grid.classList.contains('min-[1180px]:grid-cols-4'))
-      assert.equal(grid.children.length, 4)
-
-      const enterpriseHeading = [...view.container.querySelectorAll('h3')].find(
-        (heading) => heading.textContent === 'Enterprise plan'
-      )
-      const enterpriseCard = enterpriseHeading?.closest('article')
-      assert.ok(enterpriseCard)
-      assert.equal(enterpriseCard.parentElement, grid)
-      assert.doesNotMatch(enterpriseCard.className, /col-span/)
+      assert.ok(grid.classList.contains('md:grid-cols-2'))
+      assert.ok(grid.classList.contains('xl:grid-cols-3'))
+      assert.equal(grid.children.length, plans.length)
     } finally {
       await view.cleanup()
     }
   })
 
-  test('translates dynamic plan names and subtitles in Chinese', async () => {
+  test('renders backend plan names literally instead of treating them as translation keys', async () => {
     const view = await renderPlans({
       language: 'zh',
       translations: {
@@ -336,18 +335,20 @@ describe('landing subscription plans', { concurrent: false }, () => {
     try {
       await waitForPlansQuery(view.queryClient, 'success')
 
-      assert.match(view.container.textContent || '', /标准/)
-      assert.match(view.container.textContent || '', /高级/)
-      assert.match(view.container.textContent || '', /专业/)
-      assert.match(view.container.textContent || '', /适合专注开发的个人/)
-      assert.match(view.container.textContent || '', /专业开发者的首选/)
-      assert.match(view.container.textContent || '', /适合高强度开发与团队/)
+      assert.match(view.container.textContent || '', /Standard/)
+      assert.match(view.container.textContent || '', /Premium/)
+      assert.match(view.container.textContent || '', /Professional/)
+      assert.match(
+        view.container.textContent || '',
+        /For focused individual development/
+      )
+      assert.doesNotMatch(view.container.textContent || '', /标准|高级/)
     } finally {
       await view.cleanup()
     }
   })
 
-  test('hides plans when the configured quota conversion no longer matches the fixed public tiers', async () => {
+  test('uses the configured quota conversion without hiding backend plans', async () => {
     const view = await renderPlans({
       quotaPerUnit: 250000,
       loadPlans: async () => ({ success: true, data: plans }),
@@ -355,74 +356,54 @@ describe('landing subscription plans', { concurrent: false }, () => {
     try {
       await waitForPlansQuery(view.queryClient, 'success')
 
-      assert.match(view.container.textContent || '', /No plans available/)
-      assert.doesNotMatch(view.container.textContent || '', /Weekly quota/)
+      assert.match(view.container.textContent || '', /Standard/)
+      assert.match(view.container.textContent || '', /Monthly quota \$880/)
     } finally {
       await view.cleanup()
     }
   })
 
-  test('renders only CNY four-week plans with seven-day quota refresh', async () => {
-    const incompatiblePlans: PublicPlanRecord[] = [
-      {
-        plan: {
-          ...plans[0].plan,
-          id: 11,
-          title: 'Legacy USD plan',
-          currency: 'USD',
-        },
-      },
-      {
-        plan: {
-          ...plans[0].plan,
-          id: 12,
-          title: 'Thirty day plan',
-          duration_value: 30,
-        },
-      },
-      {
-        plan: {
-          ...plans[0].plan,
-          id: 13,
-          title: 'Daily quota plan',
-          quota_reset_custom_seconds: 86400,
-        },
-      },
-      createPlan(
-        14,
-        'Unexpected four-week plan',
-        'Should not appear on the public landing page',
-        699,
-        200
-      ),
-      plans[2],
-      plans[0],
-      plans[1],
-    ]
+  test('formats monthly quota with the configured display currency', async () => {
     const view = await renderPlans({
-      loadPlans: async () => ({ success: true, data: incompatiblePlans }),
+      quotaDisplayType: 'CNY',
+      usdExchangeRate: 7.3,
+      loadPlans: async () => ({ success: true, data: plans }),
     })
     try {
       await waitForPlansQuery(view.queryClient, 'success')
 
-      assert.doesNotMatch(
-        view.container.textContent || '',
-        /Legacy USD plan|Thirty day plan|Daily quota plan/
-      )
+      assert.match(view.container.textContent || '', /Monthly quota.*3,212/)
+      assert.doesNotMatch(view.container.textContent || '', /Monthly quota \$/)
+    } finally {
+      await view.cleanup()
+    }
+  })
+
+  test('renders every public plan in the API order without fixed tier names', async () => {
+    const configuredPlans: PublicPlanRecord[] = [
+      createPlan(14, 'Team', 'Shared quota for a small team', 1299, 1500),
+      plans[2],
+      createPlan(15, 'Starter', 'A lower-cost entry plan', 99, 120),
+      plans[0],
+    ]
+    const view = await renderPlans({
+      loadPlans: async () => ({ success: true, data: configuredPlans }),
+    })
+    try {
+      await waitForPlansQuery(view.queryClient, 'success')
+
+      assert.match(view.container.textContent || '', /Team/)
+      assert.match(view.container.textContent || '', /Starter/)
       assert.match(view.container.textContent || '', /Standard/)
-      assert.match(view.container.textContent || '', /Premium/)
       assert.match(view.container.textContent || '', /Professional/)
-      assert.doesNotMatch(
-        view.container.textContent || '',
-        /Unexpected four-week plan/
-      )
       const headings = [...view.container.querySelectorAll('h3')].map(
         (heading) => heading.textContent
       )
-      assert.deepEqual(headings.slice(0, 3), [
-        'Standard',
-        'Premium',
+      assert.deepEqual(headings, [
+        'Team',
         'Professional',
+        'Starter',
+        'Standard',
       ])
     } finally {
       await view.cleanup()
@@ -495,6 +476,39 @@ describe('landing subscription plans', { concurrent: false }, () => {
     }
   })
 
+  test('keeps a public plan visible when Stripe checkout is not configured', async () => {
+    let checkoutRequested = false
+    const unavailablePlan = createPlan(
+      9,
+      'Coming soon',
+      'Visible before checkout is enabled',
+      199,
+      220,
+      false,
+      false
+    )
+    const view = await renderPlans({
+      isAuthenticated: true,
+      loadPlans: async () => ({ success: true, data: [unavailablePlan] }),
+      createCheckout: async () => {
+        checkoutRequested = true
+        return { success: false }
+      },
+    })
+    try {
+      await waitForPlansQuery(view.queryClient, 'success')
+
+      assert.match(view.container.textContent || '', /Coming soon/)
+      const button = view.container.querySelector<HTMLButtonElement>('button')
+      assert.ok(button)
+      assert.equal(button.textContent?.trim(), 'Not available')
+      assert.equal(button.disabled, true)
+      assert.equal(checkoutRequested, false)
+    } finally {
+      await view.cleanup()
+    }
+  })
+
   test('shows a loading state while plans are pending', async () => {
     let resolveRequest: (() => void) | undefined
     const pendingRequest = new Promise<void>((resolve) => {
@@ -527,11 +541,10 @@ describe('landing subscription plans', { concurrent: false }, () => {
     try {
       await waitForPlansQuery(view.queryClient, 'success')
       assert.match(view.container.textContent || '', /No plans available/)
-      const enterpriseContact = view.container.querySelector<HTMLAnchorElement>(
-        'a[href="mailto:contract@tryvalo.com"]'
+      assert.equal(
+        view.container.querySelector('[data-slot="landing-plans-grid"]'),
+        null
       )
-      assert.ok(enterpriseContact)
-      assert.equal(enterpriseContact.textContent?.trim(), 'Contact sales')
     } finally {
       await view.cleanup()
     }
