@@ -2,13 +2,11 @@ package model
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
-
-var ErrUserOAuthBindingExists = errors.New("user already has another OAuth binding")
 
 // UserOAuthBinding stores the binding relationship between users and custom OAuth providers
 type UserOAuthBinding struct {
@@ -63,11 +61,10 @@ func IsProviderUserIdTaken(providerId int, providerUserId string) bool {
 	return count > 0
 }
 
-// EnsureUserOAuthBindingAvailableWithTx keeps one local account bound to at
-// most one third-party login channel. The user row lock serializes competing
-// built-in, custom, and Telegram binding attempts on MySQL and PostgreSQL;
-// SQLite's single-writer behavior prevents both transactions from committing.
-func EnsureUserOAuthBindingAvailableWithTx(tx *gorm.DB, userId int, targetColumn string, targetProviderId int) error {
+// LockUserForOAuthBindingWithTx verifies the local account exists and
+// serializes concurrent binding attempts for it. Provider-specific unique
+// constraints decide whether the external identity is still available.
+func LockUserForOAuthBindingWithTx(tx *gorm.DB, userId int) error {
 	if tx == nil {
 		return errors.New("database transaction is empty")
 	}
@@ -76,50 +73,10 @@ func EnsureUserOAuthBindingAvailableWithTx(tx *gorm.DB, userId int, targetColumn
 	}
 
 	var user User
-	if err := lockForUpdate(tx).
-		Select("id", "github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id", "linux_do_id").
+	return lockForUpdate(tx).
+		Select("id").
 		Where("id = ?", userId).
-		First(&user).Error; err != nil {
-		return err
-	}
-
-	builtInBindings := []struct {
-		column string
-		value  string
-	}{
-		{column: "github_id", value: user.GitHubId},
-		{column: "discord_id", value: user.DiscordId},
-		{column: "oidc_id", value: user.OidcId},
-		{column: "wechat_id", value: user.WeChatId},
-		{column: "telegram_id", value: user.TelegramId},
-		{column: "linux_do_id", value: user.LinuxDOId},
-	}
-	targetKnown := targetProviderId > 0
-	for _, binding := range builtInBindings {
-		if binding.column == targetColumn {
-			targetKnown = true
-			continue
-		}
-		if strings.TrimSpace(binding.value) != "" {
-			return ErrUserOAuthBindingExists
-		}
-	}
-	if !targetKnown {
-		return errors.New("OAuth binding target is invalid")
-	}
-
-	customBindings := tx.Model(&UserOAuthBinding{}).Where("user_id = ?", userId)
-	if targetProviderId > 0 {
-		customBindings = customBindings.Where("provider_id <> ?", targetProviderId)
-	}
-	var count int64
-	if err := customBindings.Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return ErrUserOAuthBindingExists
-	}
-	return nil
+		First(&user).Error
 }
 
 // CreateUserOAuthBinding creates a new OAuth binding
@@ -146,22 +103,31 @@ func CreateUserOAuthBindingWithTx(tx *gorm.DB, binding *UserOAuthBinding) error 
 	if binding.ProviderUserId == "" {
 		return errors.New("provider user ID is required")
 	}
-	if err := EnsureUserOAuthBindingAvailableWithTx(tx, binding.UserId, "", binding.ProviderId); err != nil {
+	if err := LockUserForOAuthBindingWithTx(tx, binding.UserId); err != nil {
 		return err
 	}
 
-	// Check if this provider user ID is already taken (use tx to check within the same transaction)
-	var count int64
-	tx.Model(&UserOAuthBinding{}).Where("provider_id = ? AND provider_user_id = ?", binding.ProviderId, binding.ProviderUserId).Count(&count)
-	if count > 0 {
-		return errors.New("this OAuth account is already bound to another user")
+	binding.CreatedAt = time.Now()
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(binding).Error; err != nil {
+		return err
 	}
 
-	binding.CreatedAt = time.Now()
-	return tx.Create(binding).Error
+	var owner UserOAuthBinding
+	if err := tx.Where("provider_id = ? AND provider_user_id = ?", binding.ProviderId, binding.ProviderUserId).
+		First(&owner).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrExternalIdentityAlreadyClaimed
+		}
+		return err
+	}
+	if owner.UserId != binding.UserId {
+		return ErrExternalIdentityAlreadyClaimed
+	}
+	return nil
 }
 
-// UpdateUserOAuthBinding updates an existing OAuth binding (e.g., rebind to different OAuth account)
+// UpdateUserOAuthBinding binds a custom provider identity without allowing an
+// existing provider slot to be replaced by a different external account.
 func UpdateUserOAuthBinding(userId, providerId int, newProviderUserId string) error {
 	if userId <= 0 {
 		return errors.New("user ID is required")
@@ -174,35 +140,11 @@ func UpdateUserOAuthBinding(userId, providerId int, newProviderUserId string) er
 	}
 
 	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := EnsureUserOAuthBindingAvailableWithTx(tx, userId, "", providerId); err != nil {
-			return err
-		}
-
-		var existingBinding UserOAuthBinding
-		err := tx.Where("provider_id = ? AND provider_user_id = ?", providerId, newProviderUserId).
-			First(&existingBinding).Error
-		if err == nil && existingBinding.UserId != userId {
-			return errors.New("this OAuth account is already bound to another user")
-		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-
-		var binding UserOAuthBinding
-		err = tx.Where("user_id = ? AND provider_id = ?", userId, providerId).First(&binding).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			binding = UserOAuthBinding{
-				UserId:         userId,
-				ProviderId:     providerId,
-				ProviderUserId: newProviderUserId,
-				CreatedAt:      time.Now(),
-			}
-			return tx.Create(&binding).Error
-		}
-		if err != nil {
-			return err
-		}
-		return tx.Model(&binding).Update("provider_user_id", newProviderUserId).Error
+		return CreateUserOAuthBindingWithTx(tx, &UserOAuthBinding{
+			UserId:         userId,
+			ProviderId:     providerId,
+			ProviderUserId: newProviderUserId,
+		})
 	})
 }
 

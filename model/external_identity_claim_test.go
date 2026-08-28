@@ -19,6 +19,9 @@ func TestExternalIdentityClaimEnforcesSingleOwnerAtomically(t *testing.T) {
 	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
 		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", first.Id)
 	}))
+	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
+		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", first.Id)
+	}))
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		return ClaimExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, "telegram-123", second.Id)
 	})
@@ -84,33 +87,35 @@ func TestUpdateUserBindColumnRejectsExternalIdentityClaimedByAnotherUser(t *test
 	assert.Empty(t, reloaded.GitHubId)
 }
 
-func TestUserCannotBindASecondOAuthChannel(t *testing.T) {
+func TestUserCanBindDistinctOAuthChannelsWhenIdentitiesAreAvailable(t *testing.T) {
 	for _, testCase := range []struct {
 		name           string
 		firstColumn    string
+		firstProvider  string
 		firstSubject   string
 		secondColumn   string
 		secondProvider string
 		secondSubject  string
+		username       string
 	}{
 		{
-			name: "GitHub blocks Google OIDC", firstColumn: "github_id", firstSubject: "github-single-channel",
+			name: "GitHub then Google OIDC", firstColumn: "github_id", firstProvider: ExternalIdentityProviderGitHub, firstSubject: "github-first-channel",
 			secondColumn: "oidc_id", secondProvider: ExternalIdentityProviderOIDC, secondSubject: "oidc-second-channel",
+			username: "github-then-oidc",
 		},
 		{
-			name: "Google OIDC blocks GitHub", firstColumn: "oidc_id", firstSubject: "oidc-single-channel",
+			name: "Google OIDC then GitHub", firstColumn: "oidc_id", firstProvider: ExternalIdentityProviderOIDC, firstSubject: "oidc-first-channel",
 			secondColumn: "github_id", secondProvider: ExternalIdentityProviderGitHub, secondSubject: "github-second-channel",
+			username: "oidc-then-github",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			truncateTables(t)
 
-			user := User{Username: "single-oauth-channel", Password: "password", AffCode: "single-oauth-channel"}
+			user := User{Username: testCase.username, Password: "password", AffCode: testCase.username}
 			require.NoError(t, DB.Create(&user).Error)
 			require.NoError(t, UpdateUserBindColumn(user.Id, testCase.firstColumn, testCase.firstSubject))
-
-			err := UpdateUserBindColumn(user.Id, testCase.secondColumn, testCase.secondSubject)
-			assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+			require.NoError(t, UpdateUserBindColumn(user.Id, testCase.secondColumn, testCase.secondSubject))
 
 			var reloaded User
 			require.NoError(t, DB.First(&reloaded, user.Id).Error)
@@ -118,16 +123,19 @@ func TestUserCannotBindASecondOAuthChannel(t *testing.T) {
 				"github_id": reloaded.GitHubId,
 				"oidc_id":   reloaded.OidcId,
 			}[testCase.firstColumn])
-			assert.Empty(t, map[string]string{
+			assert.Equal(t, testCase.secondSubject, map[string]string{
 				"github_id": reloaded.GitHubId,
 				"oidc_id":   reloaded.OidcId,
 			}[testCase.secondColumn])
 
-			var secondClaims int64
-			require.NoError(t, DB.Model(&ExternalIdentityClaim{}).
-				Where("provider = ? AND subject = ?", testCase.secondProvider, testCase.secondSubject).
-				Count(&secondClaims).Error)
-			assert.Zero(t, secondClaims)
+			for provider, subject := range map[string]string{
+				testCase.firstProvider:  testCase.firstSubject,
+				testCase.secondProvider: testCase.secondSubject,
+			} {
+				var claim ExternalIdentityClaim
+				require.NoError(t, DB.Where("provider = ? AND subject = ?", provider, subject).First(&claim).Error)
+				assert.Equal(t, user.Id, claim.UserId)
+			}
 		})
 	}
 }
@@ -144,21 +152,26 @@ func TestDifferentUsersCanUseDifferentOAuthChannels(t *testing.T) {
 	require.NoError(t, UpdateUserBindColumn(oidcUser.Id, "oidc_id", "oidc-independent"))
 }
 
-func TestCustomAndBuiltInOAuthBindingsShareOneUserSlot(t *testing.T) {
-	t.Run("built-in blocks custom", func(t *testing.T) {
+func TestCustomAndBuiltInOAuthBindingsCanCoexist(t *testing.T) {
+	t.Run("built-in then custom", func(t *testing.T) {
 		truncateTables(t)
 
 		user := User{Username: "built-in-before-custom", Password: "password", AffCode: "built-in-before-custom"}
 		require.NoError(t, DB.Create(&user).Error)
 		require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "github-before-custom"))
 
-		err := CreateUserOAuthBinding(&UserOAuthBinding{
+		require.NoError(t, CreateUserOAuthBinding(&UserOAuthBinding{
 			UserId: user.Id, ProviderId: 101, ProviderUserId: "custom-second-channel",
-		})
-		assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+		}))
+		binding, err := GetUserOAuthBinding(user.Id, 101)
+		require.NoError(t, err)
+		assert.Equal(t, "custom-second-channel", binding.ProviderUserId)
+		var reloaded User
+		require.NoError(t, DB.First(&reloaded, user.Id).Error)
+		assert.Equal(t, "github-before-custom", reloaded.GitHubId)
 	})
 
-	t.Run("custom blocks built-in", func(t *testing.T) {
+	t.Run("custom then built-in", func(t *testing.T) {
 		truncateTables(t)
 
 		user := User{Username: "custom-before-built-in", Password: "password", AffCode: "custom-before-built-in"}
@@ -167,9 +180,59 @@ func TestCustomAndBuiltInOAuthBindingsShareOneUserSlot(t *testing.T) {
 			UserId: user.Id, ProviderId: 202, ProviderUserId: "custom-first-channel",
 		}))
 
-		err := UpdateUserBindColumn(user.Id, "oidc_id", "oidc-second-channel")
-		assert.ErrorIs(t, err, ErrUserOAuthBindingExists)
+		require.NoError(t, UpdateUserBindColumn(user.Id, "oidc_id", "oidc-second-channel"))
+		binding, err := GetUserOAuthBinding(user.Id, 202)
+		require.NoError(t, err)
+		assert.Equal(t, "custom-first-channel", binding.ProviderUserId)
+		var reloaded User
+		require.NoError(t, DB.First(&reloaded, user.Id).Error)
+		assert.Equal(t, "oidc-second-channel", reloaded.OidcId)
 	})
+}
+
+func TestUpdateUserBindColumnRejectsSecondIdentityForSameProvider(t *testing.T) {
+	truncateTables(t)
+
+	user := User{Username: "github-owner", Password: "password", AffCode: "github-owner"}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "github-original"))
+	require.NoError(t, UpdateUserBindColumn(user.Id, "github_id", "github-original"))
+
+	err := UpdateUserBindColumn(user.Id, "github_id", "github-replacement")
+	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, "github-original", reloaded.GitHubId)
+
+	var claims []ExternalIdentityClaim
+	require.NoError(t, DB.Where("provider = ? AND user_id = ?", ExternalIdentityProviderGitHub, user.Id).Find(&claims).Error)
+	require.Len(t, claims, 1)
+	assert.Equal(t, "github-original", claims[0].Subject)
+}
+
+func TestCustomOAuthBindingRejectsIdentityReuseAndRebinding(t *testing.T) {
+	truncateTables(t)
+
+	first := User{Username: "custom-owner-one", Password: "password", AffCode: "custom-owner-one"}
+	second := User{Username: "custom-owner-two", Password: "password", AffCode: "custom-owner-two"}
+	require.NoError(t, DB.Create(&first).Error)
+	require.NoError(t, DB.Create(&second).Error)
+	require.NoError(t, UpdateUserOAuthBinding(first.Id, 303, "custom-original"))
+	require.NoError(t, UpdateUserOAuthBinding(first.Id, 303, "custom-original"))
+
+	err := UpdateUserOAuthBinding(first.Id, 303, "custom-replacement")
+	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+	err = UpdateUserOAuthBinding(second.Id, 303, "custom-original")
+	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+
+	binding, err := GetUserOAuthBinding(first.Id, 303)
+	require.NoError(t, err)
+	assert.Equal(t, "custom-original", binding.ProviderUserId)
+
+	var secondBindings int64
+	require.NoError(t, DB.Model(&UserOAuthBinding{}).Where("user_id = ?", second.Id).Count(&secondBindings).Error)
+	assert.Zero(t, secondBindings)
 }
 
 func TestUpdateUserBindColumnRejectsMissingUserWithoutCreatingClaim(t *testing.T) {

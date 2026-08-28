@@ -195,10 +195,6 @@ func HandleOAuth(c *gin.Context) {
 	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
-		if errors.Is(err, model.ErrUserOAuthBindingExists) {
-			common.ApiErrorI18n(c, i18n.MsgOAuthUserBindingExists)
-			return
-		}
 		if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 			return
@@ -278,8 +274,8 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		// Custom provider: use user_oauth_bindings table
 		err = model.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
 		if err != nil {
-			if errors.Is(err, model.ErrUserOAuthBindingExists) {
-				common.ApiErrorI18n(c, i18n.MsgOAuthUserBindingExists)
+			if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+				common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 				return
 			}
 			common.ApiError(c, err)
@@ -290,10 +286,6 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
 		err = model.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
-			if errors.Is(err, model.ErrUserOAuthBindingExists) {
-				common.ApiErrorI18n(c, i18n.MsgOAuthUserBindingExists)
-				return
-			}
 			if errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
 				common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 				return
