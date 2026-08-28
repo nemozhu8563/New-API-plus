@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Copy, KeyRound, Link2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getApiKeys } from '@/features/keys/api'
+import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { ROLE } from '@/lib/roles'
@@ -62,6 +62,7 @@ function ConnectionOverview(props: {
 }) {
   const { t } = useTranslation()
   const { copyToClipboard } = useCopyToClipboard({ notify: false })
+  const [keyCopying, setKeyCopying] = useState(false)
 
   const handleCopyAddress = async () => {
     const copied = await copyToClipboard(props.apiAddress)
@@ -73,12 +74,26 @@ function ConnectionOverview(props: {
   }
 
   const handleCopyKey = async () => {
-    if (!props.keyItem) return
-    const copied = await copyToClipboard(normalizeApiKey(props.keyItem.key))
-    if (copied) {
-      toast.success(t('Copied to clipboard'))
-    } else {
+    if (!props.keyItem || keyCopying) return
+
+    setKeyCopying(true)
+    try {
+      const result = await fetchTokenKey(props.keyItem.id)
+      if (!result.success || !result.data?.key) {
+        toast.error(result.message || t('Failed to copy to clipboard'))
+        return
+      }
+
+      const copied = await copyToClipboard(normalizeApiKey(result.data.key))
+      if (copied) {
+        toast.success(t('Copied to clipboard'))
+        return
+      }
       toast.error(t('Failed to copy to clipboard'))
+    } catch {
+      toast.error(t('Failed to copy to clipboard'))
+    } finally {
+      setKeyCopying(false)
     }
   }
 
@@ -143,6 +158,7 @@ function ConnectionOverview(props: {
                   size='icon-sm'
                   className='-mr-2 size-7 shrink-0'
                   onClick={handleCopyKey}
+                  disabled={keyCopying}
                   aria-label={t('Copy API key')}
                 >
                   <Copy />

@@ -6,15 +6,23 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getApiKeys } from '@/features/keys/api'
+import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { OverviewDashboard } from '../overview-dashboard'
 
+const copyToClipboard = vi.hoisted(() => vi.fn())
+
 vi.mock('@/features/keys/api', () => ({
+  fetchTokenKey: vi.fn(),
   getApiKeys: vi.fn(),
+}))
+
+vi.mock('@/hooks/use-copy-to-clipboard', () => ({
+  useCopyToClipboard: () => ({ copyToClipboard }),
 }))
 
 vi.mock('@/features/dashboard/hooks/use-status-data', () => ({
@@ -58,6 +66,7 @@ function renderOverviewDashboard() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   useAuthStore.getState().auth.setUser({
     id: 1,
     username: 'new-overview-user',
@@ -70,6 +79,7 @@ beforeEach(() => {
     success: true,
     data: { items: [], total: 0, page: 1, page_size: 10 },
   })
+  copyToClipboard.mockResolvedValue(true)
 })
 
 afterEach(() => {
@@ -122,6 +132,53 @@ describe('overview dashboard', () => {
     expect(quickNavigation).toHaveTextContent('Usage Logs')
     expect(quickNavigation).toHaveTextContent('Pricing')
     expect(quickNavigation).toHaveTextContent('Wallet')
+
+    queryClient.clear()
+  })
+
+  test('fetches the full API key before copying it', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getApiKeys).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 7,
+            name: 'Dashboard key',
+            key: 'masked-key',
+            status: 1,
+            remain_quota: 0,
+            used_quota: 0,
+            unlimited_quota: true,
+            expired_time: -1,
+            created_time: 0,
+            accessed_time: 0,
+            group: '',
+            auto_groups: null,
+            cross_group_retry: false,
+            model_limits_enabled: false,
+            model_limits: '',
+            allow_ips: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      },
+    })
+    vi.mocked(fetchTokenKey).mockResolvedValue({
+      success: true,
+      data: { key: 'real-key-material' },
+    })
+
+    const { queryClient } = renderOverviewDashboard()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Copy API key' })
+    )
+
+    await waitFor(() => expect(fetchTokenKey).toHaveBeenCalledWith(7))
+    expect(copyToClipboard).toHaveBeenCalledWith('sk-real-key-material')
 
     queryClient.clear()
   })
