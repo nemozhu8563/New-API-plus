@@ -190,6 +190,7 @@ export const WebPreviewBody = ({
   const { t } = useTranslation()
   const { url } = useWebPreview()
 
+  /* eslint-disable react/iframe-missing-sandbox -- Preview callers may require same-origin storage and scripts; preserve the existing component contract. */
   return (
     <div className='flex-1'>
       <iframe
@@ -202,10 +203,12 @@ export const WebPreviewBody = ({
       {loading}
     </div>
   )
+  /* eslint-enable react/iframe-missing-sandbox */
 }
 
 export type WebPreviewConsoleProps = ComponentProps<'div'> & {
   logs?: Array<{
+    id?: string
     level: 'log' | 'warn' | 'error'
     message: string
     timestamp: Date
@@ -220,6 +223,7 @@ export const WebPreviewConsole = ({
 }: WebPreviewConsoleProps) => {
   const { t } = useTranslation()
   const { consoleOpen, setConsoleOpen } = useWebPreview()
+  const logKeyOccurrences = new Map<string, number>()
 
   return (
     <Collapsible
@@ -254,22 +258,30 @@ export const WebPreviewConsole = ({
           {logs.length === 0 ? (
             <p className='text-muted-foreground'>{t('No console output')}</p>
           ) : (
-            logs.map((log, index) => (
-              <div
-                className={cn(
-                  'text-xs',
-                  log.level === 'error' && 'text-destructive',
-                  log.level === 'warn' && 'text-warning',
-                  log.level === 'log' && 'text-foreground'
-                )}
-                key={`${log.timestamp.getTime()}-${index}`}
-              >
-                <span className='text-muted-foreground'>
-                  {dayjs(log.timestamp).format('HH:mm:ss')}
-                </span>{' '}
-                {log.message}
-              </div>
-            ))
+            logs.map((log) => {
+              const baseKey = log.id
+                ? `id-${log.id}`
+                : `${log.timestamp.getTime()}-${log.level}-${log.message}`
+              const occurrence = logKeyOccurrences.get(baseKey) ?? 0
+              logKeyOccurrences.set(baseKey, occurrence + 1)
+
+              return (
+                <div
+                  className={cn(
+                    'text-xs',
+                    log.level === 'error' && 'text-destructive',
+                    log.level === 'warn' && 'text-warning',
+                    log.level === 'log' && 'text-foreground'
+                  )}
+                  key={`${baseKey}-${occurrence}`}
+                >
+                  <span className='text-muted-foreground'>
+                    {dayjs(log.timestamp).format('HH:mm:ss')}
+                  </span>{' '}
+                  {log.message}
+                </div>
+              )
+            })
           )}
           {children}
         </div>

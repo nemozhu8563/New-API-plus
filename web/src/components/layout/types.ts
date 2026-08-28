@@ -1,5 +1,5 @@
-import { type LinkProps } from '@tanstack/react-router'
-import { type TFunction } from 'i18next'
+import type { LinkProps } from '@tanstack/react-router'
+import type { TFunction } from 'i18next'
 
 /**
  * Base navigation item type

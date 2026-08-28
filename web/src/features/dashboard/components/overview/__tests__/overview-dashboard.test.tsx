@@ -182,4 +182,105 @@ describe('overview dashboard', () => {
 
     queryClient.clear()
   })
+
+  test('does not copy the masked key when fetching the full key fails', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getApiKeys).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 7,
+            name: 'Dashboard key',
+            key: 'masked-key',
+            status: 1,
+            remain_quota: 0,
+            used_quota: 0,
+            unlimited_quota: true,
+            expired_time: -1,
+            created_time: 0,
+            accessed_time: 0,
+            group: '',
+            auto_groups: null,
+            cross_group_retry: false,
+            model_limits_enabled: false,
+            model_limits: '',
+            allow_ips: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      },
+    })
+    vi.mocked(fetchTokenKey).mockResolvedValue({
+      success: false,
+      message: 'Unable to load key',
+    })
+
+    const { queryClient } = renderOverviewDashboard()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Copy API key' })
+    )
+
+    await waitFor(() => expect(fetchTokenKey).toHaveBeenCalledWith(7))
+    expect(copyToClipboard).not.toHaveBeenCalled()
+
+    queryClient.clear()
+  })
+
+  test('disables key copying while the full key request is pending', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getApiKeys).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 7,
+            name: 'Dashboard key',
+            key: 'masked-key',
+            status: 1,
+            remain_quota: 0,
+            used_quota: 0,
+            unlimited_quota: true,
+            expired_time: -1,
+            created_time: 0,
+            accessed_time: 0,
+            group: '',
+            auto_groups: null,
+            cross_group_retry: false,
+            model_limits_enabled: false,
+            model_limits: '',
+            allow_ips: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 10,
+      },
+    })
+    let resolveFullKey:
+      | ((result: { success: boolean; data?: { key: string } }) => void)
+      | undefined
+    vi.mocked(fetchTokenKey).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFullKey = resolve
+        })
+    )
+
+    const { queryClient } = renderOverviewDashboard()
+    const copyButton = await screen.findByRole('button', {
+      name: 'Copy API key',
+    })
+
+    await user.click(copyButton)
+
+    await waitFor(() => expect(copyButton).toBeDisabled())
+    resolveFullKey?.({ success: true, data: { key: 'real-key-material' } })
+    await waitFor(() => expect(copyButton).toBeEnabled())
+
+    queryClient.clear()
+  })
 })

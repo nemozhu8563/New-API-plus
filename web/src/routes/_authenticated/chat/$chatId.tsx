@@ -135,6 +135,7 @@ function ChatRouteComponent() {
     )
   }
 
+  /* eslint-disable react/iframe-missing-sandbox -- This admin-configured third-party chat must preserve cookies, storage, OAuth, and window messaging. */
   return (
     <iframe
       src={iframeSrc}
@@ -144,4 +145,5 @@ function ChatRouteComponent() {
       title={`Chat preset: ${preset.name}`}
     />
   )
+  /* eslint-enable react/iframe-missing-sandbox */
 }

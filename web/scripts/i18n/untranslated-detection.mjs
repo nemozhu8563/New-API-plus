@@ -99,10 +99,10 @@ export function isLikelyUntranslated({ locale, baseValue, value }) {
     /^[\w.-]+@[\w.-]+$/.test(text) ||
     /^smtp\./i.test(text) ||
     /^socks5:/i.test(text) ||
-    /^org-/.test(text) ||
+    text.startsWith('org-') ||
     /^gpt-/i.test(text) ||
-    /^checkout\./.test(text) ||
-    /^footer\./.test(text) ||
+    text.startsWith('checkout.') ||
+    text.startsWith('footer.') ||
     /^[A-Z0-9_ *./:-]+$/.test(text) ||
     text.startsWith('{') ||
     text.startsWith('[') ||

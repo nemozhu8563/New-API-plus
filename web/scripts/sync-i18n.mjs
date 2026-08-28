@@ -43,7 +43,7 @@ function reorderLikeBase(
 
     for (const key of Object.keys(base)) {
       const nextPath = [...currentPath, key]
-      if (Object.prototype.hasOwnProperty.call(t, key)) {
+      if (Object.hasOwn(t, key)) {
         out[key] = reorderLikeBase(
           base[key],
           t[key],
@@ -66,7 +66,7 @@ function reorderLikeBase(
     }
 
     for (const key of Object.keys(t)) {
-      if (!Object.prototype.hasOwnProperty.call(base, key)) {
+      if (!Object.hasOwn(base, key)) {
         const nextPath = [...currentPath, key].join('.')
         extras[nextPath] = t[key]
       }

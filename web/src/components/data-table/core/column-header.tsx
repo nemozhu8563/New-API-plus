@@ -1,4 +1,4 @@
-import { type Column } from '@tanstack/react-table'
+import type { Column } from '@tanstack/react-table'
 import {
   ArrowDown as ArrowDownIcon,
   ArrowUp as ArrowUpIcon,
@@ -33,6 +33,13 @@ export function DataTableColumnHeader<TData, TValue>({
     return <div className={cn(className)}>{title}</div>
   }
 
+  let sortIcon = <CaretSortIcon className='ms-2 h-4 w-4' />
+  if (column.getIsSorted() === 'desc') {
+    sortIcon = <ArrowDownIcon className='ms-2 h-4 w-4' />
+  } else if (column.getIsSorted() === 'asc') {
+    sortIcon = <ArrowUpIcon className='ms-2 h-4 w-4' />
+  }
+
   return (
     <div className={cn('flex items-center space-x-2', className)}>
       <DropdownMenu>
@@ -46,13 +53,7 @@ export function DataTableColumnHeader<TData, TValue>({
           }
         >
           <span>{title}</span>
-          {column.getIsSorted() === 'desc' ? (
-            <ArrowDownIcon className='ms-2 h-4 w-4' />
-          ) : column.getIsSorted() === 'asc' ? (
-            <ArrowUpIcon className='ms-2 h-4 w-4' />
-          ) : (
-            <CaretSortIcon className='ms-2 h-4 w-4' />
-          )}
+          {sortIcon}
         </DropdownMenuTrigger>
         <DropdownMenuContent align='start'>
           <DropdownMenuItem onClick={() => column.toggleSorting(false)}>

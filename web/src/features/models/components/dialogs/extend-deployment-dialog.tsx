@@ -114,6 +114,18 @@ export function ExtendDeploymentDialog({
 
   const canSubmit = Boolean(deploymentId) && hours > 0 && !isSubmitting
 
+  let estimatedCost: React.ReactNode = t('Not available')
+  if (isLoadingPrice || isFetchingPrice) {
+    estimatedCost = (
+      <span className='inline-flex items-center gap-2'>
+        <Loader2 className='h-4 w-4 animate-spin' />
+        {t('Calculating...')}
+      </span>
+    )
+  } else if (priceParams) {
+    estimatedCost = priceSummary || t('Not available')
+  }
+
   const onSubmit = async () => {
     if (!deploymentId) return
     const h = toInt(hours, 1)
@@ -192,18 +204,7 @@ export function ExtendDeploymentDialog({
 
           <div className='space-y-1'>
             <div className='text-sm font-medium'>{t('Estimated cost')}</div>
-            <div className='text-muted-foreground text-sm'>
-              {isLoadingPrice || isFetchingPrice ? (
-                <span className='inline-flex items-center gap-2'>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  {t('Calculating...')}
-                </span>
-              ) : priceParams ? (
-                priceSummary || t('Not available')
-              ) : (
-                t('Not available')
-              )}
-            </div>
+            <div className='text-muted-foreground text-sm'>{estimatedCost}</div>
             {!priceParams ? (
               <div className='text-muted-foreground text-xs'>
                 {t('Unable to estimate price for this deployment.')}

@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,7 @@ export function CopyButton({
   if (tooltip || successTooltip) {
     return (
       <Tooltip>
-        <TooltipTrigger render={button}></TooltipTrigger>
+        <TooltipTrigger render={button} />
         <TooltipContent>
           <p>{isCopied ? resolvedSuccessTooltip : resolvedTooltip}</p>
         </TooltipContent>
