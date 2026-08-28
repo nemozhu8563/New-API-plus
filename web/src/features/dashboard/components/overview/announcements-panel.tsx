@@ -1,14 +1,13 @@
-import { Megaphone } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
 import type { AnnouncementItem } from '@/features/dashboard/types'
 import { getAnnouncementColorClass } from '@/lib/colors'
-import { formatDateTimeObject } from '@/lib/time'
+import dayjs from '@/lib/dayjs'
 import { cn } from '@/lib/utils'
 
 import { PanelWrapper } from '../ui/panel-wrapper'
@@ -20,7 +19,7 @@ const AnnouncementStatusDot = memo(function AnnouncementStatusDot(props: {
   return (
     <span
       className={cn(
-        'mt-1.5 inline-block size-2 shrink-0 rounded-full',
+        'inline-block size-2 shrink-0 rounded-full',
         getAnnouncementColorClass(props.type)
       )}
     />
@@ -41,22 +40,15 @@ export function AnnouncementsPanel() {
 
   return (
     <PanelWrapper
-      title={
-        <span className='flex items-center gap-2'>
-          <IconBadge tone='warning' size='sm'>
-            <Megaphone />
-          </IconBadge>
-          {t('Announcements')}
-        </span>
-      }
-      description={t('Latest platform updates and notices')}
+      title={t('System Announcements')}
       loading={loading}
       empty={!list.length}
       emptyMessage={t('No announcements at this time')}
-      height='h-72'
-      contentClassName='p-0'
+      height='h-[20rem]'
+      className='h-full min-w-0'
+      contentClassName='h-[20rem] p-0'
     >
-      <ScrollArea className='h-72'>
+      <ScrollArea className='h-[20rem]'>
         <div>
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
@@ -66,28 +58,23 @@ export function AnnouncementsPanel() {
                 type='button'
                 onClick={() => handleAnnouncementClick(item)}
                 className={cn(
-                  'group hover:bg-muted/40 w-full px-3 py-3 text-left transition-colors sm:px-5 sm:py-3.5',
+                  'group hover:bg-muted/40 focus-visible:ring-ring flex w-full items-center gap-3 px-4 py-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset sm:px-5',
                   idx < list.length - 1 && 'border-border/60 border-b'
                 )}
               >
-                <div className='flex items-start gap-2.5'>
-                  <AnnouncementStatusDot type={item.type} />
-                  <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='line-clamp-1 text-sm font-medium'>
-                      {getPreviewText(item.content)}
-                    </p>
-                    <div className='flex items-center justify-between'>
-                      {item.publishDate && (
-                        <time className='text-muted-foreground/60 text-xs'>
-                          {formatDateTimeObject(new Date(item.publishDate))}
-                        </time>
-                      )}
-                      <span className='text-muted-foreground/40 text-xs opacity-0 transition-opacity group-hover:opacity-100'>
-                        {t('Click for details')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <AnnouncementStatusDot type={item.type} />
+                <p className='min-w-0 flex-1 truncate text-sm font-medium'>
+                  {getPreviewText(item.content)}
+                </p>
+                {item.publishDate && (
+                  <time className='text-muted-foreground shrink-0 font-mono text-xs tabular-nums'>
+                    {dayjs(item.publishDate).format('MM/DD')}
+                  </time>
+                )}
+                <ChevronRight
+                  aria-hidden='true'
+                  className='text-muted-foreground size-4 shrink-0 transition-transform group-hover:translate-x-0.5'
+                />
               </button>
             )
           })}

@@ -1,5 +1,5 @@
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Eye, EyeOff } from 'lucide-react'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { CreditCard, Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -301,7 +301,26 @@ export function Dashboard() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {activeSection === 'overview' ? (
+          <span className='flex flex-col gap-0.5'>
+            <span>{t(meta.titleKey)}</span>
+            <span className='text-muted-foreground text-xs font-normal'>
+              {t('Monitor balance, usage, and request volume')}
+            </span>
+          </span>
+        ) : (
+          t(meta.titleKey)
+        )}
+      </SectionPageLayout.Title>
+      {activeSection === 'overview' && (
+        <SectionPageLayout.Actions>
+          <Button size='sm' render={<Link to='/wallet' />}>
+            <CreditCard />
+            {t('Recharge')}
+          </Button>
+        </SectionPageLayout.Actions>
+      )}
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           {activeSection !== 'overview' && (
