@@ -2,11 +2,11 @@
 
 > 文档状态：代码交付与 GreenCloud 测试发布交接快照。
 >
-> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录，以及 GreenCloud 现场回读。它证明 `origin/main` 的精确提交 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 已于 2026-08-28 发布到独立测试实例，并证明 Google/OIDC 与 GitHub 的首次登录及重复登录已在测试环境进入各自原有本地账号；上一版 `893e79268`、`abce39b75` 和 `00f0f3598` 的测试发布证据继续保留在下文。已占用外部身份的绑定拒绝由自动化测试覆盖，但浏览器提示因 Chrome 安全拦截尚未完成现场证据。GitHub/Google 用户侧解绑明确不支持，不作为待测项。本文件不证明这些改动已经发布到生产，也不证明 Stripe、付费模型、管理员流程或全部用户路径已经完成 E2E。本文件自身是发布后的记录更新，不在该测试镜像内。
+> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录、GreenCloud 现场回读、测试库只读聚合和浏览器验收。它证明精确提交 `91e861f8c970a0b5c1897eeabaaca17f07fa1613` 已于 2026-08-28 发布到独立测试实例，证明测试库套餐月度迁移、Dashboard API Key 复制修复、全量质量门，以及一笔 CNY 20 Stripe Sandbox 充值 E2E 已完成；OAuth 的上一版发布证据继续保留在下文。正式生产应用与数据库未发布、未迁移，本文也不证明生产 Stripe、Stripe 订阅、付费模型、管理员流程或全部用户路径已经完成 E2E。Creem、Epay、Waffo 不在本次 Stripe 验收范围内。本文件自身是发布后的记录更新，不在该测试镜像内。
 
 ## 1. 当前结论
 
-原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。后续订阅、运维、认证文案和 GitHub/Google 登录改动均已进入 `origin/main`；当前测试部署的精确代码交付点为 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0`。
+原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。后续订阅、运维、认证文案、GitHub/Google 登录、月度套餐契约、Dashboard API Key 修复和前端质量门修复均已形成审计提交；本次运行记录推送完成后，这些提交均位于 `origin/main`。当前测试部署的精确代码交付点为 `91e861f8c970a0b5c1897eeabaaca17f07fa1613`。
 
 当前可以确认：
 
@@ -14,17 +14,21 @@
 - 当前没有安全、完整的订阅升级、按比例计费和权益迁移能力，因此本次不实现升级：用户存在有效订阅时仍可查看所有套餐用于比较，但所有购买入口均禁用，并明确提示暂不支持变更套餐。
 - Stripe、Creem、Epay、Waffo Pancake 的订阅下单入口都会在调用支付渠道或写入订单前拒绝已有有效订阅的用户，前后端行为一致。
 - 当前订阅、Stripe 账单和发票中的配置套餐名会经过 i18n；截图中的 `Professional` 英文残留已在代码中修复。
+- `04aa934d4` 将开发阶段套餐统一为单一 CNY 月度契约：每个已支付 Stripe invoice 创建一个新的账期权益。正式库套餐相关三表在发布前只读计数均为 0，因此没有旧正式套餐需要兼容或迁移；独立测试库原有 4 条套餐已全部规范化为月度契约，6 个迁移字段齐全，无需为了测试数据再删除套餐。
+- Dashboard 复制 API Key 曾复制列表接口返回的掩码值，属于确定性功能 Bug；`e15486acc` 已改为按 token ID 调用受保护接口获取完整 Key，并由回归测试保护。
+- `91e861f8c` 已恢复全量前端质量门：lint 为 0 error、0 warning，typecheck、76 个文件/309 个 Vitest、生产 build 和 format check 全部通过；全量 Go 测试与 `relaykit` 独立构建也通过。
+- Stripe Sandbox 已完成一笔 CNY 20 Hosted Checkout 真实测试支付：真实 webhook 恰好结算一次，本地订单由 pending 变为 success，用户额度由 0 变为 10,000,000 quota units（Wallet 显示 `$20`），且没有重复入账。该结果只证明 Sandbox 充值，不等同于 Stripe 生产支付或 Stripe 订阅验证。
 - `relaykit` 仍可在关闭 workspace 的情况下独立构建。
 - i18n 同步报告中 7 个 locale 的 `missingCount`、`extrasCount`、`untranslatedCount` 均为 0。
-- 上一轮已从精确提交 `00f0f3598` 的隔离归档构建 `linux/amd64` 不可变镜像，并于 2026-08-27 发布到 GreenCloud 独立 `new-api-test` 实例；当前测试实例已由后续 `f28cacabdf` 不可变镜像取代。
+- 上一轮已从精确提交 `00f0f3598` 的隔离归档构建 `linux/amd64` 不可变镜像，并于 2026-08-27 发布到 GreenCloud 独立 `new-api-test` 实例；该镜像后来依次被 `f28cacabdf` 和当前 `91e861f8c` 不可变镜像取代。
 - 测试实例持续 `healthy`，本机 `GET /api/status` 和首页均返回 HTTP 200，发布后关键启动错误计数为 0。
 - 生产 `new-api` 未重建，发布前后镜像引用、镜像 ID 和健康状态一致；PostgreSQL 与 Redis 均保持 `healthy`。
 - 本次应用发布未修改生产容器、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 或 Redis 的部署配置。
 - Zgo 边缘全量切换的实际执行状态已由 `13af0b289` 更新到专门运行手册；本次应用测试发布没有再次执行或改动该切换。
 - GitHub 和 OIDC（测试环境用于 Google）登录使用数据库唯一 claim 原子占用外部身份。一个本地账号可以同时绑定多个 provider 下尚未被占用的身份；同一 `provider + subject` 只能归属一个本地账号，同一 provider 的既有绑定不能换成另一个外部身份，也不按邮箱自动合并账号。
-- GitHub/OIDC 只有在 Client ID、Client Secret 和必要 endpoint 配置完整后才能启用；OIDC 授权和换 Token 统一使用 `ServerAddress + /oauth/oidc`，SPA 再调用 `/api/oauth/oidc` 完成登录，登录页已渲染 Google 和 Custom Provider 图标。
+- GitHub/OIDC 只有在开关打开且 Client ID、Client Secret 和必要 endpoint 配置完整后才能启用；未启用时登录页不展示对应入口。OIDC 授权和换 Token 统一使用 `ServerAddress + /oauth/oidc`，SPA 再调用 `/api/oauth/oidc` 完成登录；测试环境因已启用而渲染 Google 和 Custom Provider 图标。
 - 测试 GitHub/Google OAuth Client 已创建并写入测试配置。Google/OIDC 与 GitHub 的首次登录及重复登录均完成 HTTP 200 callback、会话接口和测试库 owner 一致性验证；重复登录没有创建新用户或新绑定。
-- 当前测试实例运行镜像 `new-api:new-api-test-20260828T033014Z-f28cacabdf`，状态 `healthy`、重启次数 0；测试内网和公网 `/api/status`、`/sign-in` 均返回 HTTP 200。
+- 当前测试实例运行镜像 `new-api:new-api-test-20260828T091835Z-91e861f8c9`，状态 `healthy`；测试 `/api/status` 返回 HTTP 200 且 `success=true`。
 - GitHub/Google 用户侧解绑不支持，本轮不实现也不测试；现有 custom OAuth 与管理员维护接口保持原状，不在本次产品边界内。
 - 本次只重建 `new-api-test`。生产 `new-api` 的容器 ID、镜像引用、镜像 ID、健康状态和重启次数在发布前后保持一致；PostgreSQL 与 Redis 未重建。
 
@@ -53,7 +57,10 @@
 | `519748d0e` | 纠正把用户消息误写成 GitHub E2E 通过的证据边界 | 记录搜索、staged diff 和敏感信息扫描通过 | 文档提交；明确以现场 callback 和会话证据为准 |
 | `484649c8d` | 记录 GitHub callback、已认证 Dashboard 和测试库聚合闭环 | GitHub callback HTTP 200、Dashboard DOM、聚合 `1|1|0`、容器健康 | 文档提交；不改变测试或生产运行时 |
 | `66276df51` | 允许同一本地账号绑定多个 provider 下尚未占用的身份，同时禁止身份复用和同 provider 换绑 | 全量 Go 测试、目标 model/controller/i18n 测试和 diff 检查通过 | 当前测试镜像已包含；不按邮箱合并账号 |
-| `f28cacabdf` | OIDC 授权和换 Token 统一通过 SPA `/oauth/oidc` callback，使浏览器会话在进入 Dashboard 前持久化 | 全量 Go 测试、OIDC 前端测试、类型检查、生产构建和 diff 检查通过；Google 重复登录现场通过 | 当前测试镜像的精确 `main` 提交；生产未发布 |
+| `f28cacabdf` | OIDC 授权和换 Token 统一通过 SPA `/oauth/oidc` callback，使浏览器会话在进入 Dashboard 前持久化 | 全量 Go 测试、OIDC 前端测试、类型检查、生产构建和 diff 检查通过；Google 重复登录现场通过 | 上一测试镜像的精确 `main` 提交；生产未发布 |
+| `04aa934d4` | 将套餐与权益统一为单一 CNY 月度计费契约；每个 Stripe paid invoice 创建独立账期权益，并加入开发阶段套餐数据迁移 | 全量 Go 测试、24 个订阅前端测试、typecheck、build、目标 lint/format、i18n 和 diff 检查通过 | 当前测试镜像已包含；测试库 4 条套餐已迁移，正式库套餐相关三表为 0 且未触碰 |
+| `e15486acc` | Dashboard 复制 API Key 时按 ID 获取受保护的完整 Key，不再复制列表接口的掩码值 | 目标 Vitest 回归和受影响文件 lint 通过；后续全量前端测试继续覆盖 | 当前测试镜像已包含；测试账号无真实 Key，浏览器页面已验收，精确剪贴板契约由自动化测试证明 |
+| `91e861f8c` | 清理前端既有 lint/format/type 回归并保持 Dashboard API Key 修复 | lint 0 error/0 warning；typecheck、76 文件/309 测试、build、format、全量 Go、`relaykit` 独立构建和 diff 检查通过 | 当前测试镜像的精确代码提交；生产未发布 |
 
 ## 3. 本地验证记录
 
@@ -123,7 +130,7 @@ cd web && bun run test src/lib/__tests__/oauth.test.ts
 - OIDC：换 Token 时提交的 redirect URI 固定为 `ServerAddress + /api/oauth/oidc`，目标回归测试通过。
 - 前端：1 个 Vitest 文件、1 个测试通过，确认 Google/OIDC 授权请求使用 `/api/oauth/oidc` callback。
 
-身份绑定规则调整和浏览器 callback 修正随后在当前精确提交 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 上实际执行并通过：
+身份绑定规则调整和浏览器 callback 修正随后在精确提交 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 上实际执行并通过：
 
 ```text
 GOCACHE=/tmp/new-api-go-build go test ./... -count=1
@@ -137,6 +144,25 @@ git diff --check
 - Go：全量 package 测试通过；目标 model 用例确认一个本地账号可绑定多个不同且未占用的 provider 身份、已被其他用户占用的身份不能再次 claim、同一 provider 的既有身份不能被替换。
 - 前端：OIDC URL 测试、类型检查和生产构建通过；授权与换 Token 使用完全一致的 SPA callback `/oauth/oidc`。
 - 解绑：GitHub/Google 用户侧不支持，本轮没有新增或修改解绑代码，也不把解绑列为待测路径。
+
+月度套餐、Dashboard API Key 修复和全量质量门随后在精确提交 `91e861f8c970a0b5c1897eeabaaca17f07fa1613` 上实际执行并通过：
+
+```text
+GOCACHE=/tmp/new-api-go-build go test ./...
+cd relaykit && GOWORK=off go build ./...
+cd web && bun run lint
+cd web && bun run typecheck
+cd web && bun run test
+cd web && bun run build
+cd web && bun run format:check
+git diff --check
+```
+
+- Go：全量 package 测试通过；`relaykit` 在 `GOWORK=off` 下独立构建通过。
+- 前端：lint 为 0 error、0 warning；typecheck、76 个文件/309 个 Vitest、生产构建、全量格式检查全部通过。
+- Dashboard：目标回归测试确认复制动作获取完整 Key，而不是复制掩码列表值。
+- 套餐：开发阶段单向月度迁移测试通过；测试环境运行后 4 条套餐全部为 `month/1` 与 `billing_cycle` 契约，相关迁移字段完整。
+- Stripe：上述本地质量门不替代 Sandbox 业务验证；业务 E2E 证据单列在 4.4。
 
 ## 4. GreenCloud 测试发布记录
 
@@ -192,7 +218,7 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --fo
 
 如需恢复测试数据库，应先停止测试写入并另行制定恢复步骤；本次未执行数据库恢复演练。
 
-### 4.1 GitHub/Google 登录代码测试发布（当前）
+### 4.1 GitHub/Google 登录代码测试发布（较早版本）
 
 发布范围为 A 类测试应用发布，并单列 OAuth claim schema 风险检查。正式生产、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均不在变更范围内。
 
@@ -297,7 +323,7 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pu
 
 如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
 
-### 4.3 多 provider 绑定规则与重复登录验收（当前）
+### 4.3 多 provider 绑定规则与重复登录验收（上一版）
 
 本次仍为 A 类测试应用发布。发布内容是 `main` 上的多 provider 身份绑定规则和 OIDC 浏览器 callback 修正。生产应用、生产 OAuth 配置、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均未改动。OAuth Client Secret 仍只保存在受限配置中，没有写入仓库、命令输出或本文。
 
@@ -347,36 +373,89 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pu
 
 如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
 
+### 4.4 月度套餐、Dashboard 修复与 Stripe Sandbox 充值验收（当前）
+
+本次仍为 A 类测试应用发布。发布范围是 `main` 上的月度套餐契约、Dashboard API Key 复制修复和全量前端质量门修复；随后只在独立测试实例完成一笔 Stripe Sandbox 充值。生产应用、生产数据库、生产 Stripe 配置、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均未改动。Creem、Epay、Waffo 明确不在本次验收范围内。
+
+不可变发布证据：
+
+| 项目 | 值 |
+| --- | --- |
+| 测试容器启动时间 | `2026-08-28 17:35:13`（Asia/Shanghai） |
+| 提交 | `91e861f8c970a0b5c1897eeabaaca17f07fa1613` |
+| Release ID / 镜像 | `new-api-test-20260828T091835Z-91e861f8c9` / `new-api:new-api-test-20260828T091835Z-91e861f8c9` |
+| 平台 | `linux/amd64` |
+| 镜像 ID | `sha256:d74398a36f8a7655ce1bff6cb98c0035f554cc0ba0445472b9a8a9fa999e08bc` |
+| 镜像包 SHA-256 | `42933cc9f3abf3ae63072ca74376c419b1880c27aaa2caf169ce551f658896b9` |
+| 镜像包大小 | `71,832,852` bytes |
+| GreenCloud 镜像包 | `/srv/new-api-test/releases/new-api-test-20260828T091835Z-91e861f8c9.tar.gz` |
+| 发布后测试 Compose SHA-256 | `964be300832cb295bfb9e669d32cc69b8979163490509424ee61fb94bc29cc7b` |
+| 发布前测试镜像 | `new-api:new-api-test-20260828T033014Z-f28cacabdf`，镜像 ID `sha256:25500e7f851d56b7bb8b71ceea19f3887f1ed9230e718417c6c7a55c81b37d3a` |
+| Compose 备份 | `/srv/new-api-test/backups/new-api-test-20260828T091835Z-91e861f8c9/compose.yaml.before-new-api-test-20260828T091835Z-91e861f8c9` |
+| Compose 备份 SHA-256 | `05ade21592c163c070efee06b9aad043532e06d785b34905bf2c04668b96f72c` |
+| 测试库备份 | `/srv/new-api-test/backups/new-api-test-20260828T091835Z-91e861f8c9/newapi_test.before-new-api-test-20260828T091835Z-91e861f8c9.dump` |
+| 测试库备份 SHA-256 | `21872da4e82f198150a678d33e5de8d3a9ff3fa1998f0156e752ca6c7ec796ee` |
+
+迁移与运行时回读：
+
+- 测试库原有 4 条套餐全部规范化为 `duration_unit=month`、`duration_value=1`、`custom_seconds=0`、`quota_reset_period=billing_cycle`、`quota_reset_custom_seconds=0`，并完成 `public_visible` 回填；6 个迁移字段齐全，无非月度或缺字段记录。
+- 迁移是开发阶段的单向数据规范化。正式库套餐相关三表在发布前只读计数均为 0，且本轮未运行正式迁移，所以不存在需要保留的旧正式套餐；测试库 4 条数据已迁移成功，无需删除。
+- 旧迁移包装脚本曾因等待 `database migrated` 日志而报告失败；正常 `migrateDB()` 路径成功时不输出该 marker。最终以迁移后字段和数据不变量回读为准，临时 migration 容器已经删除。
+- `new-api-test` 当前镜像与上表一致，状态 `running/healthy`；`/api/status` 返回 HTTP 200 且 `success=true`。
+- 生产 `new-api` 仍运行 `new-api:new-api-release-20260821T083301Z-52055bbf`，镜像 ID 仍为 `sha256:915b85ceef61ef8bb35294d589b6d4a57f07ab49594ea0ba3c071c8b73e0df2d`，状态 `running/healthy`，启动时间未变化。
+
+Stripe Sandbox 充值 E2E 于 `2026-08-28 17:41-18:31`（Asia/Shanghai）使用隔离合成用户完成：
+
+- Hosted Checkout 提交一笔 CNY 20 测试支付；只使用 Stripe 公共测试卡和虚构联系资料，未保存 Link 信息，并勾选 AI agent 代理披露。
+- 该用户最终恰好只有 1 条 `top_ups`：`pending=0`、`success=1`、`amount=20`、`expected_amount_minor=2000`、`expected_currency=CNY`、`provider_livemode=false`；Checkout Session、PaymentIntent、Charge 引用均存在。
+- 最新 `checkout.session.completed` 为 Sandbox 事件，状态 `succeeded`、`attempts=1`、`last_error` 为空，事件时间与订单完成时间一致。
+- `credited_quota=10000000`；用户 `quota=10000000`、`billing_debt=0`。Wallet 显示 `$20`，Billing History 恰好 1 条 Stripe `Success`，Usage Logs 恰好 1 条 Top-up，没有重复入账。
+- Top-up 日志的 `logs.quota=0` 是现有记录语义：真实充值额度以 `top_ups.credited_quota` 和 `users.quota` 为准，不是结算失败。
+- 清除旧控制台记录后，Wallet 与付款后客户路径没有新的应用 console error。
+
+该闭环证明的是测试实例的 Stripe Sandbox 单次充值；它不证明 Stripe Live、生产 webhook、Stripe 订阅续费/退款/争议、其他支付渠道或管理员流程。
+
+容器级回滚命令：
+
+```bash
+cp -p /srv/new-api-test/backups/new-api-test-20260828T091835Z-91e861f8c9/compose.yaml.before-new-api-test-20260828T091835Z-91e861f8c9 /srv/new-api-test/compose.yaml
+docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test
+```
+
+上述 Compose 备份精确恢复到 `new-api-test-20260828T033014Z-f28cacabdf`。测试库的单向套餐迁移如需恢复，应先停止测试写入，再使用本节 custom-format dump 制定单独恢复步骤；本次没有执行数据库恢复演练，正式库不需要此回滚。
+
 ## 5. 已知验证缺口
 
-- 当前 `f28cacabdf` 已运行整个仓库的 Go 测试；前端运行了 OIDC 目标测试、类型检查和生产构建，但没有在该提交上重跑全部 Vitest。较早 `abce39b75` 曾通过 76 个文件、295 个前端测试，不能替代当前提交的全量前端结果。
-- 本次订阅跟进涉及的目标文件已通过 `oxlint`；上一轮更广范围检查仍发现 4 个既有文件中有 17 个 error 和 3 个 warning，均不在当轮改动行，本次没有顺带清理。
+- 当前 `91e861f8c` 已通过全量 Go 测试、`relaykit` 独立构建，以及前端 lint、typecheck、76 个文件/309 个 Vitest、生产 build 和 format check；此前“未跑全量 Vitest”和“lint 仍有 17 error/3 warning”两个缺口已经关闭。
+- Dashboard API Key 复制的精确剪贴板契约由回归测试证明；隔离浏览器账号没有真实 API Key，因此现场只验证了部署后的 Dashboard 页面，没有再次创建并复制一枚真实 Key。
 - `setting/data/google_profanity_en.txt` 为第三方上游的精确快照，保留了 43 行上游尾随空格；运行时解析会 `TrimSpace`，相关测试已通过。
-- 没有执行真实 Stripe 付款/回调、Creem/Epay/Waffo Pancake 真实下单、付费模型请求、管理员登录、多个真实账号 Dashboard 展示或完整浏览器 E2E。
+- Stripe Sandbox 单次充值的 Hosted Checkout、真实 webhook、数据库结算和客户页面 E2E 已完成；仍未验证 Stripe 订阅续费/退款/争议、Stripe Live 或生产支付。Creem、Epay、Waffo 是本次明确排除项，不作为 Stripe 发布失败。
+- 仍未执行付费模型请求、管理员登录、多个真实账号 Dashboard 展示或全站完整浏览器 E2E。
 - 测试 GitHub/Google OAuth Client 已创建并配置。Google/OIDC 与 GitHub 的首次和重复登录均已通过 callback、会话接口及数据库 owner 一致性验证。已占用外部身份的绑定拒绝由自动化测试覆盖，但浏览器提示被 Chrome 安全页阻断，仍未形成现场证据。GitHub/Google 用户侧解绑不支持，不是验证缺口。
 - 没有实现或验证订阅升级、按比例计费、原订阅取消和权益迁移；当前明确采用“有效订阅期间可比较套餐但禁止再次购买”的产品边界。
 - `/api/status` 当前返回的 `version` 为空，不能单独证明运行提交；本次以不可变镜像 tag、镜像 ID、构建提交和包哈希建立对应关系。
-- 测试容器启动和健康检查通过，已核对本次依赖的 claim 表与唯一索引，但没有执行全库 schema diff、恢复演练或 MySQL 实例验证。
+- 测试套餐迁移已完成字段与数据回读；正式库套餐相关三表为空且未触碰。仍没有执行数据库恢复演练、完整 schema diff 或真实 MySQL 实例迁移验证。
 - 没有完成产品文案和各语言翻译的人工语义审校；同步报告为结构和未翻译检测结果，不等同于人工质量验收。
 
 ## 6. 发布与运维状态
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 本地代码 | GitHub/Google 登录及 OIDC API callback 修正已完成目标 Go/前端验证，并从干净的精确 `main` 提交归档构建镜像 |
-| 远端仓库 | 当前测试交付点 `f28cacabdf` 已推送到 `origin/main`；本文件为其后的发布记录更新 |
-| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260828T033014Z-f28cacabdf`；Google/OIDC 与 GitHub 的首次及重复登录均进入原本地账号 |
+| 本地代码 | 月度套餐、Dashboard API Key 修复和全量质量门已在精确提交 `91e861f8c` 完成验证，并从干净提交归档构建镜像 |
+| 远端仓库 | 本次运行记录推送完成后的状态：测试交付点 `91e861f8c` 及本文均位于 `origin/main`，本地 `HEAD` 与远端一致 |
+| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260828T091835Z-91e861f8c9`；4 条测试套餐已迁移，Stripe Sandbox 单次充值 E2E 已通过 |
 | 生产部署 | 本轮未执行；生产容器身份与健康状态已回读为不变 |
-| 生产业务回读 | 未执行管理员、Stripe、模型请求或账单 E2E，生产业务行为不能由容器健康替代证明 |
+| 生产业务回读 | 未执行管理员、Stripe Live、模型请求或账单 E2E；Sandbox 结果和容器健康不能替代生产业务证明 |
 | Zgo / DNS / Cloudflare | Zgo 全量切换已在专门运行手册中记录为已执行和已验收；本次应用测试发布未触碰边缘配置 |
 
-此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交。构建当前镜像前，精确发布提交与 `origin/main` 均为 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 且构建归档来自干净提交；镜像加载和 Compose 重建全程通过 SSH 与 Docker Compose 执行，没有使用浏览器或云控制台作为部署入口。浏览器只用于 OAuth provider 配置和用户路径验收。
+此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交。当前镜像从干净的精确提交 `91e861f8c970a0b5c1897eeabaaca17f07fa1613` 归档构建；镜像加载和 Compose 重建全程通过 SSH 与 Docker Compose 执行。浏览器只用于 OAuth 和 Stripe Sandbox 用户路径验收，生产未部署。
 
 ## 7. 后续门槛
 
 1. 测试 OAuth Client 已创建，provider callback 分别为 `https://test.tryvalo.com/oauth/github` 和 `https://test.tryvalo.com/oauth/oidc`；凭据继续只保存在本地受限文件和测试配置，生产配置保持不变。两种 provider 的重复登录已验收；如要消除当前 concern，只需在不触发 Chrome 安全拦截的受控浏览器里补充“已被另一用户占用的外部身份再次绑定”失败提示证据。GitHub/Google 用户侧解绑不支持，不列为后续工作。
-2. 在测试实例用批准的测试账号完成管理员登录、无订阅/有有效订阅两种套餐界面、四个支付入口拒绝路径、内容策略拒绝路径和 Stripe Sandbox 业务 E2E。
-3. 如测试需要真实上游模型或长连接/SSE，先明确 token、费用与观察范围，再执行并核对请求日志及单次计费。
-4. 正式生产发布必须作为单独动作，以固定提交重新构建/复用已审计镜像，执行生产备份、迁移检查、健康与业务回读，并记录独立回滚窗口。
-5. 若未来要支持升级，必须先明确各支付渠道的订阅变更 API、proration、失败回滚、原订阅取消时序和本地权益迁移规则，再补后端原子性与真实 Sandbox E2E；当前不得把再次购买当作升级。
-6. Zgo、DNS、Cloudflare、Caddy 和防火墙后续变更继续使用各自的执行门槛，不能由本次测试实例成功推导为可直接变更。
+2. Stripe Sandbox 充值 E2E 已完成；后续 Stripe 范围如需继续，优先补订阅续费/退款/争议，而不是重复本次充值路径。管理员登录、无订阅/有有效订阅两种套餐界面和内容策略拒绝路径仍需单独验收。
+3. Creem、Epay、Waffo 不在本次 Stripe 范围；只有另行确定要发布这些渠道时，才建立各自的 Sandbox/回调/结算验收门槛。
+4. 如测试需要真实上游模型或长连接/SSE，先明确 token、费用与观察范围，再执行并核对请求日志及单次计费。
+5. 正式生产发布必须作为单独动作，以固定提交重新构建或复用已审计镜像，执行生产备份、迁移前计数、健康与业务回读，并记录独立回滚窗口。
+6. 若未来要支持升级，必须先明确各支付渠道的订阅变更 API、proration、失败回滚、原订阅取消时序和本地权益迁移规则，再补后端原子性与真实 Sandbox E2E；当前不得把再次购买当作升级。
+7. Zgo、DNS、Cloudflare、Caddy 和防火墙后续变更继续使用各自的执行门槛，不能由本次测试实例成功推导为可直接变更。
