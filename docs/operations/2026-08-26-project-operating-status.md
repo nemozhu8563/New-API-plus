@@ -2,11 +2,11 @@
 
 > 文档状态：代码交付与 GreenCloud 测试发布交接快照。
 >
-> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录，以及 GreenCloud 现场回读。它证明 `origin/main` 的精确提交 `893e79268a691076d41e374c57c248521d803460` 已于 2026-08-28 发布到独立测试实例，并证明 Google/OIDC 服务端回调和首次注册、GitHub 新登录流程的服务端回调及 Dashboard 返回已在测试环境完成；上一版 `abce39b75` 和 `00f0f3598` 的测试发布证据继续保留在下文。本文件不证明这些改动已经发布到生产，也不证明 Stripe、付费模型、管理员流程或全部用户路径已经完成 E2E。本文件自身是发布后的记录更新，不在该测试镜像内。
+> 证明边界：本文件依据本地 Git、远端推送结果、不可变镜像构建记录，以及 GreenCloud 现场回读。它证明 `origin/main` 的精确提交 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 已于 2026-08-28 发布到独立测试实例，并证明 Google/OIDC 与 GitHub 的首次登录及重复登录已在测试环境进入各自原有本地账号；上一版 `893e79268`、`abce39b75` 和 `00f0f3598` 的测试发布证据继续保留在下文。已占用外部身份的绑定拒绝由自动化测试覆盖，但浏览器提示因 Chrome 安全拦截尚未完成现场证据。GitHub/Google 用户侧解绑明确不支持，不作为待测项。本文件不证明这些改动已经发布到生产，也不证明 Stripe、付费模型、管理员流程或全部用户路径已经完成 E2E。本文件自身是发布后的记录更新，不在该测试镜像内。
 
 ## 1. 当前结论
 
-原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。后续订阅、运维、认证文案和 GitHub/Google 登录改动均已进入 `origin/main`；当前测试部署的精确代码交付点为 `893e79268a691076d41e374c57c248521d803460`。
+原一轮改动从 `origin/main` 的 `e7d1a14cc` 起按职责拆成五个实现/运维提交，再以 `9c0dde868` 和 `ba5cfebac` 记录发布前、发布后现状。后续订阅、运维、认证文案和 GitHub/Google 登录改动均已进入 `origin/main`；当前测试部署的精确代码交付点为 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0`。
 
 当前可以确认：
 
@@ -16,15 +16,16 @@
 - 当前订阅、Stripe 账单和发票中的配置套餐名会经过 i18n；截图中的 `Professional` 英文残留已在代码中修复。
 - `relaykit` 仍可在关闭 workspace 的情况下独立构建。
 - i18n 同步报告中 7 个 locale 的 `missingCount`、`extrasCount`、`untranslatedCount` 均为 0。
-- 上一轮已从精确提交 `00f0f3598` 的隔离归档构建 `linux/amd64` 不可变镜像，并于 2026-08-27 发布到 GreenCloud 独立 `new-api-test` 实例；当前测试实例已由后续 `893e79268` 不可变镜像取代。
+- 上一轮已从精确提交 `00f0f3598` 的隔离归档构建 `linux/amd64` 不可变镜像，并于 2026-08-27 发布到 GreenCloud 独立 `new-api-test` 实例；当前测试实例已由后续 `f28cacabdf` 不可变镜像取代。
 - 测试实例持续 `healthy`，本机 `GET /api/status` 和首页均返回 HTTP 200，发布后关键启动错误计数为 0。
 - 生产 `new-api` 未重建，发布前后镜像引用、镜像 ID 和健康状态一致；PostgreSQL 与 Redis 均保持 `healthy`。
 - 本次应用发布未修改生产容器、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 或 Redis 的部署配置。
 - Zgo 边缘全量切换的实际执行状态已由 `13af0b289` 更新到专门运行手册；本次应用测试发布没有再次执行或改动该切换。
-- GitHub 和 OIDC（测试环境用于 Google）登录现在使用数据库唯一 claim 原子占用外部身份；同一 provider 的同一外部账号不能再被另一个本地账号绑定，且并发注册不会生成两个归属不明的本地账号。
-- GitHub/OIDC 只有在 Client ID、Client Secret 和必要 endpoint 配置完整后才能启用；OIDC 前后端统一使用 `ServerAddress` 生成 `/api/oauth/oidc` 回调地址，登录页已渲染 Google 和 Custom Provider 图标。
-- 测试 GitHub/Google OAuth Client 已创建并写入测试配置。Google/OIDC 的授权、`/api/oauth/oidc` callback HTTP 200 和测试库首次注册已现场验证；GitHub 新登录流程也已完成 `/api/oauth/github` callback HTTP 200、测试库绑定聚合和已认证 Dashboard 返回，GitHub E2E 已在当前测试镜像通过。
-- 当前测试实例运行镜像 `new-api:new-api-test-20260827T182015Z-893e79268a`，状态 `healthy`、重启次数 0；测试内网和公网 `/api/status`、`/sign-in` 均返回 HTTP 200。
+- GitHub 和 OIDC（测试环境用于 Google）登录使用数据库唯一 claim 原子占用外部身份。一个本地账号可以同时绑定多个 provider 下尚未被占用的身份；同一 `provider + subject` 只能归属一个本地账号，同一 provider 的既有绑定不能换成另一个外部身份，也不按邮箱自动合并账号。
+- GitHub/OIDC 只有在 Client ID、Client Secret 和必要 endpoint 配置完整后才能启用；OIDC 授权和换 Token 统一使用 `ServerAddress + /oauth/oidc`，SPA 再调用 `/api/oauth/oidc` 完成登录，登录页已渲染 Google 和 Custom Provider 图标。
+- 测试 GitHub/Google OAuth Client 已创建并写入测试配置。Google/OIDC 与 GitHub 的首次登录及重复登录均完成 HTTP 200 callback、会话接口和测试库 owner 一致性验证；重复登录没有创建新用户或新绑定。
+- 当前测试实例运行镜像 `new-api:new-api-test-20260828T033014Z-f28cacabdf`，状态 `healthy`、重启次数 0；测试内网和公网 `/api/status`、`/sign-in` 均返回 HTTP 200。
+- GitHub/Google 用户侧解绑不支持，本轮不实现也不测试；现有 custom OAuth 与管理员维护接口保持原状，不在本次产品边界内。
 - 本次只重建 `new-api-test`。生产 `new-api` 的容器 ID、镜像引用、镜像 ID、健康状态和重启次数在发布前后保持一致；PostgreSQL 与 Redis 未重建。
 
 ## 2. 本轮提交
@@ -47,7 +48,12 @@
 | `a01d82228` | 保留 CPA 直连路由的最终仓库配置与运行记录 | 文档及配置检查通过 | 进入 `main` 镜像构建上下文；本次未应用 Caddy、CPA 或边缘配置 |
 | `b6b0b49c9` | 登录与注册法律文案组件化并完成全 locale i18n | 目标 Vitest、i18n、构建和格式检查通过 | 当前测试实例已包含；未执行浏览器逐语言人工审校 |
 | `abce39b75` | GitHub/OIDC 身份原子归属、完整启用校验、统一 OIDC 回调和 OAuth provider 图标 | 目标 Go 测试、295 个前端测试、前端构建、i18n、格式与 diff 检查通过 | 上一测试镜像的精确 `main` 提交；当时真实 GitHub/Google E2E 待测试凭据 |
-| `893e79268` | 将 OIDC 前端授权和后端换 Token 的 redirect URI 修正为实际 API callback `/api/oauth/oidc` | OIDC 回调单测、前端 URL 单测及测试环境 Google/OIDC callback HTTP 200 | 当前测试镜像的精确 `main` 提交；生产未发布 |
+| `893e79268` | 将 OIDC 前端授权和后端换 Token 的 redirect URI 临时统一为 API callback `/api/oauth/oidc` | OIDC 回调单测、前端 URL 单测及测试环境 Google/OIDC callback HTTP 200 | 上一测试镜像的精确 `main` 提交；后由 `f28cacabdf` 改为 SPA callback |
+| `815e26139` | 记录 `893e79268` 隔离测试发布和初次 Google/OIDC callback 证据 | 文档 diff、现场 HTTP、容器身份和测试库聚合复核通过 | 文档提交；不改变测试或生产运行时 |
+| `519748d0e` | 纠正把用户消息误写成 GitHub E2E 通过的证据边界 | 记录搜索、staged diff 和敏感信息扫描通过 | 文档提交；明确以现场 callback 和会话证据为准 |
+| `484649c8d` | 记录 GitHub callback、已认证 Dashboard 和测试库聚合闭环 | GitHub callback HTTP 200、Dashboard DOM、聚合 `1|1|0`、容器健康 | 文档提交；不改变测试或生产运行时 |
+| `66276df51` | 允许同一本地账号绑定多个 provider 下尚未占用的身份，同时禁止身份复用和同 provider 换绑 | 全量 Go 测试、目标 model/controller/i18n 测试和 diff 检查通过 | 当前测试镜像已包含；不按邮箱合并账号 |
+| `f28cacabdf` | OIDC 授权和换 Token 统一通过 SPA `/oauth/oidc` callback，使浏览器会话在进入 Dashboard 前持久化 | 全量 Go 测试、OIDC 前端测试、类型检查、生产构建和 diff 检查通过；Google 重复登录现场通过 | 当前测试镜像的精确 `main` 提交；生产未发布 |
 
 ## 3. 本地验证记录
 
@@ -107,17 +113,30 @@ git diff --check
 - 前端生产构建、i18n 同步、格式检查与 Git diff 检查全部通过。
 - 镜像从精确 `main` 提交 `abce39b75f37a01fb205cab70bf643390c2e5895` 的隔离归档构建为 `linux/amd64`，没有从功能分支或 dirty 工作树构建。
 
-回调路径修正发布后又在当前精确提交 `893e79268a691076d41e374c57c248521d803460` 上实际执行并通过：
+API callback 路径修正发布后在精确提交 `893e79268a691076d41e374c57c248521d803460` 上实际执行并通过：
 
 ```text
 GOCACHE=/tmp/new-api-go-build go test ./oauth -run '^TestOIDCProvider_ExchangeTokenUsesAPICallback$' -count=1
-GOCACHE=/tmp/new-api-go-build go test ./model -run '^(TestUserCannotBindASecondOAuthChannel|TestDifferentUsersCanUseDifferentOAuthChannels|TestUpdateUserBindColumnRejectsExternalIdentityClaimedByAnotherUser)$' -count=1
 cd web && bun run test src/lib/__tests__/oauth.test.ts
 ```
 
 - OIDC：换 Token 时提交的 redirect URI 固定为 `ServerAddress + /api/oauth/oidc`，目标回归测试通过。
-- 身份绑定：同一用户不能再绑定第二个 OAuth 渠道、不同用户可使用不同渠道、已被其他用户 claim 的外部身份不能再次绑定，3 个目标回归测试通过。
 - 前端：1 个 Vitest 文件、1 个测试通过，确认 Google/OIDC 授权请求使用 `/api/oauth/oidc` callback。
+
+身份绑定规则调整和浏览器 callback 修正随后在当前精确提交 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 上实际执行并通过：
+
+```text
+GOCACHE=/tmp/new-api-go-build go test ./... -count=1
+GOCACHE=/tmp/new-api-go-build go test ./model -run '^(TestUserCanBindDistinctOAuthChannelsWhenIdentitiesAreAvailable|TestDifferentUsersCanUseDifferentOAuthChannels|TestUpdateUserBindColumnRejectsExternalIdentityClaimedByAnotherUser|TestUpdateUserBindColumnRejectsSecondIdentityForSameProvider)$' -count=1
+cd web && bun run test src/lib/__tests__/oauth.test.ts
+cd web && bun run typecheck
+cd web && bun run build
+git diff --check
+```
+
+- Go：全量 package 测试通过；目标 model 用例确认一个本地账号可绑定多个不同且未占用的 provider 身份、已被其他用户占用的身份不能再次 claim、同一 provider 的既有身份不能被替换。
+- 前端：OIDC URL 测试、类型检查和生产构建通过；授权与换 Token 使用完全一致的 SPA callback `/oauth/oidc`。
+- 解绑：GitHub/Google 用户侧不支持，本轮没有新增或修改解绑代码，也不把解绑列为待测路径。
 
 ## 4. GreenCloud 测试发布记录
 
@@ -225,7 +244,7 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pu
 
 如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
 
-### 4.2 OAuth callback 路径修正与 Google/OIDC 测试验收（当前）
+### 4.2 API callback 路径修正与首次 OAuth 验收（上一版）
 
 本次仍为 A 类测试应用发布。发布内容仅是 `main` 上的 OAuth callback 路径修正及测试环境 OAuth 配置；生产应用、生产 OAuth 配置、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均未改动。OAuth Client Secret 只保存在受限配置中，没有写入仓库、命令输出或本文。
 
@@ -260,7 +279,7 @@ OAuth 现场结果：
 - `2026-08-28 09:34:13`（Asia/Shanghai），从已登出的测试登录页发起一条全新 GitHub 流程；`GET /api/oauth/github` callback 返回 HTTP 200，服务端耗时约 662 ms，随后浏览器进入 `/dashboard/overview` 并渲染已认证头像控件。
 - GitHub callback 后测试库只读聚合仍为：存在 GitHub 绑定的用户 1、存在 OIDC 绑定的用户 1、同时绑定两者的用户 0。GitHub 数量未增加符合既有绑定用户再次登录的预期；查询未输出邮箱、用户名、provider subject 或其他身份字段。
 - 登录页已现场观察到 GitHub、Google 两个入口和 Google 图标；Google 与 GitHub callback 均已出现，GitHub callback 后已读取 Dashboard DOM。
-- Chrome Connector 曾连续超时，一次早期页面展示被本机扩展标记为 `ERR_BLOCKED_BY_CLIENT`；随后改用本机 CDP Proxy 完成 GitHub 流程和 Dashboard DOM 回读。Google 再次登录、跨渠道绑定失败和解绑仍未完成浏览器证据，该边界不推导为服务端失败。
+- Chrome Connector 曾连续超时，一次早期页面展示被本机扩展标记为 `ERR_BLOCKED_BY_CLIENT`；随后改用本机 CDP Proxy 完成 GitHub 流程和 Dashboard DOM 回读。该版本当时尚未完成 Google 重复登录和已占用身份绑定失败提示的浏览器证据；GitHub/Google 用户侧解绑不属于支持范围。
 
 `2026-08-28 09:38:10`（Asia/Shanghai）最终只读回读：
 
@@ -278,13 +297,63 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pu
 
 如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
 
+### 4.3 多 provider 绑定规则与重复登录验收（当前）
+
+本次仍为 A 类测试应用发布。发布内容是 `main` 上的多 provider 身份绑定规则和 OIDC 浏览器 callback 修正。生产应用、生产 OAuth 配置、DNS、Cloudflare、Caddy、Zgo、CPA、PostgreSQL 和 Redis 均未改动。OAuth Client Secret 仍只保存在受限配置中，没有写入仓库、命令输出或本文。
+
+不可变发布证据：
+
+| 项目 | 值 |
+| --- | --- |
+| 测试容器启动时间 | `2026-08-28 11:34:27`（Asia/Shanghai） |
+| 提交 | `f28cacabdfdf25bc0b35e39fb42329136c62c7d0`，发布前与 `origin/main` 一致 |
+| Release ID / 镜像 | `new-api-test-20260828T033014Z-f28cacabdf` / `new-api:new-api-test-20260828T033014Z-f28cacabdf` |
+| 平台 | `linux/amd64` |
+| 镜像 ID | `sha256:25500e7f851d56b7bb8b71ceea19f3887f1ed9230e718417c6c7a55c81b37d3a` |
+| 镜像包 SHA-256 | `7b0a316f727d29d416258b31821fc5919c8e622e8e799999a9be02d19f58f98a` |
+| 镜像包大小 | `71,722,601` bytes |
+| GreenCloud 镜像包 | `/srv/new-api-test/releases/new-api-test-20260828T033014Z-f28cacabdf.tar.gz` |
+| 发布后测试 Compose SHA-256 | `05ade21592c163c070efee06b9aad043532e06d785b34905bf2c04668b96f72c` |
+| 发布前测试镜像 | `new-api:new-api-test-20260827T182015Z-893e79268a`，镜像 ID `sha256:9257bbe16e3b6fe9466f29ee638959133bcd177684ddaad0056a987141a97849` |
+| Compose 备份 | `/srv/new-api-test/backups/new-api-test-20260828T033014Z-f28cacabdf/compose.yaml.before-new-api-test-20260828T033014Z-f28cacabdf` |
+| Compose 备份 SHA-256 | `ac0f294304dfb527d804527c5d20e465301ce0938a1e26dc06565a7a4ebed8c2` |
+| 测试库备份 | `/srv/new-api-test/backups/new-api-test-20260828T033014Z-f28cacabdf/newapi_test.before-new-api-test-20260828T033014Z-f28cacabdf.dump` |
+| 测试库备份 SHA-256 | `89d5e8f179c90c469f4675fb97ff4c7b365a0683a25c703f20fcda4af763cbba` |
+
+远端核对镜像包后，仅更新测试 Compose 的镜像引用并重建 `new-api-test`；生产容器、PostgreSQL 和 Redis 未重建。
+
+OAuth 现场结果：
+
+- 外部 provider redirect URI 使用浏览器路由 `/oauth/github` 和 `/oauth/oidc`；SPA 再调用 `/api/oauth/github` 或 `/api/oauth/oidc` 完成服务端 callback。OIDC 授权与换 Token 的 `redirect_uri` 都是 `ServerAddress + /oauth/oidc`，逐字一致。
+- `2026-08-28 11:51:29`（Asia/Shanghai），Google/OIDC 重复登录的 `GET /api/oauth/oidc` callback 返回 HTTP 200；session refresh 和当前用户接口均为 HTTP 200，`login_method = oauth:oidc`。返回本地用户 ID 的 SHA-256 与数据库 OIDC owner 一致：`86e50149658661312a9e0b35558d84f6c6d3da797f552a9657fe0558ca40cdef`。
+- `2026-08-28 12:06:53`（Asia/Shanghai），GitHub 重复登录的 `GET /api/oauth/github` callback 返回 HTTP 200，浏览器返回 `/dashboard/overview`；session refresh 和当前用户接口均为 HTTP 200，`login_method = oauth:github`。返回本地用户 ID 的 SHA-256 与数据库 GitHub owner 一致：`c6f3ac57944a531490cd39902d0f777715fd005efac9a30622d5f5205e7f6894`。
+- `2026-08-28 12:14:14`（Asia/Shanghai），测试库只读聚合为：用户总数 34、GitHub 绑定 1、OIDC 绑定 1、同时绑定两者 0。两次重复登录均未新增用户或 provider 绑定。查询未输出邮箱、用户名、provider subject 或原始本地用户 ID。
+- 已占用 GitHub 身份的二次绑定尝试在 popup 到达 `/oauth/github` 后被 Chrome 危险网站安全页拦截。`2026-08-28 12:01:48` 的 `/api/oauth/github` 403 来源与浏览器不同，符合安全扫描请求特征，因此不作为真实绑定拒绝证据。服务端规则已有自动化测试，页面提示仍未现场验证。
+- GitHub/Google 用户侧解绑明确不支持，本轮未实现、未测试；现有 custom OAuth 与管理员维护接口未修改。
+
+`2026-08-28 12:14:14`（Asia/Shanghai）最终只读回读：
+
+- `new-api-test` 容器 ID 为 `446224475e75283ebafeee81da0d6d7cbf63f548c1135ff9e1e86104e53fb38d`，状态 `running/healthy`、重启次数 0，镜像引用和镜像 ID 与上表一致。
+- 测试本机 `127.0.0.1:3001/api/status`、公网 `https://test.tryvalo.com/api/status` 和 `/sign-in` 均返回 HTTP 200；测试 Compose 解析通过。
+- 生产 `new-api` 容器 ID 仍为 `dd32f52cf926231547112c0c7390a2f456e432fd4b312be9a8fd7388a4a44776`，状态 `running/healthy`、重启次数 0，仍为 `new-api:new-api-release-20260821T083301Z-52055bbf` 和 `sha256:915b85ceef61ef8bb35294d589b6d4a57f07ab49594ea0ba3c071c8b73e0df2d`。
+- 生产本机 `127.0.0.1:3000/api/status` 与公网 `https://api.tryvalo.com/api/status` 均返回 HTTP 200；本次没有重建生产容器。
+
+容器级回滚命令：
+
+```bash
+cp -p /srv/new-api-test/backups/new-api-test-20260828T033014Z-f28cacabdf/compose.yaml.before-new-api-test-20260828T033014Z-f28cacabdf /srv/new-api-test/compose.yaml
+docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test
+```
+
+如需恢复测试数据库，应先停止测试写入并使用本节记录的 custom-format dump 制定单独恢复步骤；本次未执行恢复演练。
+
 ## 5. 已知验证缺口
 
-- 没有运行整个仓库的 Go 和前端全量测试套件；当前代码证据是与本轮改动对应的定向测试、构建和格式检查。
+- 当前 `f28cacabdf` 已运行整个仓库的 Go 测试；前端运行了 OIDC 目标测试、类型检查和生产构建，但没有在该提交上重跑全部 Vitest。较早 `abce39b75` 曾通过 76 个文件、295 个前端测试，不能替代当前提交的全量前端结果。
 - 本次订阅跟进涉及的目标文件已通过 `oxlint`；上一轮更广范围检查仍发现 4 个既有文件中有 17 个 error 和 3 个 warning，均不在当轮改动行，本次没有顺带清理。
 - `setting/data/google_profanity_en.txt` 为第三方上游的精确快照，保留了 43 行上游尾随空格；运行时解析会 `TrimSpace`，相关测试已通过。
 - 没有执行真实 Stripe 付款/回调、Creem/Epay/Waffo Pancake 真实下单、付费模型请求、管理员登录、多个真实账号 Dashboard 展示或完整浏览器 E2E。
-- 测试 GitHub/Google OAuth Client 已创建并配置。Google/OIDC 授权、`/api/oauth/oidc` callback 和首次注册已通过服务端日志及测试库聚合验证；GitHub 也已通过新登录、`/api/oauth/github` callback HTTP 200、测试库绑定聚合和 Dashboard DOM 的证据闭环。Google 再次登录、跨渠道绑定失败提示和解绑行为仍未完成现场浏览器验证。
+- 测试 GitHub/Google OAuth Client 已创建并配置。Google/OIDC 与 GitHub 的首次和重复登录均已通过 callback、会话接口及数据库 owner 一致性验证。已占用外部身份的绑定拒绝由自动化测试覆盖，但浏览器提示被 Chrome 安全页阻断，仍未形成现场证据。GitHub/Google 用户侧解绑不支持，不是验证缺口。
 - 没有实现或验证订阅升级、按比例计费、原订阅取消和权益迁移；当前明确采用“有效订阅期间可比较套餐但禁止再次购买”的产品边界。
 - `/api/status` 当前返回的 `version` 为空，不能单独证明运行提交；本次以不可变镜像 tag、镜像 ID、构建提交和包哈希建立对应关系。
 - 测试容器启动和健康检查通过，已核对本次依赖的 claim 表与唯一索引，但没有执行全库 schema diff、恢复演练或 MySQL 实例验证。
@@ -295,17 +364,17 @@ docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pu
 | 项目 | 当前状态 |
 | --- | --- |
 | 本地代码 | GitHub/Google 登录及 OIDC API callback 修正已完成目标 Go/前端验证，并从干净的精确 `main` 提交归档构建镜像 |
-| 远端仓库 | 当前测试交付点 `893e79268` 已推送到 `origin/main`；本文件为其后的发布记录更新 |
-| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260827T182015Z-893e79268a`；Google/OIDC 与 GitHub 服务端 callback 均已通过，GitHub 已返回已认证 Dashboard |
+| 远端仓库 | 当前测试交付点 `f28cacabdf` 已推送到 `origin/main`；本文件为其后的发布记录更新 |
+| 测试部署 | 已完成；GreenCloud `new-api-test` 运行不可变镜像 `new-api-test-20260828T033014Z-f28cacabdf`；Google/OIDC 与 GitHub 的首次及重复登录均进入原本地账号 |
 | 生产部署 | 本轮未执行；生产容器身份与健康状态已回读为不变 |
 | 生产业务回读 | 未执行管理员、Stripe、模型请求或账单 E2E，生产业务行为不能由容器健康替代证明 |
 | Zgo / DNS / Cloudflare | Zgo 全量切换已在专门运行手册中记录为已执行和已验收；本次应用测试发布未触碰边缘配置 |
 
-此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交。构建当前镜像前，精确发布提交与 `origin/main` 均为 `893e79268a691076d41e374c57c248521d803460` 且构建归档来自干净提交；镜像加载和 Compose 重建全程通过 SSH 与 Docker Compose 执行，没有使用浏览器或云控制台作为部署入口。浏览器只用于 OAuth provider 配置和用户路径验收。
+此前未提交的 Zgo 执行手册、`.codex-cutover` 状态和 `AGENTS.md` 已分别由 `13af0b289`、`47e458353`、`00f0f3598` 提交。构建当前镜像前，精确发布提交与 `origin/main` 均为 `f28cacabdfdf25bc0b35e39fb42329136c62c7d0` 且构建归档来自干净提交；镜像加载和 Compose 重建全程通过 SSH 与 Docker Compose 执行，没有使用浏览器或云控制台作为部署入口。浏览器只用于 OAuth provider 配置和用户路径验收。
 
 ## 7. 后续门槛
 
-1. 测试 OAuth Client 已创建，正式 callback 分别为 `https://test.tryvalo.com/api/oauth/github` 和 `https://test.tryvalo.com/api/oauth/oidc`；凭据继续只保存在本地受限文件和测试配置，生产配置保持不变。GitHub 已在当前镜像补齐可审计 callback 和 Dashboard 证据；后续补齐 Google 再次登录、同一外部账号由另一用户绑定失败、另一个外部账号可独立注册以及解绑路径的浏览器 E2E。
+1. 测试 OAuth Client 已创建，provider callback 分别为 `https://test.tryvalo.com/oauth/github` 和 `https://test.tryvalo.com/oauth/oidc`；凭据继续只保存在本地受限文件和测试配置，生产配置保持不变。两种 provider 的重复登录已验收；如要消除当前 concern，只需在不触发 Chrome 安全拦截的受控浏览器里补充“已被另一用户占用的外部身份再次绑定”失败提示证据。GitHub/Google 用户侧解绑不支持，不列为后续工作。
 2. 在测试实例用批准的测试账号完成管理员登录、无订阅/有有效订阅两种套餐界面、四个支付入口拒绝路径、内容策略拒绝路径和 Stripe Sandbox 业务 E2E。
 3. 如测试需要真实上游模型或长连接/SSE，先明确 token、费用与观察范围，再执行并核对请求日志及单次计费。
 4. 正式生产发布必须作为单独动作，以固定提交重新构建/复用已审计镜像，执行生产备份、迁移检查、健康与业务回读，并记录独立回滚窗口。
