@@ -34,6 +34,7 @@ const { act, useState } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const { RechargeFormCard } = await import('../recharge-form-card')
 const { StripeTopupSection } = await import('../stripe-topup-section')
 
 const i18n = createInstance()
@@ -43,16 +44,17 @@ await i18n.use(initReactI18next).init({
     en: {
       translation: {
         Amount: 'Amount',
-        'Credits added': 'Credits added',
+        'Choose a USD top-up package': 'Choose a USD top-up package',
         'Decrease quantity': 'Decrease quantity',
-        'Each package includes {{credits}} ({{price}})':
-          'Each package includes {{credits}} ({{price}})',
+        'Each package includes {{amount}} ({{price}})':
+          'Each package includes {{amount}} ({{price}})',
         'Increase quantity': 'Increase quantity',
         'Order summary': 'Order summary',
         Pay: 'Pay',
         'Purchase quantity': 'Purchase quantity',
         Quantity: 'Quantity',
         Total: 'Total',
+        'USD balance added': 'USD balance added',
       },
     },
   },
@@ -122,6 +124,12 @@ describe('Stripe topup package selection', () => {
     assert.equal(hundredButton.getAttribute('aria-pressed'), 'true')
     assert.equal(container.textContent?.includes('$100 USD'), true)
     assert.equal(
+      container.textContent?.includes('Each package includes $20 USD (¥20)'),
+      true
+    )
+    assert.equal(container.textContent?.includes('USD balance added'), true)
+    assert.doesNotMatch(container.textContent || '', /\bCredits?\b/i)
+    assert.equal(
       container.querySelector('output[aria-label="Quantity"]')?.textContent,
       '5'
     )
@@ -130,7 +138,53 @@ describe('Stripe topup package selection', () => {
     container.remove()
   })
 
-  test('changes whole packages and submits the selected credits directly', async () => {
+  test('describes Stripe-only top-ups as USD packages', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <RechargeFormCard
+            topupInfo={{
+              enable_online_topup: false,
+              enable_stripe_topup: true,
+              pay_methods: [],
+              min_topup: 1,
+              stripe_min_topup: 20,
+              stripe_topup_unit: 20,
+              stripe_max_topup: 120,
+              amount_options: [],
+              discount: {},
+            }}
+            presetAmounts={[]}
+            selectedPreset={null}
+            onSelectPreset={() => {}}
+            topupAmount={20}
+            onTopupAmountChange={() => {}}
+            paymentAmount={20}
+            calculating={false}
+            onStripeCheckout={() => {}}
+            onPaymentMethodSelect={() => {}}
+            paymentLoading={null}
+            redemptionCode=''
+            onRedemptionCodeChange={() => {}}
+            onRedeem={() => {}}
+            redeeming={false}
+          />
+        </I18nextProvider>
+      )
+    })
+
+    assert.match(container.textContent || '', /Choose a USD top-up package/)
+    assert.doesNotMatch(container.textContent || '', /\bCredits?\b/i)
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('changes whole packages and submits the selected USD amount directly', async () => {
     const { checkoutAmounts, container, root } = await renderStripeTopup({
       maxAmount: 40,
     })

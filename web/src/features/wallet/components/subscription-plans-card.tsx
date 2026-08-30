@@ -23,7 +23,10 @@ import {
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatSubscriptionPrice } from '@/features/subscriptions/lib'
+import {
+  formatSubscriptionPlanSubtitle,
+  formatSubscriptionPrice,
+} from '@/features/subscriptions/lib'
 import type {
   PublicPlanRecord,
   StripeInvoiceSummary,
@@ -460,12 +463,19 @@ export function SubscriptionPlansCard({
                 (enableWaffoPancake && plan.waffo_checkout_available) ||
                 (enableOnlineTopUp && epayMethods.length > 0)
               const quota =
-                totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')
+                totalAmount > 0
+                  ? formatSubscriptionPrice(totalAmount / quotaPerUnit, 'USD')
+                  : t('Unlimited')
+              const subtitle = formatSubscriptionPlanSubtitle(
+                plan,
+                quotaPerUnit,
+                t
+              )
 
               const benefits = [
                 t('Monthly billing'),
                 t('Monthly quota {{quota}}', { quota }),
-                t('Credits refresh with each monthly renewal'),
+                t('Included amount refreshes with each monthly renewal'),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
@@ -488,9 +498,9 @@ export function SubscriptionPlansCard({
                         <h4 className='truncate text-lg leading-tight font-semibold'>
                           {plan.title || t('Subscription Plans')}
                         </h4>
-                        {plan.subtitle && (
+                        {subtitle && (
                           <p className='text-muted-foreground mt-1 line-clamp-2 min-h-10 text-sm leading-5'>
-                            {plan.subtitle}
+                            {subtitle}
                           </p>
                         )}
                       </div>

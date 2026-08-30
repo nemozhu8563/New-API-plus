@@ -201,6 +201,7 @@ describe('subscription plans quota copy', () => {
                   plan: {
                     id: 1,
                     title: 'Standard',
+                    subtitle: 'Includes 440 Credits per billing cycle',
                     price_amount: 399,
                     currency: 'CNY',
                     duration_unit: 'month',
@@ -280,6 +281,11 @@ describe('subscription plans quota copy', () => {
       cardTextByTitle.set(heading.textContent || '', card?.textContent || '')
     }
     assert.match(cardTextByTitle.get('Standard') || '', /Monthly quota \$440/)
+    assert.match(
+      cardTextByTitle.get('Standard') || '',
+      /Includes \$440 per billing cycle/
+    )
+    assert.doesNotMatch(cardTextByTitle.get('Standard') || '', /Credits/)
     assert.match(
       cardTextByTitle.get('Monthly allowance') || '',
       /Monthly quota \$40/

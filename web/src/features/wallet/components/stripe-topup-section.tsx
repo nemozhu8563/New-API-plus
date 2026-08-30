@@ -21,7 +21,7 @@ interface StripeTopupSectionProps {
   onCheckout: () => void | Promise<void>
 }
 
-function formatCredits(amount: number): string {
+function formatUsdAmount(amount: number): string {
   return `$${formatNumber(amount)} USD`
 }
 
@@ -86,7 +86,7 @@ export function StripeTopupSection(props: StripeTopupSectionProps) {
                       selected ? 'text-primary' : 'text-muted-foreground'
                     )}
                   >
-                    {formatCredits(amount)}
+                    {formatUsdAmount(amount)}
                   </span>
                 </Button>
               )
@@ -98,8 +98,8 @@ export function StripeTopupSection(props: StripeTopupSectionProps) {
           <div>
             <p className='text-sm font-medium'>{t('Purchase quantity')}</p>
             <p className='text-muted-foreground mt-1 text-xs'>
-              {t('Each package includes {{credits}} ({{price}})', {
-                credits: formatCredits(unit),
+              {t('Each package includes {{amount}} ({{price}})', {
+                amount: formatUsdAmount(unit),
                 price: formatCny(unit),
               })}
             </p>
@@ -144,8 +144,12 @@ export function StripeTopupSection(props: StripeTopupSectionProps) {
         <div className='space-y-3 text-sm' aria-live='polite'>
           <h3 className='font-semibold'>{t('Order summary')}</h3>
           <div className='flex items-center justify-between gap-3'>
-            <span className='text-muted-foreground'>{t('Credits added')}</span>
-            <span className='font-medium'>{formatCredits(selectedAmount)}</span>
+            <span className='text-muted-foreground'>
+              {t('USD balance added')}
+            </span>
+            <span className='font-medium'>
+              {formatUsdAmount(selectedAmount)}
+            </span>
           </div>
           <div className='flex items-center justify-between gap-3'>
             <span className='text-muted-foreground'>{t('Quantity')}</span>

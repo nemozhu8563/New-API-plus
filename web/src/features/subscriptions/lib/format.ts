@@ -18,6 +18,28 @@ export function formatSubscriptionPrice(
   }).format(normalizedAmount)
 }
 
+const planAllowanceSubtitlePattern =
+  /^Includes\s+(?:\$\s*)?[\d,.]+(?:\s+(?:USD|Credits?))?\s+per billing cycle$/i
+
+export function formatSubscriptionPlanSubtitle(
+  plan: Pick<SubscriptionPlan, 'subtitle' | 'total_amount'>,
+  quotaPerUnit: number,
+  t: TFunction
+): string {
+  const subtitle = plan.subtitle?.trim() || ''
+  if (!planAllowanceSubtitlePattern.test(subtitle)) return subtitle
+
+  const totalAmount = Number(plan.total_amount || 0)
+  const monthlyAllowance = totalAmount / quotaPerUnit
+  if (!Number.isFinite(monthlyAllowance) || monthlyAllowance <= 0) {
+    return subtitle
+  }
+
+  return t('Includes {{amount}} per billing cycle', {
+    amount: formatSubscriptionPrice(monthlyAllowance, 'USD'),
+  })
+}
+
 export function formatDuration(
   plan: Partial<SubscriptionPlan>,
   t: TFunction

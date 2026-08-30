@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import { ChevronDown, Copy, Plus, Trash2 } from 'lucide-react'
 import {
   memo,
@@ -83,7 +84,6 @@ import {
 } from '@/features/pricing/lib/tier-expr'
 import { cn } from '@/lib/utils'
 
-const PRICE_SUFFIX = '$/1M tokens'
 const CACHE_PRICE_VARS = BILLING_EXTRA_VARS.filter(
   (variable) => variable.group === 'cache'
 )
@@ -303,13 +303,17 @@ function priceToUnitCost(price: number | string): number {
   return Number(price) || 0
 }
 
-function formatTokenHint(n: number | string | null | undefined): string {
+function formatTokenHint(
+  n: number | string | null | undefined,
+  t: TFunction
+): string {
   if (n == null || n === '' || Number.isNaN(Number(n))) return ''
   const v = Number(n)
   if (v === 0) return '= 0'
-  if (v >= 1_000_000) return `= ${(v / 1_000_000).toLocaleString()}M tokens`
-  if (v >= 1_000) return `= ${(v / 1_000).toLocaleString()}K tokens`
-  return `= ${v.toLocaleString()} tokens`
+  let unit = v.toLocaleString()
+  if (v >= 1_000_000) unit = `${(v / 1_000_000).toLocaleString()}M`
+  else if (v >= 1_000) unit = `${(v / 1_000).toLocaleString()}K`
+  return `= ${t('{{unit}} tokens', { unit })}`
 }
 
 function formatNumberDraft(value: number | string): string {
@@ -473,7 +477,7 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
         className='w-32'
       />
       <span className='text-muted-foreground text-xs'>
-        {formatTokenHint(condition.value)}
+        {formatTokenHint(condition.value, t)}
       </span>
       <Button
         variant='ghost'
@@ -663,7 +667,7 @@ function VisualTierCard({
         <div className='flex items-center justify-between gap-3'>
           <Label className='text-sm font-semibold'>{t('Token prices')}</Label>
           <span className='bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs'>
-            {PRICE_SUFFIX}
+            $/{t('{{unit}} tokens', { unit: '1M' })}
           </span>
         </div>
 

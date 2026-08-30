@@ -188,7 +188,7 @@ export function RechargeFormCard({
       title={t('Add Funds')}
       description={
         stripeOnly
-          ? t('Choose a credit package')
+          ? t('Choose a USD top-up package')
           : t('Choose an amount and payment method')
       }
       icon={<WalletCards className='h-4 w-4' />}

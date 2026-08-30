@@ -1,6 +1,7 @@
 export {
   formatDuration,
   formatResetPeriod,
+  formatSubscriptionPlanSubtitle,
   formatSubscriptionPrice,
   formatTimestamp,
 } from './format'

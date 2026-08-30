@@ -10,10 +10,12 @@ import {
   getPublicPlans,
   paySubscriptionStripe,
 } from '@/features/subscriptions/api'
-import { formatSubscriptionPrice } from '@/features/subscriptions/lib'
+import {
+  formatSubscriptionPlanSubtitle,
+  formatSubscriptionPrice,
+} from '@/features/subscriptions/lib'
 import type { PublicSubscriptionPlan } from '@/features/subscriptions/types'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
-import { formatQuota } from '@/lib/format'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -38,8 +40,13 @@ function PlanCard(props: {
   const monthlyQuota = totalAmount / props.quotaPerUnit
   const quotaLabel =
     totalAmount > 0 && Number.isFinite(monthlyQuota)
-      ? formatQuota(totalAmount)
+      ? formatSubscriptionPrice(monthlyQuota, 'USD')
       : t('Unlimited')
+  const subtitle = formatSubscriptionPlanSubtitle(
+    props.plan,
+    props.quotaPerUnit,
+    t
+  )
   const priceAmount = Number(props.plan.price_amount || 0)
   const discount =
     Number.isFinite(priceAmount) && priceAmount > 0 && monthlyQuota > 0
@@ -97,7 +104,7 @@ function PlanCard(props: {
       <div>
         <h3 className='text-xl font-semibold text-white'>{props.plan.title}</h3>
         <p className='mt-1.5 min-h-6 text-sm text-white/55'>
-          {props.plan.subtitle || null}
+          {subtitle || null}
         </p>
       </div>
 
@@ -125,7 +132,7 @@ function PlanCard(props: {
       <ul className='mt-5 flex-1 space-y-3 text-sm leading-6 text-white/78'>
         {[
           t('Monthly quota {{quota}}', { quota: quotaLabel }),
-          t('Credits refresh with each monthly renewal'),
+          t('Included amount refreshes with each monthly renewal'),
           t('Renews automatically every month'),
         ].map((benefit) => (
           <li key={benefit} className='flex items-start gap-3'>

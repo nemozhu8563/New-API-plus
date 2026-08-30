@@ -363,7 +363,7 @@ describe('landing subscription plans', { concurrent: false }, () => {
     }
   })
 
-  test('formats monthly quota with the configured display currency', async () => {
+  test('keeps the public monthly allowance in USD for CNY display settings', async () => {
     const view = await renderPlans({
       quotaDisplayType: 'CNY',
       usdExchangeRate: 7.3,
@@ -372,8 +372,37 @@ describe('landing subscription plans', { concurrent: false }, () => {
     try {
       await waitForPlansQuery(view.queryClient, 'success')
 
-      assert.match(view.container.textContent || '', /Monthly quota.*3,212/)
-      assert.doesNotMatch(view.container.textContent || '', /Monthly quota \$/)
+      assert.match(view.container.textContent || '', /Monthly quota \$440/)
+      assert.doesNotMatch(
+        view.container.textContent || '',
+        /Monthly quota.*3,212/
+      )
+    } finally {
+      await view.cleanup()
+    }
+  })
+
+  test('localizes legacy credit copy as a USD billing-cycle allowance', async () => {
+    const legacyPlan = createPlan(
+      1,
+      'Standard',
+      'Includes 290 Credits per billing cycle',
+      259,
+      290
+    )
+    const view = await renderPlans({
+      language: 'zh',
+      quotaDisplayType: 'TOKENS',
+      translations: {
+        'Includes {{amount}} per billing cycle': '每个账期包含 {{amount}}',
+      },
+      loadPlans: async () => ({ success: true, data: [legacyPlan] }),
+    })
+    try {
+      await waitForPlansQuery(view.queryClient, 'success')
+
+      assert.match(view.container.textContent || '', /每个账期包含 \$290/)
+      assert.doesNotMatch(view.container.textContent || '', /Credits|145M/)
     } finally {
       await view.cleanup()
     }
