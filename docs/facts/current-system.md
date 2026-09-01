@@ -10,6 +10,8 @@
 
 已确认（2026-09-01 09:27～09:33，Asia/Shanghai）：GreenCloud 生产与测试应用仍运行提交 `f96bf33b80dfeca9b025a94651fb68db492dc8a7` 的同一镜像，两个应用容器、生产 PostgreSQL 和 Redis 均为 `running/healthy`、重启次数 `0`，本机与三个公开 `/api/status` 入口均返回 HTTP `200`。生产库近 24 小时存在来自两个不同渠道的消费成功记录，所查询条件下没有渠道错误记录；这只证明部分真实上游链路近期成功，不证明所有渠道和模型可用。测试库当前配置的渠道均为禁用状态。
 
+已确认（2026-09-01 10:13～10:59，Asia/Shanghai）：`test.tryvalo.com` 完成一笔 Stripe Sandbox Standard `CNY 259/月` 首购 E2E。Hosted Checkout 最终为 `complete/paid`，首张 invoice 为 `paid`，测试库中的 `invoice.paid` 与 `checkout.session.completed` 均一次处理成功；订单及 `top_ups` 镜像为 `success`，且只产生一条 active `user_subscriptions` 和一条 settlement。订阅原始额度 `145000000` 按当前 `500000` quota units/Credit 在页面显示为 290 Credits，钱包 quota 与 used quota 仍为 `0`。该结果只确认首次购买与首期权益，不确认续费、退款或争议；Stripe 账单区当前仍因订单的 `stripe_current_period_end=0` 显示“下次账单日期：不可用”，虽然实际订阅权益结束时间已正确写入 2026-10-01 10:59:13。
+
 ## 事实文件索引
 
 | 事实文件 | 状态 | 用途 |
@@ -17,7 +19,7 @@
 | `docs/facts/architecture.md` | 已确认 | 技术栈、模块边界、运行方式、共享契约位置。 |
 | `docs/facts/product-domain.md` | 已确认 | 跨范围共同成立的业务对象、业务规则、状态语义和业务不变量。 |
 | `docs/facts/ui-style.md` | 已确认 | 全局界面风格、交互原则、视觉约束和组件库使用边界；浏览器视觉验收仍为待定。 |
-| `docs/facts/integrations.md` | 已确认 | 外部服务代码边界、协议兼容、回调入口、部分真实上游活动及带日期的 Stripe/邮件快照；未执行的端到端场景保持待定。 |
+| `docs/facts/integrations.md` | 已确认 | 外部服务代码边界、协议兼容、回调入口、部分真实上游活动及带日期的 Stripe/邮件快照；Stripe Sandbox 首次月付订阅已完成 E2E，未执行的续费、退款、争议等场景保持待定。 |
 | `docs/facts/deployment.md` | 已确认 | 仓库内部署、数据库和迁移事实，以及 2026-09-01 GreenCloud、Zgo 和公网运行快照；备份和回滚演练仍未闭合。 |
 | `docs/facts/verified-commands.md` | 已确认 | 项目命令来源及 2026-08-31 的本地验证结果。 |
 
@@ -41,7 +43,7 @@
 ## 当前最大待确认事项
 
 - 待定：各 AI 渠道和模型的完整能力矩阵；2026-09-01 的运行快照只确认生产中部分渠道近期产生消费成功记录，未主动发起逐模型付费探测。
-- 待定：Stripe Sandbox 月度订阅 Checkout、真实 `invoice.paid` 权益入账、续费、退款和争议；单次充值闭环已经完成，不能代表这些场景。
+- 待定：Stripe Sandbox 月度订阅续费、退款和争议 E2E。首次 Checkout、真实 `invoice.paid` 与首期权益已确认，但订单的 `stripe_current_period_end` 仍为 `0`，因此 Stripe 账单区不能显示下次账单日期。
 - 待定：Stripe Live 真实充值、订阅、签名回调、结算、续费、退款和争议闭环。
 - 待定：生产备份、恢复演练、监控告警和可执行回滚流程。
 
@@ -52,6 +54,7 @@
 | 全部 Facts 与三个范围文件 | 2026-08-31（Asia/Shanghai） | 当前代码、测试、配置、`makefile`、GitHub Actions、Docker 文件和本次命令输出 | 已确认：建立当前事实索引；未能由仓库和本地运行证明的外部状态保持待定。 |
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |
 | GreenCloud、Zgo、公网、生产聚合和 Stripe 测试边界 | 2026-09-01 09:21～09:33（Asia/Shanghai） | 当前 DNS/HTTP 响应头；GreenCloud 与 Zgo SSH 只读回读；Docker、PostgreSQL 聚合和既有 Stripe 验收记录 | 已确认：当前应用与依赖健康、生产边缘路径和部分真实上游活动；Stripe Sandbox 未完成的生命周期继续保持待定。 |
+| Stripe Sandbox 首次月付订阅 | 2026-09-01 10:13～10:59（Asia/Shanghai） | 真实 Hosted Checkout、Stripe Sandbox Checkout/subscription/invoice 只读回读、GreenCloud 测试库及钱包页回读 | 已确认：Standard `CNY 259/月` 首购、首张 `invoice.paid`、290 Credits 权益和持久化闭环成功；续费、退款、争议及下次账单日期显示仍未闭合。 |
 
 ## 待解决事实冲突
 

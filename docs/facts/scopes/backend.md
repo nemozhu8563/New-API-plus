@@ -19,6 +19,7 @@
 - 认证与权限由 `middleware/`、`router/` 和 `service/authz/` 承载。
 - 渠道分发、协议适配、预扣和结算由 `middleware.Distribute`、`relay/`、`relay/helper/`、`service/` 与 `model/` 承载。
 - 用户、Token、Channel、Log、Task、TopUp 和订阅对象由 `model/` 持久化并通过 service/controller 暴露。
+- Stripe 月付首购由 `subscription_orders` 记录订单和提供商绑定，由 `stripe_webhook_events` 记录回调处理，由 `user_subscriptions` 和 `stripe_subscription_settlements` 记录首期权益与结算，并以 `top_ups` 保存支付镜像；2026-09-01 测试环境已通过一次真实 Sandbox 首购验证该持久化链路。
 
 ## 接口、页面、集合或模块
 
@@ -29,13 +30,14 @@
 
 ## 验证状态
 
-已确认：2026-08-31 执行 `make test`、`GOWORK=off go vet ./...` 和 `GOWORK=off go build ./...` 均通过。2026-09-01 现场确认生产和测试应用、生产 PostgreSQL/Redis 健康，公开与本机状态接口成功，且生产库近 24 小时存在部分渠道的消费成功记录；未主动验证全部上游模型。
+已确认：2026-08-31 执行 `make test`、`GOWORK=off go vet ./...` 和 `GOWORK=off go build ./...` 均通过。2026-09-01 现场确认生产和测试应用、生产 PostgreSQL/Redis 健康，公开与本机状态接口成功，且生产库近 24 小时存在部分渠道的消费成功记录；未主动验证全部上游模型。同日测试环境完成一笔 Stripe Sandbox Standard 月付首购：目标 webhook、订单、支付镜像、订阅权益和 settlement 均成功持久化，钱包 quota 未被当作订阅额度直接增加。
 
 ## 已知约束
 
 - 根模块编译依赖已存在的 `web/dist`，CI 会先创建 embed placeholder，生产构建会先构建真实前端。
 - 主数据库必须保持 SQLite、MySQL、PostgreSQL 兼容；日志数据库另支持 ClickHouse。
 - `Task.ID` 当前 tag 与根 `AGENTS.md` 的主键规则存在冲突，见 `docs/facts/current-system.md`。
+- Stripe 首期 invoice 的权益结束时间已写入 `user_subscriptions`，但对应订单的 `stripe_current_period_end` 当前仍可能为 `0`；测试站因此把下次账单日期显示为“不可用”。
 
 ## 待确认事项
 

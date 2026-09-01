@@ -9,7 +9,7 @@
 | AI 上游渠道 | OpenAI/Claude/Gemini 兼容请求及 AWS、Azure、国内外模型与异步任务渠道适配 | 已确认：代码适配器和路由存在。2026-09-01 生产库近 24 小时存在来自两个不同渠道的消费成功记录，所查询条件下没有渠道错误记录；测试库当前配置的渠道均为禁用。该快照不证明所有账号、模型和能力可用 | `relay/channel/`、`constant/channel.go`、`router/relay-router.go`、`router/video-router.go`；GreenCloud 生产/测试库只读聚合 | 2026-09-01 |
 | OAuth 与外部身份 | GitHub、Discord、OIDC、LinuxDO、WeChat、Telegram 及数据库配置的自定义 OAuth | 已确认：注册器、路由和实现存在；目标环境启用项与端到端登录待定 | `oauth/`、`router/api-router.go`、`model/custom_oauth_provider.go` | 2026-08-31 |
 | 支付 | Stripe、Creem、Waffo、Waffo Pancake、Epay 与余额支付相关路径 | 已确认：支付请求、回调路由和模型存在；真实账户、签名回调、结算与退款状态待定 | `router/api-router.go`、`controller/topup_*.go`、`model/topup.go` | 2026-08-31 |
-| Stripe Sandbox | 单次充值和月度订阅测试 | 部分已确认：一笔 CNY 20 Hosted Checkout、真实签名 webhook、订单 `pending -> success`、额度入账及无重复入账已完成；月度订阅 Checkout、真实 `invoice.paid` 权益、续费、退款和争议均未完成 E2E | `docs/operations/2026-08-26-project-operating-status.md`；`controller/stripe_checkout_test.go`、`controller/topup_stripe_test.go`、`model/stripe_webhook_event_test.go` | 2026-08-29 配置/交易快照；2026-09-01 代码复核 |
+| Stripe Sandbox | 单次充值和月度订阅测试 | 部分已确认：CNY 20 单次充值闭环已完成。2026-09-01 又完成一笔 Standard `CNY 259/月` 首购 E2E：Checkout `complete/paid`、首张 invoice `paid`，两类目标 webhook 均一次处理成功，订单及 `top_ups` 镜像为 `success`，只产生一条 active 订阅和一条 settlement；原始额度 `145000000` 在当前单位映射下显示为 290 Credits，钱包 quota 未直接增加。续费、退款和争议仍待定；订单 `stripe_current_period_end=0` 导致账单区的下次账单日期不可用 | 真实 Hosted Checkout；Stripe Sandbox Checkout/subscription/invoice 只读回读；GreenCloud `newapi_test` 只读回读；`controller/stripe_checkout_test.go`、`controller/topup_stripe_test.go`、`model/stripe_webhook_event_test.go` | 2026-09-01 |
 | Stripe Live 配置 | 月度订阅、一次性充值、Webhook 与受限服务端凭据 | 已确认（2026-08-30 快照）：三档月付 Price、一个一次性 Price、Webhook endpoint、restricted key 与 signing secret 已配置并脱敏回读；真实 Live 充值/订阅、签名回调入账、续费、退款和争议仍待定 | `docs/operations/2026-08-26-project-operating-status.md` | 2026-08-30 |
 | Cloudflare Email Routing | `contract@tryvalo.com` 入站邮件转发 | 已确认（2026-08-27 快照）：路由规则、目标验证状态和公共 DNS 已验证；真实外部邮件到达目标邮箱的 E2E 待定 | `docs/operations/2026-08-27-tryvalo-email-routing.md` | 2026-08-27 |
 | Redis | 配额、渠道与应用缓存 | 已确认：`REDIS_CONN_STRING` 配置和降级代码存在；2026-09-01 GreenCloud 生产 Redis 容器为 `running/healthy`、重启次数 `0`，最近五次容器健康检查均成功。缓存业务正确性和降级切换仍待定 | `common/redis.go`、`model/quota_reserve.go`、`.env.example`；GreenCloud Docker 只读回读 | 2026-09-01 |
@@ -20,7 +20,7 @@
 
 - 本仓库中的适配器、SDK 依赖、路由或测试只证明代码边界存在，不证明外部账号已配置或生产调用成功。
 - Waffo Pancake 回调路径以 `:env` 区分测试和生产注册槽位；当前目标环境注册结果待定。
-- Stripe 本地测试覆盖 Checkout 参数、签名拒绝、Webhook claim/重试/幂等、`invoice.paid`、退款和争议处理代码；只有上表记录的 Sandbox 单次充值取得真实提供商回调和持久化读回，其他生命周期不能据此视为已完成。
+- Stripe 本地测试覆盖 Checkout 参数、签名拒绝、Webhook claim/重试/幂等、`invoice.paid`、退款和争议处理代码；真实提供商回调和持久化读回目前只确认了上表记录的 Sandbox 单次充值与首次月付订阅，续费、退款和争议不能据此视为已完成。
 - 不适用：files、fine-tunes、image variations 等路由当前明确挂载到 `RelayNotImplemented`，因此不属于当前已实现的 Relay 能力；不能把路由存在误写为功能可用。
 
 ## 凭据和密钥来源
@@ -48,7 +48,8 @@
 
 - 外部服务清单是代码边界摘要，不是逐供应商、逐模型、逐区域能力矩阵。
 - 本次对 GreenCloud 生产/测试渠道配置和日志只做脱敏聚合读取，没有读取渠道凭据，也没有主动发起付费模型调用；因此只能确认部分生产上游近期成功，不能确认逐模型能力。
-- 仓库内的 2026-08-27/30 运维记录提供 Stripe 与邮件配置/交易快照；2026-09-01 重新连接了 GreenCloud 和当前公网，但没有重新连接 Stripe 或 Cloudflare 控制台。
+- 仓库内的 2026-08-27/30 运维记录提供 Stripe 与邮件配置/交易快照；2026-09-01 重新连接了 GreenCloud、当前公网和 Tryvalo Stripe Sandbox，但没有重新连接 Stripe Live 或 Cloudflare 控制台。
+- Stripe Sandbox 首次月付订阅的权益账期已正确写入 `user_subscriptions` 和 settlement；同一订单的 `stripe_current_period_end` 仍为 `0`，因此用户页能显示 active Standard 和剩余 290 Credits，但 Stripe 账单区将下次账单日期显示为“不可用”。
 - 上游响应、网络超时、账号权限和地区限制均不能从本地静态检查与单元测试确认。
 
 ## 待确认事项
@@ -56,6 +57,6 @@
 - 待定：生产实际启用的上游、OAuth、支付、邮件、分析和观测服务清单。
 - 待定：各回调 URL 的平台登记、签名 secret 来源、最近成功回执和失败重试状态。
 - 待定：真实 AI 渠道的 StreamOptions、工具调用、图片/音频/视频和 reasoning 能力矩阵。
-- 待定：Stripe Sandbox 月度订阅 Checkout、真实 `invoice.paid` 权益入账、续费、退款和争议 E2E。
+- 待定：Stripe Sandbox 月度订阅续费、退款和争议 E2E，以及订单下次账单日期字段的补齐与页面回读。
 - 待定：Stripe Live 真实充值、订阅、`invoice.paid` 权益入账、续费、退款与争议闭环。
 - 待定：`contract@tryvalo.com` 从外部发信到目标邮箱的真实投递回读。
