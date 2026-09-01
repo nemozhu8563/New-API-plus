@@ -10,9 +10,13 @@ import (
 
 func preserveSensitiveWords(t *testing.T) {
 	t.Helper()
-	original := setting.SensitiveWordsToString()
+	originalNSFW := setting.SensitiveWordsToString()
+	originalHighRisk := setting.SensitiveWordsHighRiskToString()
+	originalAudit := setting.SensitiveWordsAuditToString()
 	t.Cleanup(func() {
-		setting.SensitiveWordsFromString(original)
+		setting.SensitiveWordsFromString(originalNSFW)
+		setting.SensitiveWordsHighRiskFromString(originalHighRisk)
+		setting.SensitiveWordsAuditFromString(originalAudit)
 	})
 }
 
@@ -25,9 +29,9 @@ func TestSensitiveWordContainsUsesEmbeddedDefaults(t *testing.T) {
 		wantHit  bool
 		wantWord string
 	}{
-		{name: "Chinese phrase", text: "可提供无抵押贷款方案", wantHit: true, wantWord: "无抵押贷款"},
-		{name: "case insensitive English", text: "This is BITCH content.", wantHit: true, wantWord: "bitch"},
-		{name: "English next to Chinese", text: "这是bitch内容", wantHit: true, wantWord: "bitch"},
+		{name: "Chinese NSFW phrase", text: "这是成人色情内容", wantHit: true, wantWord: "成人色情"},
+		{name: "case insensitive English NSFW", text: "This is PORN content.", wantHit: true, wantWord: "porn"},
+		{name: "English next to Chinese", text: "这是porn内容", wantHit: true, wantWord: "porn"},
 		{name: "ordinary text", text: "hello world", wantHit: false},
 		{name: "English substring false positives", text: "class assistant analysis accumulate sextant", wantHit: false},
 		{name: "Chinese short ASCII false positives", text: "apply JSON to a small payload", wantHit: false},
@@ -46,8 +50,74 @@ func TestSensitiveWordContainsUsesEmbeddedDefaults(t *testing.T) {
 	}
 }
 
+func TestDefaultPolicyAuditsBroadTermsWithoutBlocking(t *testing.T) {
+	preserveSensitiveWords(t)
+
+	for _, text := range []string{
+		"这段历史材料描述了当时的淫威",
+		"医学讨论：所谓春药是否真实存在",
+		"亚情是一个需要上下文判断的词",
+	} {
+		result := CheckSensitiveTextPolicy(text)
+		assert.True(t, result.Matched)
+		assert.Equal(t, SensitiveWordCategoryAudit, result.Category)
+		assert.Equal(t, SensitiveWordActionAudit, result.Action)
+	}
+}
+
+func TestSensitiveTextPolicyUsesCategoryActionsAndPriority(t *testing.T) {
+	preserveSensitiveWords(t)
+	setting.SensitiveWordsFromString("nsfw-block\nshared")
+	setting.SensitiveWordsHighRiskFromString("risk-block\nshared")
+	setting.SensitiveWordsAuditFromString("audit-only\nshared\nass")
+
+	tests := []struct {
+		name string
+		text string
+		want SensitiveWordCheckResult
+	}{
+		{
+			name: "high risk blocks",
+			text: "contains risk-block",
+			want: SensitiveWordCheckResult{Matched: true, Category: SensitiveWordCategoryHighRisk, Action: SensitiveWordActionBlock, Word: "risk-block"},
+		},
+		{
+			name: "nsfw blocks",
+			text: "contains nsfw-block",
+			want: SensitiveWordCheckResult{Matched: true, Category: SensitiveWordCategoryNSFW, Action: SensitiveWordActionBlock, Word: "nsfw-block"},
+		},
+		{
+			name: "audit allows",
+			text: "contains audit-only",
+			want: SensitiveWordCheckResult{Matched: true, Category: SensitiveWordCategoryAudit, Action: SensitiveWordActionAudit, Word: "audit-only"},
+		},
+		{
+			name: "block wins duplicate",
+			text: "contains shared",
+			want: SensitiveWordCheckResult{Matched: true, Category: SensitiveWordCategoryHighRisk, Action: SensitiveWordActionBlock, Word: "shared"},
+		},
+		{
+			name: "bundled English boundary applies to audit list",
+			text: "assistant",
+			want: SensitiveWordCheckResult{},
+		},
+		{
+			name: "standalone bundled English audit word matches",
+			text: "standalone ASS",
+			want: SensitiveWordCheckResult{Matched: true, Category: SensitiveWordCategoryAudit, Action: SensitiveWordActionAudit, Word: "ass"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, CheckSensitiveTextPolicy(tt.text))
+		})
+	}
+}
+
 func TestSensitiveWordContainsContinuesAfterEnglishSubstring(t *testing.T) {
 	preserveSensitiveWords(t)
+	setting.SensitiveWordsFromString("ass")
 
 	hit, words := SensitiveWordContains("assistant first, standalone ASS second")
 
@@ -68,6 +138,7 @@ func TestSensitiveWordReplacePreservesUnicodeText(t *testing.T) {
 
 func TestSensitiveWordReplaceUsesEnglishWordBoundaries(t *testing.T) {
 	preserveSensitiveWords(t)
+	setting.SensitiveWordsFromString("ass")
 
 	hit, words, replaced := SensitiveWordReplace("assistant says ASS.", false)
 
@@ -78,6 +149,7 @@ func TestSensitiveWordReplaceUsesEnglishWordBoundaries(t *testing.T) {
 
 func TestSensitiveWordReplaceStopsAtFirstValidEnglishWord(t *testing.T) {
 	preserveSensitiveWords(t)
+	setting.SensitiveWordsFromString("ass\nbitch")
 
 	hit, words, replaced := SensitiveWordReplace("assistant says ASS and BITCH", true)
 
@@ -88,6 +160,7 @@ func TestSensitiveWordReplaceStopsAtFirstValidEnglishWord(t *testing.T) {
 
 func TestSensitiveWordReplacePrefersLongestEnglishMatch(t *testing.T) {
 	preserveSensitiveWords(t)
+	setting.SensitiveWordsFromString("ass\nasshole")
 
 	hit, words, replaced := SensitiveWordReplace("ASSHOLE", true)
 

@@ -21,6 +21,8 @@ func setupSensitiveOptionTestDB(t *testing.T) *gorm.DB {
 	previousMainDatabaseType := common.MainDatabaseType()
 	previousLogDatabaseType := common.LogDatabaseType()
 	previousSensitiveWords := setting.SensitiveWordsToString()
+	previousSensitiveWordsHighRisk := setting.SensitiveWordsHighRiskToString()
+	previousSensitiveWordsAudit := setting.SensitiveWordsAuditToString()
 
 	common.OptionMapRWMutex.RLock()
 	previousOptionMap := make(map[string]string, len(common.OptionMap))
@@ -40,6 +42,8 @@ func setupSensitiveOptionTestDB(t *testing.T) *gorm.DB {
 
 	t.Cleanup(func() {
 		setting.SensitiveWordsFromString(previousSensitiveWords)
+		setting.SensitiveWordsHighRiskFromString(previousSensitiveWordsHighRisk)
+		setting.SensitiveWordsAuditFromString(previousSensitiveWordsAudit)
 		DB = previousDB
 		LOG_DB = previousLogDB
 		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
@@ -53,6 +57,33 @@ func setupSensitiveOptionTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func TestSensitiveWordCategoryOptionsPersistAndReloadIndependently(t *testing.T) {
+	setupSensitiveOptionTestDB(t)
+
+	InitOptionMap()
+	require.NoError(t, UpdateOption("SensitiveWordsHighRisk", "risk-one\nrisk-two"))
+	require.NoError(t, UpdateOption("SensitiveWordsAudit", "audit-one"))
+	require.NoError(t, UpdateOption("SensitiveWords", "nsfw-one"))
+
+	assert.Equal(t, "risk-one\nrisk-two", setting.SensitiveWordsHighRiskToString())
+	assert.Equal(t, "audit-one", setting.SensitiveWordsAuditToString())
+	assert.Equal(t, "nsfw-one", setting.SensitiveWordsToString())
+
+	setting.SensitiveWordsHighRiskFromString("temporary-risk")
+	setting.SensitiveWordsAuditFromString("temporary-audit")
+	setting.SensitiveWordsFromString("temporary-nsfw")
+	InitOptionMap()
+
+	assert.Equal(t, "risk-one\nrisk-two", setting.SensitiveWordsHighRiskToString())
+	assert.Equal(t, "audit-one", setting.SensitiveWordsAuditToString())
+	assert.Equal(t, "nsfw-one", setting.SensitiveWordsToString())
+
+	require.NoError(t, UpdateOption("SensitiveWordsAudit", ""))
+	setting.SensitiveWordsAuditFromString("temporary-audit")
+	InitOptionMap()
+	assert.Empty(t, setting.GetSensitiveWordsAudit())
 }
 
 func TestSensitiveWordsOptionPersistsOverrideAndExplicitClear(t *testing.T) {

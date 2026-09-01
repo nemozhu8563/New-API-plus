@@ -159,10 +159,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	if needSensitiveCheck && meta != nil {
-		contains, words := service.CheckSensitiveText(meta.CombineText)
-		if contains {
-			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = newContentPolicyViolationError()
+		newAPIError = checkPromptSensitivePolicy(c, meta.CombineText)
+		if newAPIError != nil {
 			return
 		}
 	}
@@ -303,6 +301,24 @@ func newContentPolicyViolationError() *types.NewAPIError {
 		http.StatusForbidden,
 		types.ErrOptionWithSkipRetry(),
 	)
+}
+
+func checkPromptSensitivePolicy(c *gin.Context, text string) *types.NewAPIError {
+	result := service.CheckSensitiveTextPolicy(text)
+	if !result.Matched {
+		return nil
+	}
+
+	logger.LogWarn(c, fmt.Sprintf(
+		"sensitive word policy hit: category=%s action=%s word=%q",
+		result.Category,
+		result.Action,
+		result.Word,
+	))
+	if result.Action == service.SensitiveWordActionAudit {
+		return nil
+	}
+	return newContentPolicyViolationError()
 }
 
 var upgrader = websocket.Upgrader{

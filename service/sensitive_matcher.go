@@ -21,20 +21,36 @@ type sensitiveBoundaryNode struct {
 
 var sensitiveMatcherCache struct {
 	sync.Mutex
-	version uint64
-	matcher *sensitiveMatcher
+	version  uint64
+	nsfw     *sensitiveMatcher
+	highRisk *sensitiveMatcher
+	audit    *sensitiveMatcher
 }
 
-func getSensitiveMatcher() *sensitiveMatcher {
-	words, version := setting.GetSensitiveWordsSnapshot()
-	if len(words) == 0 {
-		return nil
-	}
-
+func getSensitiveMatcher(category SensitiveWordCategory) *sensitiveMatcher {
+	snapshot := setting.GetSensitiveWordListsSnapshot()
 	sensitiveMatcherCache.Lock()
 	defer sensitiveMatcherCache.Unlock()
-	if sensitiveMatcherCache.matcher != nil && sensitiveMatcherCache.version == version {
-		return sensitiveMatcherCache.matcher
+	if sensitiveMatcherCache.version != snapshot.Version {
+		sensitiveMatcherCache.nsfw = buildSensitiveMatcher(snapshot.NSFW)
+		sensitiveMatcherCache.highRisk = buildSensitiveMatcher(snapshot.HighRisk)
+		sensitiveMatcherCache.audit = buildSensitiveMatcher(snapshot.Audit)
+		sensitiveMatcherCache.version = snapshot.Version
+	}
+
+	switch category {
+	case SensitiveWordCategoryHighRisk:
+		return sensitiveMatcherCache.highRisk
+	case SensitiveWordCategoryAudit:
+		return sensitiveMatcherCache.audit
+	default:
+		return sensitiveMatcherCache.nsfw
+	}
+}
+
+func buildSensitiveMatcher(words []string) *sensitiveMatcher {
+	if len(words) == 0 {
+		return nil
 	}
 
 	substringWords := make([]string, 0, len(words))
@@ -58,8 +74,6 @@ func getSensitiveMatcher() *sensitiveMatcher {
 	if len(boundaryRoot.children) == 0 {
 		matcher.boundaryRoot = nil
 	}
-	sensitiveMatcherCache.version = version
-	sensitiveMatcherCache.matcher = matcher
 	return matcher
 }
 

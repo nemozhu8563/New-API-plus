@@ -31,6 +31,8 @@ const SECURITY_SECTIONS = [
         defaultValues={{
           CheckSensitiveEnabled: settings.CheckSensitiveEnabled,
           CheckSensitiveOnPromptEnabled: settings.CheckSensitiveOnPromptEnabled,
+          SensitiveWordsHighRisk: settings.SensitiveWordsHighRisk,
+          SensitiveWordsAudit: settings.SensitiveWordsAudit,
           SensitiveWords: settings.SensitiveWords,
         }}
       />

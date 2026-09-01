@@ -7,6 +7,28 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
+type SensitiveWordCategory string
+
+const (
+	SensitiveWordCategoryHighRisk SensitiveWordCategory = "high_risk"
+	SensitiveWordCategoryNSFW     SensitiveWordCategory = "nsfw"
+	SensitiveWordCategoryAudit    SensitiveWordCategory = "audit"
+)
+
+type SensitiveWordAction string
+
+const (
+	SensitiveWordActionBlock SensitiveWordAction = "block"
+	SensitiveWordActionAudit SensitiveWordAction = "audit"
+)
+
+type SensitiveWordCheckResult struct {
+	Matched  bool
+	Category SensitiveWordCategory
+	Action   SensitiveWordAction
+	Word     string
+}
+
 func CheckSensitiveMessages(messages []dto.Message) ([]string, error) {
 	if len(messages) == 0 {
 		return nil, nil
@@ -23,8 +45,9 @@ func CheckSensitiveMessages(messages []dto.Message) ([]string, error) {
 			if m.Text == "" {
 				continue
 			}
-			if ok, words := SensitiveWordContains(m.Text); ok {
-				return words, errors.New("sensitive words detected")
+			result := CheckSensitiveTextPolicy(m.Text)
+			if result.Matched && result.Action == SensitiveWordActionBlock {
+				return []string{result.Word}, errors.New("sensitive words detected")
 			}
 		}
 	}
@@ -35,13 +58,49 @@ func CheckSensitiveText(text string) (bool, []string) {
 	return SensitiveWordContains(text)
 }
 
+// CheckSensitiveTextPolicy evaluates one text against policy lists in strict
+// priority order. A block list always wins over audit-only, including when the
+// same administrator-supplied word appears in multiple lists.
+func CheckSensitiveTextPolicy(text string) SensitiveWordCheckResult {
+	if text == "" {
+		return SensitiveWordCheckResult{}
+	}
+
+	checkText := []rune(strings.ToLower(text))
+	checks := []struct {
+		category SensitiveWordCategory
+		action   SensitiveWordAction
+	}{
+		{category: SensitiveWordCategoryHighRisk, action: SensitiveWordActionBlock},
+		{category: SensitiveWordCategoryNSFW, action: SensitiveWordActionBlock},
+		{category: SensitiveWordCategoryAudit, action: SensitiveWordActionAudit},
+	}
+	for _, check := range checks {
+		matcher := getSensitiveMatcher(check.category)
+		if matcher == nil {
+			continue
+		}
+		hits := matcher.search(checkText, true)
+		if len(hits) == 0 {
+			continue
+		}
+		return SensitiveWordCheckResult{
+			Matched:  true,
+			Category: check.category,
+			Action:   check.action,
+			Word:     string(hits[0].Word),
+		}
+	}
+	return SensitiveWordCheckResult{}
+}
+
 // SensitiveWordContains 是否包含敏感词，返回是否包含敏感词和敏感词列表
 func SensitiveWordContains(text string) (bool, []string) {
 	if len(text) == 0 {
 		return false, nil
 	}
 	checkText := []rune(strings.ToLower(text))
-	matcher := getSensitiveMatcher()
+	matcher := getSensitiveMatcher(SensitiveWordCategoryNSFW)
 	if matcher == nil {
 		return false, nil
 	}
@@ -56,7 +115,7 @@ func SensitiveWordContains(text string) (bool, []string) {
 func SensitiveWordReplace(text string, returnImmediately bool) (bool, []string, string) {
 	checkText := []rune(strings.ToLower(text))
 	textRunes := []rune(text)
-	matcher := getSensitiveMatcher()
+	matcher := getSensitiveMatcher(SensitiveWordCategoryNSFW)
 	if matcher == nil {
 		return false, nil, text
 	}

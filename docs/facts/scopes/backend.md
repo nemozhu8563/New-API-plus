@@ -18,6 +18,7 @@
 
 - 认证与权限由 `middleware/`、`router/` 和 `service/authz/` 承载。
 - 渠道分发、协议适配、预扣和结算由 `middleware.Distribute`、`relay/`、`relay/helper/`、`service/` 与 `model/` 承载。
+- 提示词敏感词策略由 `setting/` 保存三个独立列表和统一快照版本，`service/` 按高风险阻断、NSFW 阻断、仅审计的顺序匹配，`controller/relay.go` 对阻断命中返回既有的 `403 content_policy_violation`，对仅审计命中写日志后放行。兼容名称 `SensitiveWords` 现在仅代表 NSFW 阻断列表，新增持久化选项为 `SensitiveWordsHighRisk` 和 `SensitiveWordsAudit`。
 - 用户、Token、Channel、Log、Task、TopUp 和订阅对象由 `model/` 持久化并通过 service/controller 暴露。
 - Stripe 月付首购由 `subscription_orders` 记录订单和提供商绑定，由 `stripe_webhook_events` 记录回调处理，由 `user_subscriptions` 和 `stripe_subscription_settlements` 记录首期权益与结算，并以 `top_ups` 保存支付镜像；2026-09-01 测试环境已通过一次真实 Sandbox 首购验证该持久化链路。
 
@@ -30,12 +31,13 @@
 
 ## 验证状态
 
-已确认：2026-08-31 执行 `make test`、`GOWORK=off go vet ./...` 和 `GOWORK=off go build ./...` 均通过。2026-09-01 现场确认生产和测试应用、生产 PostgreSQL/Redis 健康，公开与本机状态接口成功，且生产库近 24 小时存在部分渠道的消费成功记录；未主动验证全部上游模型。同日测试环境完成一笔 Stripe Sandbox Standard 月付首购：目标 webhook、订单、支付镜像、订阅权益和 settlement 均成功持久化，钱包 quota 未被当作订阅额度直接增加。
+已确认：2026-08-31 执行 `make test`、`GOWORK=off go vet ./...` 和 `GOWORK=off go build ./...` 均通过。2026-09-01 当前工作树的敏感词分级改造通过 `setting`、`service`、`model`、`controller` 四个包的完整测试；默认词表互斥性、完整覆盖、选项持久化、匹配优先级、审计放行和阻断响应均有回归测试。2026-09-01 现场确认生产和测试应用、生产 PostgreSQL/Redis 健康，公开与本机状态接口成功，且生产库近 24 小时存在部分渠道的消费成功记录；未主动验证全部上游模型。同日测试环境完成一笔 Stripe Sandbox Standard 月付首购：目标 webhook、订单、支付镜像、订阅权益和 settlement 均成功持久化，钱包 quota 未被当作订阅额度直接增加。
 
 ## 已知约束
 
 - 根模块编译依赖已存在的 `web/dist`，CI 会先创建 embed placeholder，生产构建会先构建真实前端。
 - 主数据库必须保持 SQLite、MySQL、PostgreSQL 兼容；日志数据库另支持 ClickHouse。
+- 敏感词分级能力当前只存在于未提交、未发布的工作树。数据库中已持久化的旧 `SensitiveWords` 会覆盖新的内置 NSFW 默认表；任何环境在迁移三个选项前都不会仅因部署代码而自动获得新的默认分类。
 - `Task.ID` 当前 tag 与根 `AGENTS.md` 的主键规则存在冲突，见 `docs/facts/current-system.md`。
 - Stripe 首期 invoice 的权益结束时间已写入 `user_subscriptions`，但对应订单的 `stripe_current_period_end` 当前仍可能为 `0`；测试站因此把下次账单日期显示为“不可用”。
 

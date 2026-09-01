@@ -32,11 +32,39 @@ var defaultEnglishSensitiveWordsText string
 
 var defaultEnglishSensitiveWords, defaultEnglishSensitiveWordSet = parseDefaultEnglishSensitiveWords(defaultEnglishSensitiveWordsText)
 
-// SensitiveWords 敏感词
-var SensitiveWords = parseDefaultSensitiveWords(defaultChineseSensitiveWordsText, defaultEnglishSensitiveWords)
+// The pinned source snapshots are classified into three explicit, disjoint
+// policy lists. Keeping the classification as data makes every default term
+// reviewable without relying on runtime heuristics.
+//
+//go:embed data/sensitive_words_nsfw.txt
+var defaultSensitiveWordsText string
+
+//go:embed data/sensitive_words_high_risk.txt
+var defaultSensitiveWordsHighRiskText string
+
+//go:embed data/sensitive_words_audit.txt
+var defaultSensitiveWordsAuditText string
+
+// SensitiveWords is the NSFW block list. The name remains unchanged for
+// compatibility with existing administrator options and integrations.
+var SensitiveWords = parseSensitiveWords(defaultSensitiveWordsText)
+
+// SensitiveWordsHighRisk blocks high-risk requests such as sexual violence,
+// child sexual exploitation, self-harm instructions, weapons, and explosives.
+var SensitiveWordsHighRisk = parseSensitiveWords(defaultSensitiveWordsHighRiskText)
+
+// SensitiveWordsAudit records a policy hit but does not block the request.
+var SensitiveWordsAudit = parseSensitiveWords(defaultSensitiveWordsAuditText)
 
 var sensitiveWordsMutex sync.RWMutex
 var sensitiveWordsVersion uint64 = 1
+
+type SensitiveWordListsSnapshot struct {
+	NSFW     []string
+	HighRisk []string
+	Audit    []string
+	Version  uint64
+}
 
 func SensitiveWordsToString() string {
 	sensitiveWordsMutex.RLock()
@@ -44,10 +72,34 @@ func SensitiveWordsToString() string {
 	return strings.Join(SensitiveWords, "\n")
 }
 
+func SensitiveWordsHighRiskToString() string {
+	sensitiveWordsMutex.RLock()
+	defer sensitiveWordsMutex.RUnlock()
+	return strings.Join(SensitiveWordsHighRisk, "\n")
+}
+
+func SensitiveWordsAuditToString() string {
+	sensitiveWordsMutex.RLock()
+	defer sensitiveWordsMutex.RUnlock()
+	return strings.Join(SensitiveWordsAudit, "\n")
+}
+
 func SensitiveWordsFromString(s string) {
-	words := parseSensitiveWords(s)
+	updateSensitiveWords(&SensitiveWords, s)
+}
+
+func SensitiveWordsHighRiskFromString(s string) {
+	updateSensitiveWords(&SensitiveWordsHighRisk, s)
+}
+
+func SensitiveWordsAuditFromString(s string) {
+	updateSensitiveWords(&SensitiveWordsAudit, s)
+}
+
+func updateSensitiveWords(target *[]string, text string) {
+	words := parseSensitiveWords(text)
 	sensitiveWordsMutex.Lock()
-	SensitiveWords = words
+	*target = words
 	sensitiveWordsVersion++
 	sensitiveWordsMutex.Unlock()
 }
@@ -59,14 +111,33 @@ func GetSensitiveWords() []string {
 	return words
 }
 
+func GetSensitiveWordsHighRisk() []string {
+	return GetSensitiveWordListsSnapshot().HighRisk
+}
+
+func GetSensitiveWordsAudit() []string {
+	return GetSensitiveWordListsSnapshot().Audit
+}
+
 // GetSensitiveWordsSnapshot returns the immutable current word slice together
 // with a version that changes whenever an administrator replaces the list.
 func GetSensitiveWordsSnapshot() ([]string, uint64) {
+	snapshot := GetSensitiveWordListsSnapshot()
+	return snapshot.NSFW, snapshot.Version
+}
+
+// GetSensitiveWordListsSnapshot returns one consistent view of all policy
+// lists. Updates replace complete slices, so callers may safely retain them.
+func GetSensitiveWordListsSnapshot() SensitiveWordListsSnapshot {
 	sensitiveWordsMutex.RLock()
-	words := SensitiveWords
-	version := sensitiveWordsVersion
+	snapshot := SensitiveWordListsSnapshot{
+		NSFW:     SensitiveWords,
+		HighRisk: SensitiveWordsHighRisk,
+		Audit:    SensitiveWordsAudit,
+		Version:  sensitiveWordsVersion,
+	}
 	sensitiveWordsMutex.RUnlock()
-	return words, version
+	return snapshot
 }
 
 // IsDefaultEnglishSensitiveWord reports whether a word came from the bundled

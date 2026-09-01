@@ -19,6 +19,7 @@
 ## 业务规则
 
 - Relay 路由按入口使用 Token、用户会话或二者之一进行认证，并在发送上游前执行性能检查、模型限流和渠道分发；具体中间件组合以 `router/relay-router.go` 和 `router/video-router.go` 为准。
+- 提示词敏感词策略在检查开关启用时按 `high_risk` 阻断、`nsfw` 阻断、`audit` 仅审计的固定优先级求值；同一词出现在多个管理员列表时，阻断优先于仅审计。`high_risk` 和 `nsfw` 命中返回既有的 HTTP `403 content_policy_violation` 且不重试，`audit` 命中记录类别、动作和命中词后继续请求。当前默认词表把 2,094 个有效来源词互斥划分为 475 个高风险阻断词、548 个 NSFW 阻断词和 1,071 个仅审计词；三个管理员选项可以分别完整覆盖各自列表。实现与测试位于 `setting/sensitive.go`、`service/sensitive.go`、`controller/relay.go` 及对应测试。
 - 用户钱包与 Token 的配额预扣在 Redis 可用时使用 Lua 原子更新；缓存缺失或错误时回退数据库条件更新；持久化失败时尝试补偿缓存。主实现位于 `model/quota_reserve.go`。
 - 充值在付款前检查钱包容量，结算时再次用带上限条件的原子更新限制 int32 额度边界，见 `model/topup.go`。
 - quota 数值转换集中在 `common/quota_math.go`；越界或 NaN 会饱和到 int32 边界并生成可审计的 `QuotaClamp`，严格预扣版本返回错误。

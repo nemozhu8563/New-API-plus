@@ -12,6 +12,8 @@
 
 已确认（2026-09-01 10:13～10:59，Asia/Shanghai）：`test.tryvalo.com` 完成一笔 Stripe Sandbox Standard `CNY 259/月` 首购 E2E。Hosted Checkout 最终为 `complete/paid`，首张 invoice 为 `paid`，测试库中的 `invoice.paid` 与 `checkout.session.completed` 均一次处理成功；订单及 `top_ups` 镜像为 `success`，且只产生一条 active `user_subscriptions` 和一条 settlement。订阅原始额度 `145000000` 按当前 `500000` quota units/Credit 在页面显示为 290 Credits，钱包 quota 与 used quota 仍为 `0`。该结果只确认首次购买与首期权益，不确认续费、退款或争议；Stripe 账单区当前仍因订单的 `stripe_current_period_end=0` 显示“下次账单日期：不可用”，虽然实际订阅权益结束时间已正确写入 2026-10-01 10:59:13。
 
+已确认（2026-09-01，当前工作树，未部署）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。后端四个相关包的完整测试、前端类型检查、80 files/314 tests 和生产构建均通过。该结论只证明当前工作树能力；改动尚未提交、推送或部署，生产仍运行上文记录的 `f96bf33b80dfeca9b025a94651fb68db492dc8a7` 镜像，生产选项也未执行三列表迁移。
+
 ## 事实文件索引
 
 | 事实文件 | 状态 | 用途 |
@@ -55,6 +57,7 @@
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |
 | GreenCloud、Zgo、公网、生产聚合和 Stripe 测试边界 | 2026-09-01 09:21～09:33（Asia/Shanghai） | 当前 DNS/HTTP 响应头；GreenCloud 与 Zgo SSH 只读回读；Docker、PostgreSQL 聚合和既有 Stripe 验收记录 | 已确认：当前应用与依赖健康、生产边缘路径和部分真实上游活动；Stripe Sandbox 未完成的生命周期继续保持待定。 |
 | Stripe Sandbox 首次月付订阅 | 2026-09-01 10:13～10:59（Asia/Shanghai） | 真实 Hosted Checkout、Stripe Sandbox Checkout/subscription/invoice 只读回读、GreenCloud 测试库及钱包页回读 | 已确认：Standard `CNY 259/月` 首购、首张 `invoice.paid`、290 Credits 权益和持久化闭环成功；续费、退款、争议及下次账单日期显示仍未闭合。 |
+| 敏感词分级策略当前工作树 | 2026-09-01（Asia/Shanghai） | 当前代码、三类默认词表、后端完整相关包测试、前端类型检查/全量测试/生产构建 | 已确认：高风险与 NSFW 阻断、仅审计放行、固定保存顺序及失败中止已实现并通过回归验证；尚未提交、推送、部署或迁移生产选项。 |
 
 ## 待解决事实冲突
 

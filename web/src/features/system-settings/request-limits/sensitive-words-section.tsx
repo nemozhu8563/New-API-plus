@@ -28,10 +28,20 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const sensitiveSchema = z.object({
   CheckSensitiveEnabled: z.boolean(),
   CheckSensitiveOnPromptEnabled: z.boolean(),
-  SensitiveWords: z.string().optional(),
+  SensitiveWordsHighRisk: z.string(),
+  SensitiveWordsAudit: z.string(),
+  SensitiveWords: z.string(),
 })
 
 type SensitiveFormValues = z.infer<typeof sensitiveSchema>
+
+const sensitiveOptionKeys = [
+  'SensitiveWordsHighRisk',
+  'SensitiveWordsAudit',
+  'SensitiveWords',
+  'CheckSensitiveOnPromptEnabled',
+  'CheckSensitiveEnabled',
+] as const satisfies readonly (keyof SensitiveFormValues)[]
 
 type SensitiveWordsSectionProps = {
   defaultValues: SensitiveFormValues
@@ -52,13 +62,13 @@ export function SensitiveWordsSection({
   }, [defaultValues, form])
 
   const onSubmit = async (values: SensitiveFormValues) => {
-    const updates = Object.entries(values).filter(
-      ([key, value]) =>
-        value !== defaultValues[key as keyof SensitiveFormValues]
-    )
-
-    for (const [key, value] of updates) {
-      await updateOption.mutateAsync({ key, value: value ?? '' })
+    for (const key of sensitiveOptionKeys) {
+      if (values[key] === defaultValues[key]) continue
+      const result = await updateOption.mutateAsync({
+        key,
+        value: values[key],
+      })
+      if (!result.success) return
     }
   }
 
@@ -80,9 +90,7 @@ export function SensitiveWordsSection({
                   <SettingsSwitchContent>
                     <FormLabel>{t('Enable filtering')}</FormLabel>
                     <FormDescription>
-                      {t(
-                        'Blocks messages when sensitive keywords are detected.'
-                      )}
+                      {t('Applies blocking and audit-only keyword policies.')}
                     </FormDescription>
                   </SettingsSwitchContent>
                   <FormControl>
@@ -119,28 +127,85 @@ export function SensitiveWordsSection({
             />
           </div>
 
-          <FormField
-            control={form.control}
-            name='SensitiveWords'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Blocked keywords')}</FormLabel>
-                <FormControl>
-                  <Textarea
-                    rows={12}
-                    placeholder={t('Enter one keyword per line')}
-                    {...field}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t(
-                    'Each line represents one keyword. Leave blank to disable the list but keep the switch states.'
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div className='grid gap-6 lg:grid-cols-3'>
+            <FormField
+              control={form.control}
+              name='SensitiveWordsHighRisk'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('High-risk blocked keywords')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={14}
+                      placeholder={t('Enter one keyword per line')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Blocks sexual violence, child sexual exploitation, self-harm instructions, weapons, and explosives.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='SensitiveWordsAudit'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Audit-only keywords')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={14}
+                      placeholder={t('Enter one keyword per line')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Logs matches for review without blocking the request.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='SensitiveWords'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('NSFW blocked keywords')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={14}
+                      placeholder={t('Enter one keyword per line')}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Blocks explicit sexual-content requests.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className='text-muted-foreground space-y-1 text-sm'>
+            <p>
+              {t(
+                'Each line represents one keyword. Leave blank to disable the list but keep the switch states.'
+              )}
+            </p>
+            <p>
+              {t(
+                'If a keyword appears in multiple lists, blocking takes priority over audit-only.'
+              )}
+            </p>
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

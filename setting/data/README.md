@@ -37,8 +37,29 @@ standalone terms detectable while avoiding substring matches such as `ass` in
 next to Chinese characters are still detected. The Chinese and English active
 sets share one entry (`fuck`), leaving 2,094 unique active defaults in total.
 
-An administrator-supplied `SensitiveWords` option remains a complete,
-unfiltered override. Saving an empty value explicitly disables the list and
-persists that choice across restarts. Terms that also occur in the bundled
-English dictionary retain English word-boundary matching; all other custom
-terms keep the existing substring behavior.
+## Policy classification
+
+The active source entries are explicitly partitioned into three disjoint data
+files. Every active entry appears in exactly one file:
+
+- `sensitive_words_nsfw.txt`: 548 explicit sexual-content terms that block a
+  request.
+- `sensitive_words_high_risk.txt`: 475 terms for sexual violence, child sexual
+  exploitation, self-harm instructions, weapon sales, and explosive-making
+  instructions that block a request.
+- `sensitive_words_audit.txt`: 1,071 broad, ambiguous, political, advertising,
+  profanity, hate-speech, and medical/anatomical terms that are logged but do
+  not block a request.
+
+The source snapshots remain unchanged so the classification can be checked
+against the pinned upstream revisions. Tests require the three files to be
+disjoint and to cover all 2,094 active source entries exactly once.
+
+The administrator options are `SensitiveWords` (NSFW block),
+`SensitiveWordsHighRisk` (high-risk block), and `SensitiveWordsAudit`
+(audit-only). Each option is a complete, unfiltered override of its category;
+saving an empty value explicitly disables only that category and persists the
+choice across restarts. When a term appears in multiple administrator lists,
+the runtime priority is high-risk block, NSFW block, then audit-only. Terms
+that also occur in the bundled English dictionary retain English word-boundary
+matching; all other custom terms keep the existing substring behavior.
