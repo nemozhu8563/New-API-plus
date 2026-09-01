@@ -556,8 +556,8 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 	}
 	subscriptions := make([]StripeSubscriptionSummary, 0, len(orders))
 	orderTitles := make(map[int]string, len(orders))
-	missingPeriodEndOrderIds := make([]int, 0)
-	missingPeriodEndSubscriptionIndexes := make(map[int]int)
+	currentPeriodEndOrderIds := make([]int, 0)
+	currentPeriodEndSubscriptionIndexes := make(map[int]int)
 	for _, order := range orders {
 		if order.ProviderSubscriptionId == nil || strings.TrimSpace(*order.ProviderSubscriptionId) == "" {
 			continue
@@ -580,25 +580,24 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 			Livemode:          order.ProviderLivemode,
 		}
 		subscriptions = append(subscriptions, subscription)
-		if subscription.CurrentPeriodEnd <= 0 {
-			missingPeriodEndOrderIds = append(missingPeriodEndOrderIds, order.Id)
-			missingPeriodEndSubscriptionIndexes[order.Id] = len(subscriptions) - 1
-		}
+		currentPeriodEndOrderIds = append(currentPeriodEndOrderIds, order.Id)
+		currentPeriodEndSubscriptionIndexes[order.Id] = len(subscriptions) - 1
 	}
-	if len(missingPeriodEndOrderIds) > 0 {
+	if len(currentPeriodEndOrderIds) > 0 {
 		var settlementPeriodEnds []struct {
 			SubscriptionOrderId int   `gorm:"column:subscription_order_id"`
 			PeriodEnd           int64 `gorm:"column:period_end"`
 		}
 		if err := DB.Model(&StripeSubscriptionSettlement{}).
 			Select("subscription_order_id, MAX(period_end) AS period_end").
-			Where("subscription_order_id IN ? AND livemode = ? AND period_end > ?", missingPeriodEndOrderIds, livemode, 0).
+			Where("subscription_order_id IN ? AND livemode = ? AND period_end > ?", currentPeriodEndOrderIds, livemode, 0).
 			Group("subscription_order_id").
 			Scan(&settlementPeriodEnds).Error; err != nil {
 			return nil, nil, err
 		}
 		for _, settlementPeriodEnd := range settlementPeriodEnds {
-			if index, ok := missingPeriodEndSubscriptionIndexes[settlementPeriodEnd.SubscriptionOrderId]; ok {
+			if index, ok := currentPeriodEndSubscriptionIndexes[settlementPeriodEnd.SubscriptionOrderId]; ok &&
+				settlementPeriodEnd.PeriodEnd > subscriptions[index].CurrentPeriodEnd {
 				subscriptions[index].CurrentPeriodEnd = settlementPeriodEnd.PeriodEnd
 			}
 		}

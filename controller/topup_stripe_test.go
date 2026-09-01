@@ -1414,12 +1414,14 @@ func TestStripeSubscriptionLifecycleIgnoresStaleEvent(t *testing.T) {
 	subscription := &stripe.Subscription{
 		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
 		Status: stripe.SubscriptionStatusActive,
+		Items:  &stripe.SubscriptionItemList{Data: []*stripe.SubscriptionItem{{CurrentPeriodEnd: 9_000}}},
 	}
 
 	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
 		Type: stripe.EventTypeCustomerSubscriptionUpdated, Created: 200,
 	}, subscription))
 	subscription.Status = stripe.SubscriptionStatusPastDue
+	subscription.Items.Data[0].CurrentPeriodEnd = 8_000
 	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
 		Type: stripe.EventTypeCustomerSubscriptionUpdated, Created: 100,
 	}, subscription))
@@ -1428,6 +1430,7 @@ func TestStripeSubscriptionLifecycleIgnoresStaleEvent(t *testing.T) {
 	require.NotNil(t, stored)
 	assert.Equal(t, string(stripe.SubscriptionStatusActive), stored.StripeStatus)
 	assert.Equal(t, int64(200), stored.StripeStatusEventTime)
+	assert.Equal(t, int64(9_000), stored.StripeCurrentPeriodEnd)
 }
 
 func TestStripeSubscriptionDeletionWinsEqualTimestampRegardlessOfDeliveryOrder(t *testing.T) {

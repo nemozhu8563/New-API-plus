@@ -108,6 +108,21 @@ func TestCompleteStripeSubscriptionInvoiceGrantsFreshQuotaForEachPaidPeriod(t *t
 	require.Len(t, stripeSubscriptions, 1)
 	assert.Equal(t, secondEnd, stripeSubscriptions[0].CurrentPeriodEnd)
 
+	// Historical orders may have a missing or stale positive period. The paid
+	// settlement remains the authoritative fallback for the visible billing date.
+	require.NoError(t, db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).
+		Update("stripe_current_period_end", firstEnd).Error)
+	stripeSubscriptions, _, err = GetStripeSubscriptionBilling(user.Id, false)
+	require.NoError(t, err)
+	require.Len(t, stripeSubscriptions, 1)
+	assert.Equal(t, secondEnd, stripeSubscriptions[0].CurrentPeriodEnd)
+	require.NoError(t, db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).
+		Update("stripe_current_period_end", 0).Error)
+	stripeSubscriptions, _, err = GetStripeSubscriptionBilling(user.Id, false)
+	require.NoError(t, err)
+	require.Len(t, stripeSubscriptions, 1)
+	assert.Equal(t, secondEnd, stripeSubscriptions[0].CurrentPeriodEnd)
+
 	var subscriptions []UserSubscription
 	require.NoError(t, db.
 		Where("provider_subscription_id = ?", subscriptionID).
