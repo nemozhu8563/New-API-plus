@@ -8,11 +8,11 @@
 
 已确认：当前仓库由根 Go API 网关服务、独立 Go 模块 `relaykit/` 和 React 前端 `web/` 三个稳定范围组成。根服务将 `web/dist` 嵌入可执行文件，也可以通过 `FRONTEND_BASE_URL` 将未匹配请求重定向到独立前端。2026-08-31 在以提交 `bdbc07608167` 为基线的当前工作树上完成了根模块与 `relaykit` 测试、静态检查和构建，以及前端类型检查、测试和构建。
 
-已确认（2026-09-01 15:24～15:27，Asia/Shanghai）：GreenCloud 测试应用已运行提交 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 的不可变 `linux/amd64` 镜像，生产仍运行 `f96bf33b80dfeca9b025a94651fb68db492dc8a7` 对应镜像。两个应用容器均为 `running/healthy`、重启次数 `0`，测试和生产本机 `/api/status` 以及 `test.tryvalo.com`、`api.tryvalo.com` 公网入口均返回 HTTP `200`。测试库渠道 `1` 曾临时启用用于接口验收，结束后已恢复禁用；测试库当前所有渠道仍为禁用状态。生产容器身份、镜像和启动时间在本次测试发布前后未变化。
+已确认（2026-09-01 21:28～21:40，Asia/Shanghai）：GreenCloud 正式应用已运行提交 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 的不可变 `linux/amd64` 镜像 `new-api:new-api-release-20260901T132333Z-fc6ebe122e`，其镜像 ID 与已验收测试镜像相同。正式应用为 `running/healthy`、重启次数 `0`，本机及 `api.tryvalo.com`、`new.tryvalo.com` 的 `/api/status` 均返回 HTTP `200`；PostgreSQL 和 Redis 未重建。测试应用此前已运行同一提交，测试渠道 `1` 在接口验收后恢复禁用。
 
 已确认（2026-09-01，Asia/Shanghai）：`test.tryvalo.com` 已完成 Stripe Sandbox Standard `CNY 259/月` 首购、账期写入和账单日期显示 E2E。最新订单的账期与 invoice、唯一 settlement 及唯一 active 权益一致，290 Credits 权益已生效且已用额度为 `0`；历史订单没有做字段回填，但账单 API 已从最新已付 settlement 恢复账期，钱包页显示有效下次账单日期。详细对象状态、Automatic Tax 边界和发布证据由 `docs/facts/integrations.md` 与 `docs/operations/2026-09-01-stripe-subscription-period-test-deployment.md` 承载。该结果不确认续费、退款或争议。
 
-已确认（2026-09-01，代码与 GreenCloud 测试环境）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 并发布到测试环境，但尚未 push 或发布到生产。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。测试库未持久化三项词表 option，继续使用镜像内置词表；生产仍运行旧镜像且未迁移选项。
+已确认（2026-09-01，代码、GreenCloud 测试与正式环境）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`，测试与正式环境当前运行相同镜像 ID。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。正式库发布前存在的旧 `SensitiveWords` 覆盖已备份后删除，三项敏感词 option 当前均无持久化行，正式运行时使用镜像内置三层词表。生产业务请求 E2E 未执行。
 
 ## 事实文件索引
 
@@ -46,11 +46,11 @@
 
 - 待定：各 AI 渠道和模型的完整能力矩阵；2026-09-01 的运行快照只确认生产中部分渠道近期产生消费成功记录，未主动发起逐模型付费探测。
 - 待定：为 GreenCloud 测试环境恢复一个有效且默认禁用的上游测试凭据，再完成普通文本和 audit 文本的 HTTP `200` 生成 E2E；当前渠道 `1` 返回 `401 Invalid API key`。
-- 待定：敏感词分级提交尚未 push 或发布到生产，生产三项 option 迁移也未执行。
+- 待定：使用单独授权的可控生产凭据完成普通文本和 audit 文本成功生成 E2E，并复核 NSFW、高风险阻断及策略日志；当前只确认生产运行已验收镜像与内置三层词表，没有发起生产业务请求。
 - 待定：Stripe Sandbox 月度订阅续费、退款和争议 E2E。首次 Checkout、真实 `invoice.paid`、首期权益、账期持久化及账单日期显示已确认。
 - 待定：Stripe Live 真实充值、订阅、签名回调、结算、续费、退款和争议闭环。
 - 待定：Stripe Live Automatic Tax、有效税务注册和申报准备度；Sandbox 本轮 invoice 税额为 `0` 且原因为 `product_exempt`，不能据此确认真实计税交易或 Live 税务状态。
-- 待定：生产备份、恢复演练、监控告警和可执行回滚流程。
+- 待定：本次正式发布已保留 Compose、镜像配置、敏感词 option 导出和 PostgreSQL custom-format dump，但生产数据库完整恢复演练、Redis/应用数据与日志 volume 备份、监控告警和可执行全栈回滚流程仍未闭合。
 
 ## 最近事实刷新
 
@@ -60,7 +60,8 @@
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |
 | GreenCloud、Zgo、公网、生产聚合和 Stripe 测试边界 | 2026-09-01 09:21～09:33（Asia/Shanghai） | 当前 DNS/HTTP 响应头；GreenCloud 与 Zgo SSH 只读回读；Docker、PostgreSQL 聚合和既有 Stripe 验收记录 | 已确认：当前应用与依赖健康、生产边缘路径和部分真实上游活动；Stripe Sandbox 未完成的生命周期继续保持待定。 |
 | Stripe Sandbox 首次月付订阅与账期修复 | 2026-09-01（Asia/Shanghai） | 两轮真实 Hosted Checkout、Stripe Sandbox Checkout/subscription/invoice 只读回读、GreenCloud 测试库、定向回归测试及钱包页回读 | 已确认：Standard `CNY 259/月` 首购、真实 `invoice.paid`、290 Credits 权益和持久化闭环成功；新订单账期与 invoice/settlement/权益一致，历史订单由 settlement 恢复账单日期。续费、退款和争议仍待定。 |
-| 敏感词分级策略与 GreenCloud 测试发布 | 2026-09-01 15:06～15:27（Asia/Shanghai） | 精确提交与不可变镜像、三类默认词表、本地 backend/frontend 检查、GreenCloud Docker/PostgreSQL 回读、四组真实测试接口请求 | 已确认：高风险与 NSFW 本地阻断、仅审计放行和测试部署；允许路径因上游 `401 Invalid API key` 未取得成功模型响应。提交尚未 push 或发布到生产，生产选项未迁移。 |
+| 敏感词分级策略与 GreenCloud 测试发布 | 2026-09-01 15:06～15:27（Asia/Shanghai） | 精确提交与不可变镜像、三类默认词表、本地 backend/frontend 检查、GreenCloud Docker/PostgreSQL 回读、四组真实测试接口请求 | 已确认：高风险与 NSFW 本地阻断、仅审计放行和测试部署；允许路径因上游 `401 Invalid API key` 未取得成功模型响应。当时正式发布与 option 处理尚未执行，后续结果见下一行。 |
+| 敏感词分级策略 GreenCloud 正式发布 | 2026-09-01 21:28～21:40（Asia/Shanghai） | 与测试相同的不可变镜像 ID、GreenCloud Docker/PostgreSQL 回读、备份校验、本机与两个正式公网入口状态接口 | 已确认：正式应用健康、三项持久化 option 均为 0 行、镜像内三层词表生效，PostgreSQL/Redis 未重建；生产业务请求 E2E 未执行。 |
 
 ## 待解决事实冲突
 

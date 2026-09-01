@@ -21,6 +21,7 @@
 | relaykit 独立构建 | `relaykit/`、本地/CI | `GOWORK=off go build ./...` | 根 `AGENTS.md`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
 | 前端构建 | `web/`、本地/CI | `bun run build` | `web/package.json`、`Dockerfile`、release workflows | 2026-09-01（Asia/Shanghai） | 已确认：通过；Rsbuild 产出 `web/dist` |
 | 重建 GreenCloud 测试应用 | GreenCloud `/srv/new-api-test/compose.yaml`、`new-api-test` | `docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test` | `docs/operations/greencloud-service-migration-sop.md`、既有测试发布记录 | 2026-09-01（Asia/Shanghai） | 已确认：执行成功；仅重建测试应用，最终 `running/healthy`、重启次数 `0`，测试本机与公网 `/api/status` 均为 HTTP `200` |
+| 重建 GreenCloud 正式应用 | GreenCloud `/srv/new-api/compose.yaml`、`new-api` | `docker compose --env-file /srv/new-api/env/images.env -f /srv/new-api/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api` | `docs/operations/greencloud-service-migration-sop.md`、正式发布记录 | 2026-09-01（Asia/Shanghai） | 已确认：执行成功；仅重建正式应用，最终 `running/healthy`、重启次数 `0`，PostgreSQL/Redis 未重建，本机及两个正式公网 `/api/status` 均为 HTTP `200` |
 
 ## 命令确认规则
 

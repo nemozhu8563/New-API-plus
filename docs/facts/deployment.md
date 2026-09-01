@@ -9,18 +9,19 @@
 | 本地 | 待定：仓库提供 Compose 后端依赖和 Rsbuild 前端启动入口，本次未启动服务 | 后端默认 `http://localhost:3000`；前端开发默认 `http://localhost:5173` | `makefile`、`docker-compose.dev.yml` | 2026-08-31 |
 | CI | 已确认：PR workflow 配置 root/relaykit vet、build、test 与前端 typecheck、test；远端最近一次运行状态待定 | GitHub Actions | `.github/workflows/ci.yml` | 2026-08-31 |
 | 预览 | 不适用：当前仓库未发现独立 preview 环境配置或 preview 部署 workflow | 不适用 | `.github/workflows/`、Docker 与项目配置扫描 | 2026-08-31 |
-| 生产 | 已确认（2026-09-01 15:24～15:27，Asia/Shanghai）：GreenCloud 测试运行敏感词分级提交 `fc6ebe122e` 的不可变 `linux/amd64` 镜像，生产仍运行 `f96bf33b80` 镜像；两个应用容器均为 `running/healthy`、重启次数 `0` | `test.tryvalo.com`、`api.tryvalo.com`、`new.tryvalo.com` | GreenCloud Docker/PostgreSQL 回读；测试接口验收；当前公网 HTTP | 2026-09-01 |
+| 测试 | 已确认（2026-09-01 15:24～15:27，Asia/Shanghai）：GreenCloud 测试应用运行敏感词分级提交 `fc6ebe122e` 的不可变 `linux/amd64` 镜像，容器 `running/healthy`、重启次数 `0`；策略分级接口验收已完成，允许路径成功生成仍待定 | `test.tryvalo.com` | GreenCloud Docker/PostgreSQL 回读；测试接口验收；当前公网 HTTP | 2026-09-01 |
+| 生产 | 已确认（2026-09-01 21:28～21:40，Asia/Shanghai）：GreenCloud 正式应用运行敏感词分级提交 `fc6ebe122e` 的不可变 `linux/amd64` 镜像，容器 `running/healthy`、重启次数 `0`；PostgreSQL、Redis 未重建 | `api.tryvalo.com`、`new.tryvalo.com` | GreenCloud Docker/PostgreSQL 回读；备份校验；当前公网 HTTP | 2026-09-01 |
 
 ## 当前远端快照
 
-- 2026-09-01 15:24～15:27（Asia/Shanghai）在 GreenCloud 主机 `nemo-Phoenix` 现场回读：测试 `new-api-test` 运行 `new-api-test-20260901T064123Z-fc6ebe122e`，镜像 ID `sha256:268d7cff740cfdbb7b97d9f3f3d8b651c8633d2eeb60c4bc92a869b246a34876`，OCI revision 为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`；生产 `new-api` 仍运行 `new-api-release-20260830T025223Z-f96bf33b80`，镜像 ID `sha256:032ba62c4df47fe53bb43e5b8894f0ecca0c9d23ae09d6c79e123aa42c820f1a`。
+- 2026-09-01 21:40（Asia/Shanghai）在 GreenCloud 主机 `nemo-Phoenix` 现场回读：正式 `new-api` 运行 `new-api-release-20260901T132333Z-fc6ebe122e`，镜像 ID `sha256:268d7cff740cfdbb7b97d9f3f3d8b651c8633d2eeb60c4bc92a869b246a34876`，OCI revision 为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`。该镜像 ID 与测试 `new-api-test-20260901T064123Z-fc6ebe122e` 相同。
 - Stripe 订阅账期修复曾以不可变测试镜像 `new-api:new-api-test-20260901T062743Z-89e4d3a911` 完成 Sandbox E2E；镜像 ID 为 `sha256:7cc64698a07c88021fa93b0d58a9d6f50c0a35745e279f000c826758f6f8439c`，传输包 SHA-256 为 `03a091d122fa681c05e374b84f20226fa262e911582dd2ca6468b4dfc87f3e72`。当前测试镜像 `fc6ebe122e` 是该提交的后继版本并包含同一修复，但支付 E2E 的证据归属于 `89e4d3a911` 镜像。
-- 两个应用容器均为 `running/healthy`、重启次数 `0`；本机 `127.0.0.1:3000` 和 `127.0.0.1:3001` 的 `/api/status` 均返回 HTTP `200`。测试容器因临时渠道启用和清理各重建一次，最终启动时间为 `2026-09-01T07:24:25.939107805Z`；生产容器 ID、镜像和 `2026-08-30T03:09:03.380151452Z` 启动时间未变化。
+- 测试和正式本机 `127.0.0.1:3001`、`127.0.0.1:3000` 的 `/api/status` 均返回 HTTP `200`。测试容器因临时渠道启用和清理各重建一次，最终启动时间为 `2026-09-01T07:24:25.939107805Z`；正式应用于 `2026-09-01T13:28:19.177904701Z` 启动，最终为 `running/healthy`、重启次数 `0`。
 - 生产 `new-api-postgres` 与 `new-api-redis` 均为 `running/healthy`、health failing streak `0`、重启次数 `0`。PostgreSQL `pg_isready` 返回 accepting connections，并完成了生产库只读聚合；Redis 最近五次容器健康检查均以 exit `0` 完成。以上证明容器和所执行的依赖检查，不等于数据库全量数据正确或缓存业务语义完整。
-- 当前公网 `api.tryvalo.com` 和 `test.tryvalo.com` 的 `/api/status` 均返回 HTTP `200`；`new.tryvalo.com` 的既有边缘路径没有在本次测试发布中修改。
+- 当前公网 `api.tryvalo.com`、`new.tryvalo.com` 和此前测试验收的 `test.tryvalo.com` 的 `/api/status` 均返回 HTTP `200`；本次正式发布没有修改既有边缘路径。
 - 当前边缘路径已现场确认：`api.tryvalo.com` 解析到 Zgo `64.83.30.150`，Zgo Caddy `v2.11.4` 为 active，并固定反代到 GreenCloud `173.249.203.66`，Host 与 TLS SNI 均为 `origin-api.tryvalo.com`；GreenCloud 只允许该 Zgo 地址访问 `origin-api.tryvalo.com`，再转发到 `127.0.0.1:3000`。`new.tryvalo.com` 直接解析到 GreenCloud，并由同一 GreenCloud Caddy 转发到生产应用。
-- 本次只更新并重建 `new-api-test`。为执行敏感词接口验收，测试库渠道 `1` 曾从禁用临时改为启用，发出四次 `max_tokens=1` 请求后恢复禁用，并再次只重建测试应用；最终测试库所有渠道仍为禁用。NSFW 和高风险请求在本地返回 `403 content_policy_violation`，audit 请求越过本地策略后与普通请求一样被上游以 `401 Invalid API key` 拒绝。生产应用、PostgreSQL、Redis、DNS、Caddy、Cloudflare、Zgo 和 CPA 均未修改。
-- 本次发布身份、备份摘要、接口用例、清理结果和生产不变性证据见 [2026-09-01 敏感词分级策略测试发布状态](../operations/2026-09-01-sensitive-word-policy-test-deployment-status.md)。
+- 本次正式发布仅重建 `new-api`，`new-api-postgres` 与 `new-api-redis` 的容器 ID 和启动时间保持不变。正式库发布前仅存在旧 `SensitiveWords` option，其值等于旧默认词表减去 `代理`；备份后删除三项敏感词 option，当前总计 `0` 行，因此正式运行时使用镜像内置三层词表。启动日志错误模式匹配数为 `0`。生产业务请求 E2E 未执行，没有读取或使用已有生产 token。
+- 正式发布身份、option 处理、备份、健康证据和业务验证边界见 [2026-09-01 敏感词分级策略正式发布状态](../operations/2026-09-01-sensitive-word-policy-production-deployment-status.md)；测试策略接口用例与临时渠道清理见 [2026-09-01 敏感词分级策略测试发布状态](../operations/2026-09-01-sensitive-word-policy-test-deployment-status.md)。
 - Stripe 账期代码、Sandbox 首购、历史账单日期恢复、Automatic Tax 对象回读及未验证边界见 [2026-09-01 Stripe 订阅账期测试发布记录](../operations/2026-09-01-stripe-subscription-period-test-deployment.md)。
 
 ## 数据库和持久化
@@ -40,8 +41,9 @@
 
 - 已确认（文档边界）：2026-08-30 应用发布保留了上一镜像配置和 Compose 备份，应用回滚路径已写明，但该次发布的 `Rollback` 为 `Not executed`。
 - 已确认：2026-09-01 测试发布在 `/srv/new-api-test/backups/sensitive-policy-20260901T064123Z-fc6ebe122e` 保留发布前 Compose、测试库 custom-format dump 和 `pg_restore --list` 清单；三个文件的 SHA-256 与 `534` 行 restore 清单已回读。该次测试回滚未执行。
+- 已确认：2026-09-01 正式发布在 `/srv/new-api/backups/new-api-release-20260901T132333Z-fc6ebe122e` 保留发布前 `images.env`、Compose、渲染配置、运行身份、敏感词 option CSV/摘要、PostgreSQL custom-format dump、`pg_restore --list` 和 `SHA256SUMS`；发布后全部校验通过，数据库 dump SHA-256 为 `7b9c6b2e23e7612ca903e83479094cc77b2491baa9c877ab1535eff480d8084c`。该次正式回滚未执行。
 - 已确认：Stripe 账期测试发布在 `/srv/new-api-test/backups/new-api-test-20260901T062743Z-89e4d3a911/` 保留 `compose.yaml.before` 和 PostgreSQL custom-format `newapi_test.before.dump`；两者 SHA-256 分别为 `62fd95c4269a1ad53a76fc5f792514e731b55a4fef2ca5ac9f3a3d5212c3b76c` 与 `2ea2551b739bfa878c2fe626c3baffb13d7145cd8419c37ca6a6bb19e8afd43a`。dump 大小为 `22,582,167` bytes、mode `600`，`pg_restore --list` 为 `534` 行；回滚未执行。
-- 待定：生产数据库、Redis、`/data` 和日志 volume 的完整备份计划、保留期、恢复命令及最近恢复演练结果；应用镜像回滚不能替代数据库恢复。
+- 待定：本次正式发布已有 PostgreSQL 单次 dump 和配置/option 备份，但生产 Redis、`/data` 和日志 volume 的完整备份计划、保留期、恢复命令及最近恢复演练结果仍未确认；应用镜像回滚不能替代数据库恢复。
 
 ## 运维和监控
 
@@ -52,8 +54,9 @@
 
 ## 回滚或降级
 
-- 已确认（截至 2026-09-01 的文档边界）：普通应用回滚恢复上一镜像配置并只重建 `new-api`；Stripe 账期测试发布可恢复其 `compose.yaml.before`，后续敏感词测试发布可恢复 `compose.yaml.pre-sensitive`，两者都只重建 `new-api-test`。两次测试发布均无 schema 或生产数据变更。
-- 待定：上述回滚未执行，不能写成已演练；数据库或数据完整性事故必须走单独审核的恢复方案。
+- 已确认（截至 2026-09-01 的文档边界）：敏感词正式发布可恢复 `/srv/new-api/backups/new-api-release-20260901T132333Z-fc6ebe122e/images.env.before` 并只重建 `new-api`；Stripe 账期测试发布和敏感词测试发布分别可恢复其 Compose 备份并只重建 `new-api-test`。
+- 已确认：本次正式发布删除了持久化敏感词 option。仅回滚镜像不会恢复发布前的 option 覆盖，若要恢复完整策略语义，必须单独审核并从 `sensitive-options.before.csv` 恢复三项 option；完整数据库恢复则使用 custom-format dump 制定方案。
+- 待定：上述应用与数据库回滚均未执行，不能写成已演练；数据库或数据完整性事故必须走单独审核的恢复方案。
 
 ## 已知约束
 
