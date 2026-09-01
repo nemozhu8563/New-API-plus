@@ -13,6 +13,7 @@
 | 运行根模块与 relaykit 测试 | 根目录、本地/CI | `make test` | `makefile`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过；root packages 与 `relaykit` 独立 tests 全部通过，部分 Go 结果来自缓存 |
 | 运行前端测试 | `web/`、本地/CI | `bun run test` | `web/package.json`、`.github/workflows/ci.yml` | 2026-09-01（Asia/Shanghai） | 已确认：通过；80 files、314 tests |
 | 运行敏感词相关后端测试 | 根目录、本地 | `go test ./setting ./service ./model ./controller -count=1` | 本次变更涉及包及根 `AGENTS.md` 验证规则 | 2026-09-01（Asia/Shanghai） | 已确认：通过 |
+| 运行 Stripe 订阅账期相关包测试 | 根目录、本地 | `go test ./model ./controller -count=1` | Stripe 账期变更涉及包及根 `AGENTS.md` 验证规则 | 2026-09-01（Asia/Shanghai） | 已确认：宿主可见边界重跑通过；`model` 与 `controller` 均为 `ok`。沙箱内同命令会因禁止 miniredis/httptest 绑定 loopback 端口而出现环境性失败，不作为代码失败结论 |
 | 根模块静态检查 | 根目录、本地/CI | `GOWORK=off go vet ./...` | `.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：宿主可见边界重跑通过；首次沙箱运行因无权读取 Go build cache 失败 |
 | relaykit 静态检查 | `relaykit/`、本地/CI | `GOWORK=off go vet ./...` | `.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
 | 前端类型检查 | `web/`、本地/CI | `bun run typecheck` | `web/package.json`、`.github/workflows/ci.yml` | 2026-09-01（Asia/Shanghai） | 已确认：通过 |

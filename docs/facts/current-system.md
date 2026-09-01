@@ -10,7 +10,7 @@
 
 已确认（2026-09-01 15:24～15:27，Asia/Shanghai）：GreenCloud 测试应用已运行提交 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 的不可变 `linux/amd64` 镜像，生产仍运行 `f96bf33b80dfeca9b025a94651fb68db492dc8a7` 对应镜像。两个应用容器均为 `running/healthy`、重启次数 `0`，测试和生产本机 `/api/status` 以及 `test.tryvalo.com`、`api.tryvalo.com` 公网入口均返回 HTTP `200`。测试库渠道 `1` 曾临时启用用于接口验收，结束后已恢复禁用；测试库当前所有渠道仍为禁用状态。生产容器身份、镜像和启动时间在本次测试发布前后未变化。
 
-已确认（2026-09-01 10:13～10:59，Asia/Shanghai）：`test.tryvalo.com` 完成一笔 Stripe Sandbox Standard `CNY 259/月` 首购 E2E。Hosted Checkout 最终为 `complete/paid`，首张 invoice 为 `paid`，测试库中的 `invoice.paid` 与 `checkout.session.completed` 均一次处理成功；订单及 `top_ups` 镜像为 `success`，且只产生一条 active `user_subscriptions` 和一条 settlement。订阅原始额度 `145000000` 按当前 `500000` quota units/Credit 在页面显示为 290 Credits，钱包 quota 与 used quota 仍为 `0`。该结果只确认首次购买与首期权益，不确认续费、退款或争议；Stripe 账单区当前仍因订单的 `stripe_current_period_end=0` 显示“下次账单日期：不可用”，虽然实际订阅权益结束时间已正确写入 2026-10-01 10:59:13。
+已确认（2026-09-01，Asia/Shanghai）：`test.tryvalo.com` 已完成 Stripe Sandbox Standard `CNY 259/月` 首购、账期写入和账单日期显示 E2E。最新订单的账期与 invoice、唯一 settlement 及唯一 active 权益一致，290 Credits 权益已生效且已用额度为 `0`；历史订单没有做字段回填，但账单 API 已从最新已付 settlement 恢复账期，钱包页显示有效下次账单日期。详细对象状态、Automatic Tax 边界和发布证据由 `docs/facts/integrations.md` 与 `docs/operations/2026-09-01-stripe-subscription-period-test-deployment.md` 承载。该结果不确认续费、退款或争议。
 
 已确认（2026-09-01，代码与 GreenCloud 测试环境）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 并发布到测试环境，但尚未 push 或发布到生产。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。测试库未持久化三项词表 option，继续使用镜像内置词表；生产仍运行旧镜像且未迁移选项。
 
@@ -21,7 +21,7 @@
 | `docs/facts/architecture.md` | 已确认 | 技术栈、模块边界、运行方式、共享契约位置。 |
 | `docs/facts/product-domain.md` | 已确认 | 跨范围共同成立的业务对象、业务规则、状态语义和业务不变量。 |
 | `docs/facts/ui-style.md` | 已确认 | 全局界面风格、交互原则、视觉约束和组件库使用边界；浏览器视觉验收仍为待定。 |
-| `docs/facts/integrations.md` | 已确认 | 外部服务代码边界、协议兼容、回调入口、部分真实上游活动及带日期的 Stripe/邮件快照；Stripe Sandbox 首次月付订阅已完成 E2E，未执行的续费、退款、争议等场景保持待定。 |
+| `docs/facts/integrations.md` | 已确认 | 外部服务代码边界、协议兼容、回调入口、部分真实上游活动及带日期的 Stripe/邮件快照；Stripe Sandbox 首次月付订阅、账期和账单日期已完成 E2E，未执行的续费、退款、争议及 Live Tax 场景保持待定。 |
 | `docs/facts/deployment.md` | 已确认 | 仓库内部署、数据库和迁移事实，以及 2026-09-01 GreenCloud、Zgo 和公网运行快照；备份和回滚演练仍未闭合。 |
 | `docs/facts/verified-commands.md` | 已确认 | 项目命令来源及 2026-08-31 的本地验证结果。 |
 
@@ -47,8 +47,9 @@
 - 待定：各 AI 渠道和模型的完整能力矩阵；2026-09-01 的运行快照只确认生产中部分渠道近期产生消费成功记录，未主动发起逐模型付费探测。
 - 待定：为 GreenCloud 测试环境恢复一个有效且默认禁用的上游测试凭据，再完成普通文本和 audit 文本的 HTTP `200` 生成 E2E；当前渠道 `1` 返回 `401 Invalid API key`。
 - 待定：敏感词分级提交尚未 push 或发布到生产，生产三项 option 迁移也未执行。
-- 待定：Stripe Sandbox 月度订阅续费、退款和争议 E2E。首次 Checkout、真实 `invoice.paid` 与首期权益已确认，但订单的 `stripe_current_period_end` 仍为 `0`，因此 Stripe 账单区不能显示下次账单日期。
+- 待定：Stripe Sandbox 月度订阅续费、退款和争议 E2E。首次 Checkout、真实 `invoice.paid`、首期权益、账期持久化及账单日期显示已确认。
 - 待定：Stripe Live 真实充值、订阅、签名回调、结算、续费、退款和争议闭环。
+- 待定：Stripe Live Automatic Tax、有效税务注册和申报准备度；Sandbox 本轮 invoice 税额为 `0` 且原因为 `product_exempt`，不能据此确认真实计税交易或 Live 税务状态。
 - 待定：生产备份、恢复演练、监控告警和可执行回滚流程。
 
 ## 最近事实刷新
@@ -58,7 +59,7 @@
 | 全部 Facts 与三个范围文件 | 2026-08-31（Asia/Shanghai） | 当前代码、测试、配置、`makefile`、GitHub Actions、Docker 文件和本次命令输出 | 已确认：建立当前事实索引；未能由仓库和本地运行证明的外部状态保持待定。 |
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |
 | GreenCloud、Zgo、公网、生产聚合和 Stripe 测试边界 | 2026-09-01 09:21～09:33（Asia/Shanghai） | 当前 DNS/HTTP 响应头；GreenCloud 与 Zgo SSH 只读回读；Docker、PostgreSQL 聚合和既有 Stripe 验收记录 | 已确认：当前应用与依赖健康、生产边缘路径和部分真实上游活动；Stripe Sandbox 未完成的生命周期继续保持待定。 |
-| Stripe Sandbox 首次月付订阅 | 2026-09-01 10:13～10:59（Asia/Shanghai） | 真实 Hosted Checkout、Stripe Sandbox Checkout/subscription/invoice 只读回读、GreenCloud 测试库及钱包页回读 | 已确认：Standard `CNY 259/月` 首购、首张 `invoice.paid`、290 Credits 权益和持久化闭环成功；续费、退款、争议及下次账单日期显示仍未闭合。 |
+| Stripe Sandbox 首次月付订阅与账期修复 | 2026-09-01（Asia/Shanghai） | 两轮真实 Hosted Checkout、Stripe Sandbox Checkout/subscription/invoice 只读回读、GreenCloud 测试库、定向回归测试及钱包页回读 | 已确认：Standard `CNY 259/月` 首购、真实 `invoice.paid`、290 Credits 权益和持久化闭环成功；新订单账期与 invoice/settlement/权益一致，历史订单由 settlement 恢复账单日期。续费、退款和争议仍待定。 |
 | 敏感词分级策略与 GreenCloud 测试发布 | 2026-09-01 15:06～15:27（Asia/Shanghai） | 精确提交与不可变镜像、三类默认词表、本地 backend/frontend 检查、GreenCloud Docker/PostgreSQL 回读、四组真实测试接口请求 | 已确认：高风险与 NSFW 本地阻断、仅审计放行和测试部署；允许路径因上游 `401 Invalid API key` 未取得成功模型响应。提交尚未 push 或发布到生产，生产选项未迁移。 |
 
 ## 待解决事实冲突
