@@ -1122,6 +1122,14 @@ func TestStripeInvoiceBeforeCheckoutCompletionBindsSubscription(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
 	assert.Equal(t, order.ProviderCustomerId, stored.ProviderCustomerId)
 	assert.Equal(t, order.ProviderSubscriptionId, stored.ProviderSubscriptionId)
+	expectedPeriodEnd := invoice.Lines.Data[0].Period.End
+	assert.Equal(t, expectedPeriodEnd, stored.StripeCurrentPeriodEnd)
+
+	// checkout.session.completed may be delivered after invoice.paid.
+	require.NoError(t, bindStripeSubscriptionCheckout(stripeSubscriptionCheckoutForWebhookTest(order)))
+	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, stored)
+	assert.Equal(t, expectedPeriodEnd, stored.StripeCurrentPeriodEnd)
 }
 
 func TestStripeInvoiceBeforeCheckoutCompletionRejectsMismatchedMetadata(t *testing.T) {
@@ -1501,6 +1509,7 @@ func TestStripePaidInvoiceDoesNotRollBackNewerCanceledStatus(t *testing.T) {
 	subscription := &stripe.Subscription{
 		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
 		Status: stripe.SubscriptionStatusCanceled,
+		Items:  &stripe.SubscriptionItemList{Data: []*stripe.SubscriptionItem{{CurrentPeriodEnd: 9_000}}},
 	}
 	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
 		Type: stripe.EventTypeCustomerSubscriptionDeleted, Created: 300,
@@ -1513,6 +1522,7 @@ func TestStripePaidInvoiceDoesNotRollBackNewerCanceledStatus(t *testing.T) {
 	require.NotNil(t, stored)
 	assert.Equal(t, string(stripe.SubscriptionStatusCanceled), stored.StripeStatus)
 	assert.Equal(t, int64(300), stored.StripeStatusEventTime)
+	assert.Equal(t, int64(9_000), stored.StripeCurrentPeriodEnd)
 	var userSubscription model.UserSubscription
 	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
 	assert.Equal(t, "active", userSubscription.Status)

@@ -157,7 +157,7 @@ func TestGetSubscriptionSelfShowsOnlyCurrentStripeSubscriptionsAndKeepsHistorica
 		UserId: user.Id, TradeNo: "self-stripe-billing-order", PlanId: 23, PlanTitle: "Developer",
 		PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe,
 		ProviderCustomerId: "cus_self_billing", ProviderSubscriptionId: &subscriptionID,
-		ProviderLivemode: false, StripeStatus: "active", StripeCurrentPeriodEnd: 2_000,
+		ProviderLivemode: false, StripeStatus: "active", StripeCurrentPeriodEnd: 0,
 		Status: common.TopUpStatusSuccess,
 	}
 	require.NoError(t, db.Create(order).Error)
@@ -227,6 +227,7 @@ func TestGetSubscriptionSelfShowsOnlyCurrentStripeSubscriptionsAndKeepsHistorica
 	assert.Equal(t, int64(25), response.Data.BillingDebt)
 	require.Len(t, response.Data.StripeSubscriptions, 1)
 	assert.Equal(t, subscriptionID, response.Data.StripeSubscriptions[0].SubscriptionId)
+	assert.Equal(t, int64(2_000), response.Data.StripeSubscriptions[0].CurrentPeriodEnd)
 	require.Len(t, response.Data.StripeInvoices, 3)
 	assert.Equal(t, "in_self_billing", response.Data.StripeInvoices[0].InvoiceId)
 	assert.Equal(t, "in_self_billing_unknown", response.Data.StripeInvoices[1].InvoiceId)

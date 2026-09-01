@@ -556,6 +556,8 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 	}
 	subscriptions := make([]StripeSubscriptionSummary, 0, len(orders))
 	orderTitles := make(map[int]string, len(orders))
+	missingPeriodEndOrderIds := make([]int, 0)
+	missingPeriodEndSubscriptionIndexes := make(map[int]int)
 	for _, order := range orders {
 		if order.ProviderSubscriptionId == nil || strings.TrimSpace(*order.ProviderSubscriptionId) == "" {
 			continue
@@ -566,7 +568,7 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 		default:
 			continue
 		}
-		subscriptions = append(subscriptions, StripeSubscriptionSummary{
+		subscription := StripeSubscriptionSummary{
 			SubscriptionId:    *order.ProviderSubscriptionId,
 			CustomerId:        order.ProviderCustomerId,
 			PlanId:            order.PlanId,
@@ -576,7 +578,30 @@ func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscripti
 			CancelAt:          order.StripeCancelAt,
 			CurrentPeriodEnd:  order.StripeCurrentPeriodEnd,
 			Livemode:          order.ProviderLivemode,
-		})
+		}
+		subscriptions = append(subscriptions, subscription)
+		if subscription.CurrentPeriodEnd <= 0 {
+			missingPeriodEndOrderIds = append(missingPeriodEndOrderIds, order.Id)
+			missingPeriodEndSubscriptionIndexes[order.Id] = len(subscriptions) - 1
+		}
+	}
+	if len(missingPeriodEndOrderIds) > 0 {
+		var settlementPeriodEnds []struct {
+			SubscriptionOrderId int   `gorm:"column:subscription_order_id"`
+			PeriodEnd           int64 `gorm:"column:period_end"`
+		}
+		if err := DB.Model(&StripeSubscriptionSettlement{}).
+			Select("subscription_order_id, MAX(period_end) AS period_end").
+			Where("subscription_order_id IN ? AND livemode = ? AND period_end > ?", missingPeriodEndOrderIds, livemode, 0).
+			Group("subscription_order_id").
+			Scan(&settlementPeriodEnds).Error; err != nil {
+			return nil, nil, err
+		}
+		for _, settlementPeriodEnd := range settlementPeriodEnds {
+			if index, ok := missingPeriodEndSubscriptionIndexes[settlementPeriodEnd.SubscriptionOrderId]; ok {
+				subscriptions[index].CurrentPeriodEnd = settlementPeriodEnd.PeriodEnd
+			}
+		}
 	}
 	if len(orderTitles) == 0 {
 		return subscriptions, []StripeInvoiceSummary{}, nil
@@ -1342,6 +1367,11 @@ func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error
 		}
 		order.ProviderCustomerId = input.CustomerId
 		order.ProviderSubscriptionId = common.GetPointer(input.SubscriptionId)
+		// Invoice delivery can lag behind a newer subscription lifecycle event.
+		// Fill a missing period, or replace it only when this invoice is newer.
+		if order.StripeCurrentPeriodEnd <= 0 || input.EventCreated > order.StripeStatusEventTime {
+			order.StripeCurrentPeriodEnd = input.PeriodEnd
+		}
 		if input.EventCreated > order.StripeStatusEventTime {
 			order.StripeStatus = "active"
 			order.StripeStatusEventTime = input.EventCreated

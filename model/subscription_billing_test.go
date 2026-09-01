@@ -56,7 +56,6 @@ func TestCompleteStripeSubscriptionInvoiceGrantsFreshQuotaForEachPaidPeriod(t *t
 		UserId: user.Id, PlanId: 1, Money: 399, TradeNo: "trade_monthly_renewal",
 		PaymentMethod: PaymentMethodStripe, PaymentProvider: PaymentProviderStripe,
 		ProviderOrderId: "cs_monthly_renewal", ProviderProductId: "price_monthly_renewal",
-		ProviderCustomerId: "cus_monthly_renewal", ProviderSubscriptionId: &subscriptionID,
 		ExpectedAmountMinor: 39900, ExpectedCurrency: SubscriptionCurrencyCNY,
 		PlanTitle: "Monthly plan", PlanDurationUnit: SubscriptionDurationMonth,
 		PlanDurationValue: 1, PlanTotalAmount: 2000, PlanResetPeriod: SubscriptionResetBillingCycle,
@@ -69,15 +68,29 @@ func TestCompleteStripeSubscriptionInvoiceGrantsFreshQuotaForEachPaidPeriod(t *t
 	secondEnd := time.Date(2026, time.March, 31, 0, 0, 0, 0, time.UTC).Unix()
 	firstInvoice := StripeInvoiceSettlementInput{
 		InvoiceId: "in_monthly_renewal_first", TradeNo: order.TradeNo,
-		CustomerId: order.ProviderCustomerId, SubscriptionId: subscriptionID,
+		CustomerId: "cus_monthly_renewal", SubscriptionId: subscriptionID,
 		ProductId: order.ProviderProductId, Quantity: 1, UnitAmountMinor: order.ExpectedAmountMinor,
 		InvoiceTotalMinor: order.ExpectedAmountMinor, AmountPaidMinor: order.ExpectedAmountMinor,
 		Currency: order.ExpectedCurrency, PeriodStart: firstStart, PeriodEnd: firstEnd, EventCreated: firstStart,
 	}
 	require.NoError(t, CompleteStripeSubscriptionInvoice(firstInvoice))
 
+	var settledOrder SubscriptionOrder
+	require.NoError(t, db.First(&settledOrder, order.Id).Error)
+	assert.Equal(t, firstEnd, settledOrder.StripeCurrentPeriodEnd)
+	assert.Equal(t, firstInvoice.CustomerId, settledOrder.ProviderCustomerId)
+	require.NotNil(t, settledOrder.ProviderSubscriptionId)
+	assert.Equal(t, subscriptionID, *settledOrder.ProviderSubscriptionId)
+
+	// checkout.session.completed may arrive after invoice.paid. Binding the
+	// already-settled order must preserve the paid billing period.
+	require.NoError(t, order.BindStripeSubscription(firstInvoice.CustomerId, subscriptionID, false))
+	require.NoError(t, db.First(&settledOrder, order.Id).Error)
+	assert.Equal(t, firstEnd, settledOrder.StripeCurrentPeriodEnd)
+
 	var firstSubscription UserSubscription
 	require.NoError(t, db.Where("provider_invoice_id = ?", firstInvoice.InvoiceId).First(&firstSubscription).Error)
+	assert.Equal(t, firstEnd, firstSubscription.EndTime)
 	require.NoError(t, db.Model(&firstSubscription).Update("amount_used", 700).Error)
 
 	secondInvoice := firstInvoice
@@ -87,6 +100,13 @@ func TestCompleteStripeSubscriptionInvoiceGrantsFreshQuotaForEachPaidPeriod(t *t
 	secondInvoice.PeriodEnd = secondEnd
 	secondInvoice.EventCreated = firstEnd
 	require.NoError(t, CompleteStripeSubscriptionInvoice(secondInvoice))
+	require.NoError(t, db.First(&settledOrder, order.Id).Error)
+	assert.Equal(t, secondEnd, settledOrder.StripeCurrentPeriodEnd)
+
+	stripeSubscriptions, _, err := GetStripeSubscriptionBilling(user.Id, false)
+	require.NoError(t, err)
+	require.Len(t, stripeSubscriptions, 1)
+	assert.Equal(t, secondEnd, stripeSubscriptions[0].CurrentPeriodEnd)
 
 	var subscriptions []UserSubscription
 	require.NoError(t, db.
