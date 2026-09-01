@@ -11,14 +11,15 @@
 | 启动本地前端 | 根目录、本地 | `make dev-web` | `makefile` | 待定 | 待定：本次未启动开发服务器 |
 | 运行全部检查 | 全仓 | 待定 | 当前没有单一仓库脚本覆盖 CI 的全部 backend/frontend 检查 | 待定 | 待定 |
 | 运行根模块与 relaykit 测试 | 根目录、本地/CI | `make test` | `makefile`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过；root packages 与 `relaykit` 独立 tests 全部通过，部分 Go 结果来自缓存 |
-| 运行前端测试 | `web/`、本地/CI | `bun run test` | `web/package.json`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过；79 files、311 tests |
+| 运行前端测试 | `web/`、本地/CI | `bun run test` | `web/package.json`、`.github/workflows/ci.yml` | 2026-09-01（Asia/Shanghai） | 已确认：通过；80 files、314 tests |
+| 运行敏感词相关后端测试 | 根目录、本地 | `go test ./setting ./service ./model ./controller -count=1` | 本次变更涉及包及根 `AGENTS.md` 验证规则 | 2026-09-01（Asia/Shanghai） | 已确认：通过 |
 | 根模块静态检查 | 根目录、本地/CI | `GOWORK=off go vet ./...` | `.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：宿主可见边界重跑通过；首次沙箱运行因无权读取 Go build cache 失败 |
 | relaykit 静态检查 | `relaykit/`、本地/CI | `GOWORK=off go vet ./...` | `.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
-| 前端类型检查 | `web/`、本地/CI | `bun run typecheck` | `web/package.json`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
+| 前端类型检查 | `web/`、本地/CI | `bun run typecheck` | `web/package.json`、`.github/workflows/ci.yml` | 2026-09-01（Asia/Shanghai） | 已确认：通过 |
 | 根模块构建 | 根目录、本地/CI | `GOWORK=off go build ./...` | `.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
 | relaykit 独立构建 | `relaykit/`、本地/CI | `GOWORK=off go build ./...` | 根 `AGENTS.md`、`.github/workflows/ci.yml` | 2026-08-31（Asia/Shanghai） | 已确认：通过 |
-| 前端构建 | `web/`、本地/CI | `bun run build` | `web/package.json`、`Dockerfile`、release workflows | 2026-08-31（Asia/Shanghai） | 已确认：通过；Rsbuild 产出 `web/dist` |
-| 部署 Compose | 根目录、目标环境 | `docker compose up -d` | `README.md`、`docker-compose.yml` | 待定 | 待定：本次未部署 |
+| 前端构建 | `web/`、本地/CI | `bun run build` | `web/package.json`、`Dockerfile`、release workflows | 2026-09-01（Asia/Shanghai） | 已确认：通过；Rsbuild 产出 `web/dist` |
+| 重建 GreenCloud 测试应用 | GreenCloud `/srv/new-api-test/compose.yaml`、`new-api-test` | `docker compose -f /srv/new-api-test/compose.yaml up -d --no-deps --no-build --pull never --force-recreate new-api-test` | `docs/operations/greencloud-service-migration-sop.md`、既有测试发布记录 | 2026-09-01（Asia/Shanghai） | 已确认：执行成功；仅重建测试应用，最终 `running/healthy`、重启次数 `0`，测试本机与公网 `/api/status` 均为 HTTP `200` |
 
 ## 命令确认规则
 
