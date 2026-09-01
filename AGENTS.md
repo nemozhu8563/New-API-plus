@@ -55,6 +55,10 @@ web/           — Frontend (React 19, Rsbuild, Base UI, Tailwind)
 
 ## Rules
 
+- 判断项目当前状态前，先读 `docs/facts/current-system.md` 及其索引指向的相关事实文件，并用当前代码、测试、配置或运行结果复核。
+- 读写 `docs/facts/**` 前，先读 `docs/facts/AGENTS.md`。
+- 经验证的当前系统事实发生变化时，同步更新 `docs/facts/`；未知项保留“待定”，不得把计划写成事实。
+
 ### Common Code Quality
 
 - New code should stay direct and readable. Prefer early returns, clear branches, and well-named local variables to deep nesting or layered control flow.

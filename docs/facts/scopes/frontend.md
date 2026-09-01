@@ -1,0 +1,43 @@
+# 管理与用户前端范围事实
+
+## 范围
+
+- 路径：`web/`。
+- 技术栈及版本：React `^19.2.7`、Rsbuild `^2.1.4`、Base UI `^1.6.0`、Tailwind CSS `^4.3.2`、Bun。
+- 相关横向事实：`docs/facts/ui-style.md`、`docs/facts/architecture.md`、`docs/facts/product-domain.md`、`docs/facts/integrations.md`。
+
+## 当前实现
+
+前端包含认证、聊天、Dashboard、渠道、模型、定价、订阅、钱包、日志、系统设置、OAuth、setup、错误页等路由与 feature。入口安装 TanStack Router、React Query、主题、字体、文字方向和 i18n provider，并通过统一 Axios client 调用同源 `/api`。
+
+## 事实来源
+
+`web/package.json`、`web/AGENTS.md`、`web/src/main.tsx`、`web/src/routes/`、`web/src/features/`、`web/src/components/`、`web/src/lib/http-client.ts`、`web/src/i18n/` 及 2026-08-31 前端检查输出。
+
+## 如何承载全局业务规则
+
+- 用户、Token、Channel、钱包、订阅和日志对象由对应 feature 页面展示和操作，最终语义以后端 API 与 `docs/facts/product-domain.md` 为准。
+- 认证状态由统一 auth store、HTTP interceptor 和认证路由承载；401 刷新失败会清理认证并跳转 sign-in。
+- 用户可见文案经 i18n，主题与方向由根 provider 统一承载。
+
+## 接口、页面、集合或模块
+
+- 路由：`web/src/routes/`，认证布局使用 `_authenticated`。
+- 功能：`web/src/features/`。
+- 通用组件：`web/src/components/` 与 `web/src/components/ui/`。
+- 通用状态与请求：`web/src/stores/`、`web/src/lib/`、`web/src/i18n/`。
+
+## 验证状态
+
+已确认：2026-08-31 使用 Bun `1.3.14` 执行 `bun run typecheck`、`bun run test` 和 `bun run build` 均通过；测试结果为 79 files、311 tests。未执行浏览器视觉或 E2E 验收。
+
+## 已知约束
+
+- `web/AGENTS.md` 要求使用 Bun、统一 API client、i18n、现有 UI 组件和当前测试布局。
+- Docker 使用 `oven/bun:1`，CI 固定 Bun `1.3.14`，release workflow 使用 latest；不同上下文的版本选择器并未统一为单一 pin。
+- 构建产物位于 `web/dist`，该目录供根 Go 程序嵌入。
+
+## 待确认事项
+
+- 待定：关键用户流程的浏览器、响应式、键盘和可访问性验证结果。
+- 待定：生产启用的品牌、主题、语言和外部前端部署方式。
