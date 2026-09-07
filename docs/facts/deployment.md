@@ -9,19 +9,18 @@
 | 本地 | 待定：仓库提供 Compose 后端依赖和 Rsbuild 前端启动入口，本次未启动服务 | 后端默认 `http://localhost:3000`；前端开发默认 `http://localhost:5173` | `makefile`、`docker-compose.dev.yml` | 2026-08-31 |
 | CI | 已确认：PR workflow 配置 root/relaykit vet、build、test 与前端 typecheck、test；远端最近一次运行状态待定 | GitHub Actions | `.github/workflows/ci.yml` | 2026-08-31 |
 | 预览 | 不适用：当前仓库未发现独立 preview 环境配置或 preview 部署 workflow | 不适用 | `.github/workflows/`、Docker 与项目配置扫描 | 2026-08-31 |
-| 测试 | 已确认（2026-09-01 15:24～15:27，Asia/Shanghai）：GreenCloud 测试应用运行敏感词分级提交 `fc6ebe122e` 的不可变 `linux/amd64` 镜像，容器 `running/healthy`、重启次数 `0`；策略分级接口验收已完成，允许路径成功生成仍待定 | `test.tryvalo.com` | GreenCloud Docker/PostgreSQL 回读；测试接口验收；当前公网 HTTP | 2026-09-01 |
-| 生产 | 已确认（2026-09-03 09:44～当前，Asia/Shanghai）：GreenCloud 正式应用运行 `new-api:new-api-release-20260903T094447Z-e40d88d1535` 的不可变 `linux/amd64` 镜像，容器 `running/healthy`、重启次数 `0`；PostgreSQL、Redis 未重建 | `api.tryvalo.com`、`new.tryvalo.com`、`tryvalo.com` | GreenCloud Docker/配置摘要、备份、当前公网 HTTP 与 Chrome Network | 2026-09-03 |
+| 测试 | 已确认（2026-09-07，Asia/Shanghai）：GreenCloud 测试应用运行提交 `22a1b1d82` 的不可变 `linux/amd64` 镜像 `new-api:new-api-test-20260907T135216Z-22a1b1d82`，容器 `running/healthy`、重启次数 `0`；Sandbox 公开套餐为 Plan `2/3/4`，均可创建 Stripe Checkout。真实 Sandbox 付款 E2E 待定 | `test.tryvalo.com` | GreenCloud Docker/PostgreSQL 回读、备份校验、当前公网 HTTP 与套餐 API | 2026-09-07 |
+| 生产 | 已确认（2026-09-07，Asia/Shanghai）：GreenCloud 正式应用运行提交 `22a1b1d82` 的不可变 `linux/amd64` 镜像 `new-api:new-api-release-20260907T135216Z-22a1b1d82`，容器 `running/healthy`、重启次数 `0`；PostgreSQL、Redis 未重建。Live 公开套餐为 Plan `1/2/3`，均可创建 Stripe Checkout；真实 Live 付款 E2E 待定 | `api.tryvalo.com`、`new.tryvalo.com`、`tryvalo.com` | GreenCloud Docker/PostgreSQL/Redis 回读、备份校验与当前公网 HTTP/套餐 API | 2026-09-07 |
 
 ## 当前远端快照
 
-- 2026-09-03 09:44～当前（Asia/Shanghai）在 GreenCloud 主机 `nemo-Phoenix` 现场回读：正式 `new-api` 运行 `new-api:new-api-release-20260903T094447Z-e40d88d1535`，镜像 ID `sha256:95f4f247b4e46e275ccdccd7521ca8f3021cf78c18447edcbecff17894d9515d`，状态 `running/healthy`、重启次数 `0`。当前 `images.env` 与 `new-api.env` 的 SHA-256 分别为 `32606ae75a7ac866b6f062d6ce1a8f19b0f84a95bb1170b98f590e86c8ce0284` 与 `0954b8e2356e442a2dcc29f0d56f4328bd40ba0349cb2ce527abf7e9a6e19ffa`。
-- Stripe 订阅账期修复曾以不可变测试镜像 `new-api:new-api-test-20260901T062743Z-89e4d3a911` 完成 Sandbox E2E；镜像 ID 为 `sha256:7cc64698a07c88021fa93b0d58a9d6f50c0a35745e279f000c826758f6f8439c`，传输包 SHA-256 为 `03a091d122fa681c05e374b84f20226fa262e911582dd2ca6468b4dfc87f3e72`。当前测试镜像 `fc6ebe122e` 是该提交的后继版本并包含同一修复，但支付 E2E 的证据归属于 `89e4d3a911` 镜像。
-- 测试和正式本机 `127.0.0.1:3001`、`127.0.0.1:3000` 的 `/api/status` 均返回 HTTP `200`。测试容器因临时渠道启用和清理各重建一次，最终启动时间为 `2026-09-01T07:24:25.939107805Z`；正式应用已在 2026-09-03 发布后现场回读为 `running/healthy`、重启次数 `0`。
-- 生产 `new-api-postgres` 与 `new-api-redis` 均为 `running/healthy`、health failing streak `0`、重启次数 `0`。PostgreSQL `pg_isready` 返回 accepting connections，并完成了生产库只读聚合；Redis 最近五次容器健康检查均以 exit `0` 完成。以上证明容器和所执行的依赖检查，不等于数据库全量数据正确或缓存业务语义完整。
-- 当前公网 `api.tryvalo.com`、`new.tryvalo.com` 和此前测试验收的 `test.tryvalo.com` 的 `/api/status` 均返回 HTTP `200`；本次正式发布没有修改既有边缘路径。
+- 2026-09-07 在 GreenCloud 主机 `nemo-Phoenix` 现场回读：测试 `new-api-test` 运行 `new-api:new-api-test-20260907T135216Z-22a1b1d82`，正式 `new-api` 运行 `new-api:new-api-release-20260907T135216Z-22a1b1d82`；两者镜像 ID 均为 `sha256:44fe064881dc38b72405976d72e8646fb1ff0ed6ce62ba909e253be4c5f388f6`，状态 `running/healthy`、重启次数 `0`。传输包 SHA-256 为 `8ae2ea1165cac2fbfa7e25278b198f1d416a80b9bf93d54da389986f05ec89d4`。
+- 当前回读时测试和正式本机状态端点，以及 `test.tryvalo.com`、`tryvalo.com`、`api.tryvalo.com`、`new.tryvalo.com` 的 `/api/status` 均为 HTTP `200`；测试和正式的 `/wallet`、`/login` 均为 HTTP `200`。直接 HTTPS 首请求均新建连接并返回 `200`；此前同次发布验收中的复用连接同样返回 `200`。
+- 正式 `new-api-postgres` 与 `new-api-redis` 当前均为 `running/healthy`、重启次数 `0`，其容器 ID 与启动时间保持 2026-07 的原值，证明 2026-09-07 正式发布仅重建 `new-api`。以上证明容器和所执行的依赖检查，不等于数据库全量数据正确或缓存业务语义完整。
+- 2026-09-07 数据库只读回读确认：测试保留禁用且不公开的历史 Plan `1`，公开 Plan `2/3/4` 映射 Sandbox one-time Price；正式 Plan `1/2/3` 映射 Live one-time Price，`subscription_orders=0`、active `user_subscriptions=0`。完整 Price 映射与交易边界见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`。
 - 当前边缘路径已现场确认：`api.tryvalo.com` 解析到 Zgo `64.83.30.150`，Zgo Caddy `v2.11.4` 为 active，并固定反代到 GreenCloud `173.249.203.66`，Host 与 TLS SNI 均为 `origin-api.tryvalo.com`；GreenCloud 只允许该 Zgo 地址访问 `origin-api.tryvalo.com`，再转发到 `127.0.0.1:3000`。`new.tryvalo.com` 直接解析到 GreenCloud，并由同一 GreenCloud Caddy 转发到生产应用。
-- 2026-09-03 发布仅重建 `new-api`；`new-api-postgres` 与 `new-api-redis` 的容器 ID 和启动时间保持不变。此次没有读取或使用生产 token，也没有改变数据库、DNS、Cloudflare、Caddy、Zgo 或防火墙配置。
-- 当前正式发布的身份、配置摘要、备份、健康证据、analytics consent 隔离与回滚边界见 [2026-09-03 Tryvalo telemetry 与搜索入口正式发布状态](../operations/2026-09-03-tryvalo-telemetry-search-production-release.md)。敏感词策略的历史发布记录与测试边界分别见 [2026-09-01 敏感词分级策略正式发布状态](../operations/2026-09-01-sensitive-word-policy-production-deployment-status.md) 和 [2026-09-01 敏感词分级策略测试发布状态](../operations/2026-09-01-sensitive-word-policy-test-deployment-status.md)。
+- 2026-09-07 发布仅重建 `new-api-test` 与 `new-api`，没有重建生产 PostgreSQL/Redis，也没有改变 DNS、代理、防火墙、API 密钥、webhook secret、Stripe Tax 或支付方式配置。
+- 当前一次性套餐发布的身份、备份、健康证据与回滚边界见 [2026-09-07 Stripe 一次性付款预配置与切换记录](../operations/2026-09-07-stripe-one-time-cutover.md)。较早的 telemetry、敏感词策略和 Stripe 账期发布记录仍分别由对应操作文档承载。
 - Stripe 账期代码、Sandbox 首购、历史账单日期恢复、Automatic Tax 对象回读及未验证边界见 [2026-09-01 Stripe 订阅账期测试发布记录](../operations/2026-09-01-stripe-subscription-period-test-deployment.md)。
 
 ## 数据库和持久化
@@ -44,7 +43,8 @@
 - 已确认：2026-09-01 正式发布在 `/srv/new-api/backups/new-api-release-20260901T132333Z-fc6ebe122e` 保留发布前 `images.env`、Compose、渲染配置、运行身份、敏感词 option CSV/摘要、PostgreSQL custom-format dump、`pg_restore --list` 和 `SHA256SUMS`；发布后全部校验通过，数据库 dump SHA-256 为 `7b9c6b2e23e7612ca903e83479094cc77b2491baa9c877ab1535eff480d8084c`。该次正式回滚未执行。
 - 已确认：2026-09-03 telemetry/SEO 正式发布在 `/srv/new-api/backups/new-api-release-20260903T094447Z-e40d88d1535` 保留发布前配置与 Compose 材料；应用镜像包 SHA-256 为 `8fbbcbb01bd9ecfb4ab3818c040a2a1a1fd15cc636e7334c86ff9a67193ede7e`。该次正式回滚未执行，详见上述 telemetry 发布记录。
 - 已确认：Stripe 账期测试发布在 `/srv/new-api-test/backups/new-api-test-20260901T062743Z-89e4d3a911/` 保留 `compose.yaml.before` 和 PostgreSQL custom-format `newapi_test.before.dump`；两者 SHA-256 分别为 `62fd95c4269a1ad53a76fc5f792514e731b55a4fef2ca5ac9f3a3d5212c3b76c` 与 `2ea2551b739bfa878c2fe626c3baffb13d7145cd8419c37ca6a6bb19e8afd43a`。dump 大小为 `22,582,167` bytes、mode `600`，`pg_restore --list` 为 `534` 行；回滚未执行。
-- 待定：本次正式发布已有 PostgreSQL 单次 dump 和配置/option 备份，但生产 Redis、`/data` 和日志 volume 的完整备份计划、保留期、恢复命令及最近恢复演练结果仍未确认；应用镜像回滚不能替代数据库恢复。
+- 已确认：2026-09-07 测试和正式切换的备份目录分别为 `/srv/new-api-test/backups/new-api-test-20260907T135216Z-22a1b1d82` 与 `/srv/new-api/backups/new-api-release-20260907T135216Z-22a1b1d82`；两处 `SHA256SUMS` 均已重新校验通过。该次回滚未执行。
+- 待定：上述发布虽有已校验备份目录，但生产 Redis、`/data` 和日志 volume 的完整备份计划、保留期、恢复命令及最近恢复演练结果仍未确认；应用镜像回滚不能替代数据库恢复。
 
 ## 运维和监控
 
@@ -57,6 +57,7 @@
 
 - 已确认（截至 2026-09-03 的文档边界）：telemetry/SEO 正式发布可恢复 `/srv/new-api/backups/new-api-release-20260903T094447Z-e40d88d1535/images.env.before` 并只重建 `new-api`；敏感词正式发布与 Stripe 账期/敏感词测试发布分别保留各自的历史回滚材料。
 - 已确认：本次正式发布删除了持久化敏感词 option。仅回滚镜像不会恢复发布前的 option 覆盖，若要恢复完整策略语义，必须单独审核并从 `sensitive-options.before.csv` 恢复三项 option；完整数据库恢复则使用 custom-format dump 制定方案。
+- 已确认：2026-09-07 一次性套餐发布如需回滚，必须在暂停购买后同时恢复对应备份中的应用镜像配置与旧 recurring Price 映射，并只重建应用；旧代码不得接入新 one-time Price，新代码不得接入旧 recurring Price。
 - 待定：上述应用与数据库回滚均未执行，不能写成已演练；数据库或数据完整性事故必须走单独审核的恢复方案。
 
 ## 已知约束

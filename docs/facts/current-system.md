@@ -8,13 +8,13 @@
 
 已确认：当前仓库由根 Go API 网关服务、独立 Go 模块 `relaykit/` 和 React 前端 `web/` 三个稳定范围组成。根服务将 `web/dist` 嵌入可执行文件，也可以通过 `FRONTEND_BASE_URL` 将未匹配请求重定向到独立前端。2026-08-31 在以提交 `bdbc07608167` 为基线的当前工作树上完成了根模块与 `relaykit` 测试、静态检查和构建，以及前端类型检查、测试和构建。
 
-已确认（2026-09-01 21:28～21:40，Asia/Shanghai）：GreenCloud 正式应用已运行提交 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75` 的不可变 `linux/amd64` 镜像 `new-api:new-api-release-20260901T132333Z-fc6ebe122e`，其镜像 ID 与已验收测试镜像相同。正式应用为 `running/healthy`、重启次数 `0`，本机及 `api.tryvalo.com`、`new.tryvalo.com` 的 `/api/status` 均返回 HTTP `200`；PostgreSQL 和 Redis 未重建。测试应用此前已运行同一提交，测试渠道 `1` 在接口验收后恢复禁用。
+已确认（2026-09-07，Asia/Shanghai）：提交 `22a1b1d82ed26a03f4bcd76a8a1dd74c3332fc48` 已发布到 GreenCloud 测试和正式应用。测试 `new-api-test` 与正式 `new-api` 均运行镜像 ID `sha256:44fe064881dc38b72405976d72e8646fb1ff0ed6ce62ba909e253be4c5f388f6`，均为 `running/healthy`、重启次数 `0`。Sandbox 对外套餐 `2/3/4` 与 Live 对外套餐 `1/2/3` 已分别绑定新的 one-time Price，公开套餐接口均标记 Stripe Checkout 可用；正式 PostgreSQL 和 Redis 未重建。完整部署事实见 `docs/facts/deployment.md`，Stripe 集成边界见 `docs/facts/integrations.md`，执行和回滚边界见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`。
 
 已确认（2026-09-01，Asia/Shanghai）：`test.tryvalo.com` 已完成 Stripe Sandbox Standard `CNY 259/月` 首购、账期写入和账单日期显示 E2E。最新订单的账期与 invoice、唯一 settlement 及唯一 active 权益一致，290 Credits 权益已生效且已用额度为 `0`；历史订单没有做字段回填，但账单 API 已从最新已付 settlement 恢复账期，钱包页显示有效下次账单日期。详细对象状态、Automatic Tax 边界和发布证据由 `docs/facts/integrations.md` 与 `docs/operations/2026-09-01-stripe-subscription-period-test-deployment.md` 承载。该结果不确认续费、退款或争议。
 
-已确认（2026-09-01，代码、GreenCloud 测试与正式环境）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`，测试与正式环境当前运行相同镜像 ID。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。正式库发布前存在的旧 `SensitiveWords` 覆盖已备份后删除，三项敏感词 option 当前均无持久化行，正式运行时使用镜像内置三层词表。生产业务请求 E2E 未执行。
+已确认（2026-09-01，代码及当时 GreenCloud 测试与正式发布）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`，当时测试与正式环境运行相同镜像 ID。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。正式库发布前存在的旧 `SensitiveWords` 覆盖已备份后删除，三项敏感词 option 均无持久化行；生产业务请求 E2E 未执行。
 
-已确认（2026-09-03 09:44:47，Asia/Shanghai；Bing 回读同日）：根 Go 服务的站点运行时配置、GA4/Clarity consent gate、`/robots.txt` 与 `/sitemap.xml` 已发布到 GreenCloud 正式 `new-api`。当前镜像为 `new-api:new-api-release-20260903T094447Z-e40d88d1535`，应用 `running/healthy`、重启次数 `0`；PostgreSQL 与 Redis 未重建。`https://tryvalo.com/` 已运行 canonical 与公开 telemetry payload，初始 analytics consent 为拒绝，未同意时没有 GA4/Clarity 远程资源。GA4 已有精确 Tryvalo Web stream（`https://tryvalo.com`、Measurement ID `G-T2LD0R73QD`），但 Realtime 当前没有可用数据；Clarity 已有精确 Tryvalo project（`ycgor9smow`），当前 provider 页面仍在安装引导，未读到 Dashboard/录制数据。`sc-domain:tryvalo.com` 已由当前 Google 账号以 Owner 身份验证，`https://tryvalo.com/sitemap.xml` 已在 GSC 读回为成功（4 URL）。Bing 的精确站点 `https://tryvalo.com/` 已通过 GSC Import 导入并从 provider 页面读回；同一 sitemap 已提交一次，provider 原始状态为 `Submitted / Processing`。该状态只证明 Bing 已接收并处理中，不确认抓取或收录。正式发布与 provider 回读细节见 `docs/operations/2026-09-03-tryvalo-telemetry-search-production-release.md`。
+已确认（2026-09-03 09:44:47，Asia/Shanghai；Bing 回读同日）：根 Go 服务的站点运行时配置、GA4/Clarity consent gate、`/robots.txt` 与 `/sitemap.xml` 已发布到 GreenCloud 正式 `new-api`。该次发布使用镜像 `new-api:new-api-release-20260903T094447Z-e40d88d1535`，应用为 `running/healthy`、重启次数 `0`；PostgreSQL 与 Redis 未重建。`https://tryvalo.com/` 已运行 canonical 与公开 telemetry payload，初始 analytics consent 为拒绝，未同意时没有 GA4/Clarity 远程资源。GA4 已有精确 Tryvalo Web stream（`https://tryvalo.com`、Measurement ID `G-T2LD0R73QD`），但 Realtime 当前没有可用数据；Clarity 已有精确 Tryvalo project（`ycgor9smow`），当前 provider 页面仍在安装引导，未读到 Dashboard/录制数据。`sc-domain:tryvalo.com` 已由当前 Google 账号以 Owner 身份验证，`https://tryvalo.com/sitemap.xml` 已在 GSC 读回为成功（4 URL）。Bing 的精确站点 `https://tryvalo.com/` 已通过 GSC Import 导入并从 provider 页面读回；同一 sitemap 已提交一次，provider 原始状态为 `Submitted / Processing`。该状态只证明 Bing 已接收并处理中，不确认抓取或收录。正式发布与 provider 回读细节见 `docs/operations/2026-09-03-tryvalo-telemetry-search-production-release.md`。
 
 ## 事实文件索引
 
@@ -23,9 +23,9 @@
 | `docs/facts/architecture.md` | 已确认 | 技术栈、模块边界、运行方式、共享契约位置。 |
 | `docs/facts/product-domain.md` | 已确认 | 跨范围共同成立的业务对象、业务规则、状态语义和业务不变量。 |
 | `docs/facts/ui-style.md` | 已确认 | 全局界面风格、交互原则、视觉约束和组件库使用边界；浏览器视觉验收仍为待定。 |
-| `docs/facts/integrations.md` | 已确认 | 一次性 Checkout、内部取消及 GA4 页面上下文契约；Tryvalo Sandbox/Live 六个 one-time Price 已预配置，但应用与数据库绑定未切换。旧版 Sandbox 交易证据不能替代新版一次性套餐 E2E；退款、争议及 Live Tax 保持待定。 |
-| `docs/facts/deployment.md` | 已确认 | 仓库内部署、数据库和迁移事实，以及 2026-09-01 GreenCloud、Zgo 和公网运行快照；备份和回滚演练仍未闭合。 |
-| `docs/facts/verified-commands.md` | 已确认 | 项目命令来源及最近本地验证结果；2026-09-07 一次性套餐与前端检查边界。 |
+| `docs/facts/integrations.md` | 已确认 | 一次性 Checkout、内部取消及 GA4 页面上下文契约；Tryvalo Sandbox/Live 三档 one-time Price 已分别绑定并随应用发布。旧版 Sandbox 交易证据不能替代新版一次性套餐 E2E；退款、争议及 Live Tax 保持待定。 |
+| `docs/facts/deployment.md` | 已确认 | 仓库内部署、数据库和迁移事实，以及 2026-09-07 GreenCloud 测试、正式、公网和备份快照；备份恢复与回滚演练仍未闭合。 |
+| `docs/facts/verified-commands.md` | 已确认 | 项目命令来源及最近本地验证结果；2026-09-07 一次性套餐发布的应用重建命令和检查边界。 |
 
 ## 生效技术栈
 
@@ -49,10 +49,10 @@
 - 待定：各 AI 渠道和模型的完整能力矩阵；2026-09-01 的运行快照只确认生产中部分渠道近期产生消费成功记录，未主动发起逐模型付费探测。
 - 待定：为 GreenCloud 测试环境恢复一个有效且默认禁用的上游测试凭据，再完成普通文本和 audit 文本的 HTTP `200` 生成 E2E；当前渠道 `1` 返回 `401 Invalid API key`。
 - 待定：使用单独授权的可控生产凭据完成普通文本和 audit 文本成功生成 E2E，并复核 NSFW、高风险阻断及策略日志；当前只确认生产运行已验收镜像与内置三层词表，没有发起生产业务请求。
-- 待定：Stripe Sandbox 一次性套餐发布与 Price 绑定切换后的真实付款、回调、权益、退款和争议 E2E；已有旧版 recurring 首购证据不能替代。
-- 待定：Stripe Live 一次性套餐发布与绑定切换，以及真实充值、套餐付款、签名回调、结算、退款和争议闭环；自动续费不属于当前本地实现。
+- 待定：Stripe Sandbox 一次性套餐切换后的真实付款、回调、权益、退款和争议 E2E；已有旧版 recurring 首购证据不能替代。
+- 待定：Stripe Live 一次性套餐的真实充值、套餐付款、签名回调、结算、退款和争议闭环；自动续费不属于当前本地实现。
 - 待定：Stripe Live Automatic Tax、有效税务注册和申报准备度；Sandbox 本轮 invoice 税额为 `0` 且原因为 `product_exempt`，不能据此确认真实计税交易或 Live 税务状态。
-- 待定：本次正式发布已保留 Compose、镜像配置、敏感词 option 导出和 PostgreSQL custom-format dump，但生产数据库完整恢复演练、Redis/应用数据与日志 volume 备份、监控告警和可执行全栈回滚流程仍未闭合。
+- 待定：2026-09-07 测试和正式发布均保留已校验备份目录，但生产数据库完整恢复演练、Redis/应用数据与日志 volume 备份、监控告警和可执行全栈回滚流程仍未闭合。
 - 待定：用户尚未在生产页主动允许 analytics，因此 GA4/Clarity 的 production transport 尚无证据；GA4 Realtime 当前无数据，Clarity Dashboard/live users 与录制仍未可读回。Bing sitemap 当前为 `Submitted / Processing`，Bing 的抓取和页面收录同样未确认；IndexNow 本次未请求。发布与 sitemap receipt/processing 不替代这些 provider 结果。
 
 ## 最近事实刷新
@@ -67,7 +67,8 @@
 | 敏感词分级策略 GreenCloud 正式发布 | 2026-09-01 21:28～21:40（Asia/Shanghai） | 与测试相同的不可变镜像 ID、GreenCloud Docker/PostgreSQL 回读、备份校验、本机与两个正式公网入口状态接口 | 已确认：正式应用健康、三项持久化 option 均为 0 行、镜像内三层词表生效，PostgreSQL/Redis 未重建；生产业务请求 E2E 未执行。 |
 | 站点 telemetry、SEO 路由与本地验证 | 2026-09-03（Asia/Shanghai） | 当前 Go/React 代码、路由和嵌入资源测试；`bun run test`、`bun run typecheck`、`bun run lint`、`bun run format:check`、`bun run build`、`GOWORK=off go test ./...`、`GOWORK=off go vet ./...`、`GOWORK=off go build ./...` | 已确认：本地 GA4/Clarity consent/origin gate、业务事件、robots/sitemap 及首页运行时注入实现通过验证；该项不涵盖正式发布或外部 provider 回读，后续结果见下一行。 |
 | Tryvalo telemetry/search 正式发布与 provider 回读 | 2026-09-03 09:44～当前（Asia/Shanghai） | GreenCloud Docker/配置摘要、正式公网与 Chrome Network；GA4、Clarity、GSC、Bing Webmaster 的当前 provider UI | 已确认：正式站点已提供 XML sitemap 与 consent-aware telemetry；GA4 精确 stream 和 Clarity 精确 project 已复用，GA4 Realtime 无数据、Clarity 数据面仍在安装引导；GSC Owner 已成功接收 4 URL sitemap。Bing 已通过 GSC Import 读回精确站点，并已一次提交同一 sitemap，provider 原始状态为 `Submitted / Processing`。Bing crawl/indexing 与 GA4/Clarity 数据面继续保持待定；IndexNow 未请求。 |
-| Stripe 一次性套餐、内部取消与 GA4 本地修复及 Price 预配置 | 2026-09-07（Asia/Shanghai） | 当前代码和回归测试；相关 Go 包测试/vet、根模块构建、前端类型检查/全量测试/构建；Tryvalo Sandbox/Live Stripe API 创建与回读 | 已确认：Checkout 仅允许 one-time，订单快照发放、管理员取消及 GA4 URL 清洗通过本地验证；两环境六个新 Price 已准备，默认价格未切换。契约见 `docs/facts/integrations.md`，映射与切换门禁见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`；未发布、未切换数据库、未执行真实付款。 |
+| Stripe 一次性套餐、内部取消与 GA4 本地修复及 Price 预配置 | 2026-09-07（Asia/Shanghai，发布前） | 当前代码和回归测试；相关 Go 包测试/vet、根模块构建、前端类型检查/全量测试/构建；Tryvalo Sandbox/Live Stripe API 创建与回读 | 已确认：Checkout 仅允许 one-time，订单快照发放、管理员取消及 GA4 URL 清洗通过本地验证；两环境六个新 Price 已准备。该行是发布前的本地与 provider 证据，后续实际切换见下一行。 |
+| Stripe 一次性套餐测试与正式切换 | 2026-09-07（Asia/Shanghai） | 提交和不可变镜像、GreenCloud Docker/PostgreSQL/Redis 只读回读、套餐 API、直接公网 HTTPS、备份 `SHA256SUMS` | 已确认：测试 `2/3/4` 与正式 `1/2/3` 的套餐 Price 映射均已切换，两个应用健康且使用同一镜像 ID；正式仅重建应用，PostgreSQL/Redis 未重建。旧 Price、Product 默认 Price、Webhook、Tax 和支付方式均未改变；真实 Checkout、付款、Webhook、权益、退款和争议 E2E 仍未执行。 |
 
 ## 待解决事实冲突
 
