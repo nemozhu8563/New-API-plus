@@ -10,6 +10,8 @@
 
 已确认（2026-09-07，Asia/Shanghai）：提交 `22a1b1d82ed26a03f4bcd76a8a1dd74c3332fc48` 已发布到 GreenCloud 测试和正式应用。测试 `new-api-test` 与正式 `new-api` 均运行镜像 ID `sha256:44fe064881dc38b72405976d72e8646fb1ff0ed6ce62ba909e253be4c5f388f6`，均为 `running/healthy`、重启次数 `0`。Sandbox 对外套餐 `2/3/4` 与 Live 对外套餐 `1/2/3` 已分别绑定新的 one-time Price，公开套餐接口均标记 Stripe Checkout 可用；正式 PostgreSQL 和 Redis 未重建。完整部署事实见 `docs/facts/deployment.md`，Stripe 集成边界见 `docs/facts/integrations.md`，执行和回滚边界见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`。
 
+已确认（2026-09-08，Asia/Shanghai）：GreenCloud 正式基础 Compose 已随提交 `7eee48288` 修复，未启用的 `cpacodexkeeper` 改为显式 keeper overlay，常规应用发布不再因 keeper 镜像变量阻塞。测试与正式基础 Compose 均通过现场配置校验，两个应用保持同一已验收镜像、`running/healthy` 和重启次数 `0`；三个公网状态入口和两环境公开套餐 API 均已重新回读。该结果不替代真实 Stripe 付款闭环验收。
+
 已确认（2026-09-01，Asia/Shanghai）：`test.tryvalo.com` 已完成 Stripe Sandbox Standard `CNY 259/月` 首购、账期写入和账单日期显示 E2E。最新订单的账期与 invoice、唯一 settlement 及唯一 active 权益一致，290 Credits 权益已生效且已用额度为 `0`；历史订单没有做字段回填，但账单 API 已从最新已付 settlement 恢复账期，钱包页显示有效下次账单日期。详细对象状态、Automatic Tax 边界和发布证据由 `docs/facts/integrations.md` 与 `docs/operations/2026-09-01-stripe-subscription-period-test-deployment.md` 承载。该结果不确认续费、退款或争议。
 
 已确认（2026-09-01，代码及当时 GreenCloud 测试与正式发布）：提示词敏感词已从单一硬拦截表改为高风险硬拦截、NSFW 硬拦截和仅审计放行三层策略，默认 2,094 个有效来源词被互斥且完整地划分为 `475 + 548 + 1,071` 条。改动已提交为 `fc6ebe122e32cd131fe7226af5e5c2e8780e9c75`，当时测试与正式环境运行相同镜像 ID。真实测试接口确认 `成人色情` 与 `炸弹制作` 分别按 NSFW 和高风险策略返回 `403 content_policy_violation`，`淫威` 记录 audit 后越过本地策略；普通请求和 audit 请求随后均因测试渠道上游凭据无效返回 `401 Invalid API key`，因此允许路径成功生成仍为待定。正式库发布前存在的旧 `SensitiveWords` 覆盖已备份后删除，三项敏感词 option 均无持久化行；生产业务请求 E2E 未执行。
@@ -69,6 +71,7 @@
 | Tryvalo telemetry/search 正式发布与 provider 回读 | 2026-09-03 09:44～当前（Asia/Shanghai） | GreenCloud Docker/配置摘要、正式公网与 Chrome Network；GA4、Clarity、GSC、Bing Webmaster 的当前 provider UI | 已确认：正式站点已提供 XML sitemap 与 consent-aware telemetry；GA4 精确 stream 和 Clarity 精确 project 已复用，GA4 Realtime 无数据、Clarity 数据面仍在安装引导；GSC Owner 已成功接收 4 URL sitemap。Bing 已通过 GSC Import 读回精确站点，并已一次提交同一 sitemap，provider 原始状态为 `Submitted / Processing`。Bing crawl/indexing 与 GA4/Clarity 数据面继续保持待定；IndexNow 未请求。 |
 | Stripe 一次性套餐、内部取消与 GA4 本地修复及 Price 预配置 | 2026-09-07（Asia/Shanghai，发布前） | 当前代码和回归测试；相关 Go 包测试/vet、根模块构建、前端类型检查/全量测试/构建；Tryvalo Sandbox/Live Stripe API 创建与回读 | 已确认：Checkout 仅允许 one-time，订单快照发放、管理员取消及 GA4 URL 清洗通过本地验证；两环境六个新 Price 已准备。该行是发布前的本地与 provider 证据，后续实际切换见下一行。 |
 | Stripe 一次性套餐测试与正式切换 | 2026-09-07（Asia/Shanghai） | 提交和不可变镜像、GreenCloud Docker/PostgreSQL/Redis 只读回读、套餐 API、直接公网 HTTPS、备份 `SHA256SUMS` | 已确认：测试 `2/3/4` 与正式 `1/2/3` 的套餐 Price 映射均已切换，两个应用健康且使用同一镜像 ID；正式仅重建应用，PostgreSQL/Redis 未重建。旧 Price、Product 默认 Price、Webhook、Tax 和支付方式均未改变；真实 Checkout、付款、Webhook、权益、退款和争议 E2E 仍未执行。 |
+| GreenCloud Compose 配置修复与测试/正式复核 | 2026-09-08（Asia/Shanghai） | 提交 `7eee48288`、GreenCloud Compose/Docker 只读回读、本机和公网状态接口、公开套餐 API、发布前 Compose 备份 | 已确认：基础 Compose 与可选 keeper overlay 分离，测试与正式基础配置均可校验；应用容器未重建且继续健康。三个公网入口及测试/正式套餐 API 已重新回读；真实 Stripe 交易闭环保持待定。 |
 
 ## 待解决事实冲突
 

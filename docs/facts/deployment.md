@@ -20,8 +20,17 @@
 - 2026-09-07 数据库只读回读确认：测试保留禁用且不公开的历史 Plan `1`，公开 Plan `2/3/4` 映射 Sandbox one-time Price；正式 Plan `1/2/3` 映射 Live one-time Price，`subscription_orders=0`、active `user_subscriptions=0`。完整 Price 映射与交易边界见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`。
 - 当前边缘路径已现场确认：`api.tryvalo.com` 解析到 Zgo `64.83.30.150`，Zgo Caddy `v2.11.4` 为 active，并固定反代到 GreenCloud `173.249.203.66`，Host 与 TLS SNI 均为 `origin-api.tryvalo.com`；GreenCloud 只允许该 Zgo 地址访问 `origin-api.tryvalo.com`，再转发到 `127.0.0.1:3000`。`new.tryvalo.com` 直接解析到 GreenCloud，并由同一 GreenCloud Caddy 转发到生产应用。
 - 2026-09-07 发布仅重建 `new-api-test` 与 `new-api`，没有重建生产 PostgreSQL/Redis，也没有改变 DNS、代理、防火墙、API 密钥、webhook secret、Stripe Tax 或支付方式配置。
+- 已确认（2026-09-08 00:48，Asia/Shanghai）：GreenCloud 正式基础 Compose 已更新到源码提交 `7eee48288` 的配置摘要（基础文件 SHA-256 `639aff8994bef03e69bafde58093fe013ac9ed0b01d73586f8e89a274e44d279`）。可选的 `cpacodexkeeper` 已移至显式的 `compose.keeper.yaml`（SHA-256 `5cbcefe4a9f085e3d92e0006954d34afcb2dcc3de3849a0cf547d3d3161c3d67`），使基础应用发布不再依赖 keeper 镜像变量。测试和正式基础 Compose 均已通过 `config -q`；正式显式 keeper overlay 亦通过配置校验，但未启动 keeper。两个应用的 `up --no-deps --no-build --pull never` 复核均保持已有容器，运行镜像、启动时间和重启次数未变。
 - 当前一次性套餐发布的身份、备份、健康证据与回滚边界见 [2026-09-07 Stripe 一次性付款预配置与切换记录](../operations/2026-09-07-stripe-one-time-cutover.md)。较早的 telemetry、敏感词策略和 Stripe 账期发布记录仍分别由对应操作文档承载。
 - Stripe 账期代码、Sandbox 首购、历史账单日期恢复、Automatic Tax 对象回读及未验证边界见 [2026-09-01 Stripe 订阅账期测试发布记录](../operations/2026-09-01-stripe-subscription-period-test-deployment.md)。
+
+## 2026-09-08 GreenCloud Compose 配置发布
+
+- 范围：只修复 GreenCloud `new-api` 基础 Compose 对未启用 `cpacodexkeeper` 的不必要依赖；测试 Compose 与应用镜像未变。涉及主机为 `173.249.203.66`，入口仍为 `test.tryvalo.com`、`api.tryvalo.com`、`new.tryvalo.com`。未修改 DNS、Caddy、代理、防火墙、数据库、Redis、应用环境变量、Stripe 或支付配置。
+- 已执行：先在 `/srv/new-api/backups/new-api-compose-config-20260907T164800Z-7eee48288` 保存发布前 `compose.yaml`，再写入基础 Compose 和显式 keeper overlay；旧基础配置的 SHA-256 为 `aa8ec0bca4e11b135a62f5d626509efd874c91379244d994aa0b47cd901646d5`。源码提交已推送到 `origin/main`。
+- 已验证：测试与正式基础 Compose 的 `config -q` 均通过；正式基础与 keeper overlay 的显式 `--profile keeper config -q` 通过。`new-api` 与 `new-api-test` 均为 `running/healthy`、重启 `0`，继续使用同一镜像 ID `sha256:44fe064881dc38b72405976d72e8646fb1ff0ed6ce62ba909e253be4c5f388f6`。两个本机状态端点及三个公网状态端点均返回 HTTP `200` 和 `success: true`；测试与正式公开套餐 API 均返回三档 CNY `259/599/1099`、一个月有效期及 `stripe_checkout_available=true`。
+- 未回滚：发布前基础 Compose 保留在上述备份目录；如需回退配置，先将 `compose.yaml.before` 恢复为 `/srv/new-api/compose.yaml`，重新执行基础 Compose 配置校验，再仅重建 `new-api`。本次未执行回滚。
+- 已知边界：这次只证明配置、容器、状态接口和公开套餐可用性；Stripe Sandbox/Live 真实付款、Webhook、权益、退款和争议 E2E 仍待定。
 
 ## 数据库和持久化
 
