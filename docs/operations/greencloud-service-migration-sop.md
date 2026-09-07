@@ -134,6 +134,11 @@ docker compose up -d --no-deps --no-build --force-recreate new-api
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
 ```
 
+`cpacodexkeeper` 不属于常规 A 类应用发布。基础 Compose 只包含 `new-api`、PostgreSQL
+和 Redis。需要运行 keeper 时，必须显式加载 `ops/greencloud/compose.keeper.yaml` 并
+指定 `--profile keeper`；该路径仍强制要求 keeper 镜像变量。缺失 keeper 镜像不能阻断
+独立的应用发布，应用发布也不能隐式启动 keeper。
+
 如果本次涉及 schema migration、数据修复或需要重建依赖，必须在变更单中单列步骤、备份、影响面和回滚方法；不得将它们藏在普通镜像发布命令中。
 
 ## 6. 阶段四：私有网络与入口验收（G4）
