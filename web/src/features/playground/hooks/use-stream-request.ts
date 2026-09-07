@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SSE } from 'sse.js'
 
 import { getFreshAuthHeaders } from '@/lib/api'
+import { trackEvent } from '@/lib/site-telemetry'
 
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
 import {
@@ -36,6 +37,10 @@ interface StreamRequestControllerRuntime {
     headers: Record<string, string>
   ) => StreamEventSource
   setStreaming: (streaming: boolean) => void
+  track?: (
+    eventName: 'model_request_started' | 'model_request_succeeded',
+    parameters: { model: string; stream: boolean; latency_ms?: number }
+  ) => void
 }
 
 export function createStreamRequestController(
@@ -80,6 +85,11 @@ export function createStreamRequestController(
     const nextSource = runtime.createSource(payload, headers)
     source = nextSource
     runtime.setStreaming(true)
+    const startedAt = performance.now()
+    runtime.track?.('model_request_started', {
+      model: payload.model,
+      stream: true,
+    })
     let completed = false
 
     const isCurrent = () =>
@@ -98,6 +108,11 @@ export function createStreamRequestController(
       if (isStreamDoneMessage(data)) {
         completed = true
         closeActiveSource(nextSource)
+        runtime.track?.('model_request_succeeded', {
+          model: payload.model,
+          stream: true,
+          latency_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+        })
         callbacks.onComplete()
         return
       }
@@ -180,6 +195,7 @@ export function useStreamRequest() {
           payload: JSON.stringify(payload),
         }) as StreamEventSource,
       setStreaming: setIsStreaming,
+      track: trackEvent,
     })
   }
 

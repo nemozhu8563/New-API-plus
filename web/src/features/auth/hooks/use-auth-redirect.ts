@@ -7,7 +7,13 @@ import {
 } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle } from '@/lib/api'
 import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
+import { trackEvent } from '@/lib/site-telemetry'
 import type { AuthBundle } from '@/stores/auth-store'
+
+type AuthenticationTelemetry = {
+  event?: 'login' | 'sign_up'
+  method?: string
+}
 
 /**
  * Hook for handling authentication redirects and user data management
@@ -22,9 +28,13 @@ export function useAuthRedirect() {
    */
   const handleLoginSuccess = async (
     bundle: AuthBundle,
-    redirectTo?: string
+    redirectTo?: string,
+    telemetry: AuthenticationTelemetry = {}
   ) => {
     applyAuthBundle(bundle)
+    trackEvent(telemetry.event ?? 'login', {
+      method: telemetry.method ?? 'unknown',
+    })
     const savedLang = getSavedLanguage(bundle.user)
     if (savedLang && savedLang !== i18n.language) {
       await i18n.changeLanguage(savedLang)

@@ -59,8 +59,8 @@ function subscriptionResponse(
         },
       })),
       all_subscriptions: [],
-      stripe_subscriptions: [],
-      stripe_invoices: [],
+
+
       billing_debt: 0,
     },
   }

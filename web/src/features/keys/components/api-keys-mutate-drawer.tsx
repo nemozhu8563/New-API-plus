@@ -47,6 +47,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { trackEvent } from '@/lib/site-telemetry'
 import { cn } from '@/lib/utils'
 
 import {
@@ -298,6 +299,7 @@ export function ApiKeysMutateDrawer({
         }
 
         if (successCount > 0) {
+          trackEvent('api_key_created', { count: successCount })
           toast.success(
             t('Successfully created {{count}} API Key(s)', {
               count: successCount,

@@ -121,32 +121,7 @@ describe('subscription plans visibility', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [],
                 all_subscriptions: [],
-                stripe_subscriptions: [
-                  {
-                    subscription_id: 'sub_stale',
-                    customer_id: 'cus_1',
-                    plan_id: 1,
-                    plan_title: 'Standard',
-                    status: 'unknown',
-                    cancel_at_period_end: false,
-                    cancel_at: 0,
-                    current_period_end: 0,
-                    livemode: false,
-                  },
-                ],
-                stripe_invoices: [
-                  {
-                    invoice_id: 'in_stale',
-                    subscription_id: 'sub_stale',
-                    plan_title: 'Standard',
-                    amount_paid_minor: 39_900,
-                    currency: 'cny',
-                    period_start: 1_700_000_000,
-                    period_end: 1_702_419_200,
-                    created_at: 1_700_000_000,
-                    livemode: false,
-                  },
-                ],
+
                 billing_debt: 100,
               },
             }
@@ -190,7 +165,7 @@ describe('subscription plans visibility', () => {
     container.remove()
   })
 
-  test('keeps subscription and Stripe billing details for a subscribed user', async () => {
+  test('keeps internal entitlements without recurring Stripe billing', async () => {
     let completedRequests = 0
     let resolveRequests: (() => void) | undefined
     const requestsComplete = new Promise<void>((resolve) => {
@@ -210,32 +185,7 @@ describe('subscription plans visibility', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [activeSubscription],
                 all_subscriptions: [activeSubscription],
-                stripe_subscriptions: [
-                  {
-                    subscription_id: 'sub_active',
-                    customer_id: 'cus_1',
-                    plan_id: 1,
-                    plan_title: 'Standard',
-                    status: 'active',
-                    cancel_at_period_end: false,
-                    cancel_at: 0,
-                    current_period_end: 1_900_000_000,
-                    livemode: false,
-                  },
-                ],
-                stripe_invoices: [
-                  {
-                    invoice_id: 'in_paid',
-                    subscription_id: 'sub_active',
-                    plan_title: 'Standard',
-                    amount_paid_minor: 39_900,
-                    currency: 'cny',
-                    period_start: 1_700_000_000,
-                    period_end: 1_702_419_200,
-                    created_at: 1_700_000_000,
-                    livemode: false,
-                  },
-                ],
+
                 billing_debt: 0,
               },
             }
@@ -266,8 +216,8 @@ describe('subscription plans visibility', () => {
 
     const text = container.textContent || ''
     assert.match(text, /My Subscriptions/)
-    assert.match(text, /Stripe billing/)
-    assert.match(text, /Billing history/)
+    assert.doesNotMatch(text, /Stripe billing/)
+    assert.doesNotMatch(text, /Billing history/)
 
     await act(async () => root.unmount())
     container.remove()
@@ -306,8 +256,7 @@ describe('subscription plans visibility', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [activeSubscription],
                 all_subscriptions: [activeSubscription],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }
@@ -378,8 +327,7 @@ describe('subscription plans visibility', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [activeSubscription],
                 all_subscriptions: [activeSubscription],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }

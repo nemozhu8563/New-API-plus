@@ -29,8 +29,6 @@ import {
 } from '@/features/subscriptions/lib'
 import type {
   PublicPlanRecord,
-  StripeInvoiceSummary,
-  StripeSubscriptionSummary,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 import { formatQuota } from '@/lib/format'
@@ -42,7 +40,6 @@ import {
 
 import { isStripeSubscriptionEnabled } from '../lib/payment'
 import type { PaymentMethod, TopupInfo } from '../types'
-import { StripeSubscriptionBilling } from './stripe-subscription-billing'
 
 interface SubscriptionPlansCardProps {
   topupInfo: TopupInfo | null
@@ -76,12 +73,6 @@ export function SubscriptionPlansCard({
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
-  const [stripeSubscriptions, setStripeSubscriptions] = useState<
-    StripeSubscriptionSummary[]
-  >([])
-  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoiceSummary[]>(
-    []
-  )
   const [billingDebt, setBillingDebt] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -117,8 +108,7 @@ export function SubscriptionPlansCard({
       if (res.success && res.data) {
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
-        setStripeSubscriptions(res.data.stripe_subscriptions || [])
-        setStripeInvoices(res.data.stripe_invoices || [])
+
         setBillingDebt(Number(res.data.billing_debt || 0))
       }
     } catch {
@@ -417,13 +407,19 @@ export function SubscriptionPlansCard({
           </div>
         )}
 
-        {hasAny && (
-          <StripeSubscriptionBilling
-            subscriptions={stripeSubscriptions}
-            invoices={stripeInvoices}
-            billingDebt={billingDebt}
-            onRefresh={fetchSelfSubscription}
-          />
+        {hasAny && billingDebt > 0 && (
+          <div
+            role='alert'
+            className='border-destructive/35 bg-destructive/5 rounded-lg border p-3'
+          >
+            <p className='text-sm font-medium'>{t('Outstanding balance')}</p>
+            <p className='text-muted-foreground mt-1 text-xs leading-5'>
+              {t(
+                'A refunded or disputed payment left {{amount}} outstanding. New top-ups pay this balance first, and API requests remain paused until it is cleared.',
+                { amount: formatQuota(billingDebt) }
+              )}
+            </p>
+          </div>
         )}
 
         {hasActive && plans.length > 0 && (
@@ -473,9 +469,8 @@ export function SubscriptionPlansCard({
               )
 
               const benefits = [
-                t('Monthly billing'),
                 t('Monthly quota {{quota}}', { quota }),
-                t('Included amount refreshes with each monthly renewal'),
+                t('Valid for one month'),
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`

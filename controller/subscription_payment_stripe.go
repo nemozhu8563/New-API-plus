@@ -191,13 +191,15 @@ func validateStripeSubscriptionPrice(plan *model.SubscriptionPlan, stripePrice *
 	if stripePrice.ID != strings.TrimSpace(plan.StripePriceId) {
 		return fmt.Errorf("Stripe Price ID does not match the plan")
 	}
-	if !stripePrice.Active || stripePrice.Type != stripe.PriceTypeRecurring || stripePrice.Recurring == nil {
-		return fmt.Errorf("Stripe Price must be an active recurring Price")
+	if !stripePrice.Active {
+		return fmt.Errorf("Stripe Price must be active")
+	}
+	if stripePrice.Type != stripe.PriceTypeOneTime || stripePrice.Recurring != nil {
+		return fmt.Errorf("Stripe Price must be one-time without recurring settings")
 	}
 	if stripePrice.BillingScheme != stripe.PriceBillingSchemePerUnit ||
-		stripePrice.Recurring.UsageType != stripe.PriceRecurringUsageTypeLicensed ||
-		stripePrice.TransformQuantity != nil {
-		return fmt.Errorf("Stripe Price must use fixed per-unit licensed billing")
+		stripePrice.CustomUnitAmount != nil || stripePrice.TransformQuantity != nil {
+		return fmt.Errorf("Stripe Price must use fixed per-unit billing")
 	}
 	if stripePrice.UnitAmount != expectedAmountMinor ||
 		!strings.EqualFold(string(stripePrice.Currency), expectedCurrency) ||
@@ -205,12 +207,11 @@ func validateStripeSubscriptionPrice(plan *model.SubscriptionPlan, stripePrice *
 		return fmt.Errorf("Stripe Price amount, currency, or livemode does not match the plan")
 	}
 
+	// A successful one-time payment grants one month of application entitlement.
 	if plan.DurationUnit != model.SubscriptionDurationMonth || plan.DurationValue != 1 ||
 		model.NormalizeResetPeriod(plan.QuotaResetPeriod) != model.SubscriptionResetBillingCycle ||
-		plan.QuotaResetCustomSeconds != 0 ||
-		stripePrice.Recurring.Interval != stripe.PriceRecurringIntervalMonth ||
-		stripePrice.Recurring.IntervalCount != 1 {
-		return fmt.Errorf("Stripe Price must recur once per month")
+		plan.QuotaResetCustomSeconds != 0 {
+		return fmt.Errorf("Stripe plan must grant one monthly period")
 	}
 	return nil
 }
@@ -230,19 +231,21 @@ func genStripeSubscriptionLink(ctx context.Context, referenceId string, customer
 				Quantity: stripe.Int64(1),
 			},
 		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 		Metadata: map[string]string{
 			"trade_no":   referenceId,
 			"order_kind": "subscription",
 			"price_id":   priceId,
 		},
-		SubscriptionData: &stripe.CheckoutSessionCreateSubscriptionDataParams{
-			Metadata: map[string]string{
-				"trade_no":   referenceId,
-				"order_kind": "subscription",
-				"price_id":   priceId,
-			},
+	}
+	params.Mode = stripe.String(string(stripe.CheckoutSessionModePayment))
+	params.Expand = []*string{stripe.String("payment_intent.latest_charge")}
+	params.PaymentMethodOptions = &stripe.CheckoutSessionCreatePaymentMethodOptionsParams{
+		WeChatPay: &stripe.CheckoutSessionCreatePaymentMethodOptionsWeChatPayParams{
+			Client: stripe.String(string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb)),
 		},
+	}
+	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
+		Metadata: params.Metadata,
 	}
 	params.SetIdempotencyKey("checkout-" + referenceId)
 

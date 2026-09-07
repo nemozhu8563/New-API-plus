@@ -34,6 +34,7 @@ import {
 import { useStatus } from '@/hooks/use-status'
 import { isAuthBundle } from '@/lib/api'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { trackEvent } from '@/lib/site-telemetry'
 import { cn } from '@/lib/utils'
 
 export function SignUpForm({
@@ -152,6 +153,7 @@ export function SignUpForm({
       })
 
       if (res?.success) {
+        trackEvent('sign_up', { method: 'password' })
         toast.success(t('Account created! Please sign in'))
         redirectToLogin()
       } else {
@@ -198,7 +200,10 @@ export function SignUpForm({
     try {
       const res = await wechatLoginByCode(wechatCode)
       if (res?.success && isAuthBundle(res.data)) {
-        await handleLoginSuccess(res.data)
+        await handleLoginSuccess(res.data, undefined, {
+          event: 'sign_up',
+          method: 'wechat',
+        })
         toast.success(t('Signed in via WeChat'))
         handleWeChatDialogChange(false)
       } else {

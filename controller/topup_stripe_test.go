@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +24,7 @@ import (
 func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 	t.Helper()
 	confirmPaymentComplianceForTest(t)
+	model.InvalidateSubscriptionPlanCache(1)
 	originalDB := model.DB
 	originalLogDB := model.LOG_DB
 	originalRedis := common.RedisEnabled
@@ -32,10 +32,10 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
 	originalFetchStripeRefundsForCharge := fetchStripeRefundsForCharge
-	originalFetchStripeInvoicePayments := fetchStripeInvoicePayments
 	originalGinMode := gin.Mode()
 	var sqlDB *sql.DB
 	t.Cleanup(func() {
+		model.InvalidateSubscriptionPlanCache(1)
 		model.DB = originalDB
 		model.LOG_DB = originalLogDB
 		common.RedisEnabled = originalRedis
@@ -43,7 +43,6 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 		setting.StripeWebhookSecret = originalWebhookSecret
 		setting.StripePriceId = originalPriceID
 		fetchStripeRefundsForCharge = originalFetchStripeRefundsForCharge
-		fetchStripeInvoicePayments = originalFetchStripeInvoicePayments
 		gin.SetMode(originalGinMode)
 		if sqlDB != nil {
 			_ = sqlDB.Close()
@@ -66,8 +65,6 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
-		&model.StripeSubscriptionSettlement{},
-		&model.StripeSubscriptionLock{},
 	))
 	model.DB = db
 	model.LOG_DB = db
@@ -77,6 +74,44 @@ func setupStripeWebhookTest(t *testing.T) *gorm.DB {
 	setting.StripePriceId = "price_local_test"
 	gin.SetMode(gin.TestMode)
 	return db
+}
+
+func TestGenStripeLinkConfiguresWeChatPayForWebCheckout(t *testing.T) {
+	originalAPISecret := setting.StripeApiSecret
+	originalPriceID := setting.StripePriceId
+	originalCreateStripeCheckoutSession := createStripeCheckoutSession
+	t.Cleanup(func() {
+		setting.StripeApiSecret = originalAPISecret
+		setting.StripePriceId = originalPriceID
+		createStripeCheckoutSession = originalCreateStripeCheckoutSession
+	})
+
+	setting.StripeApiSecret = "rk_test_placeholder"
+	setting.StripePriceId = "price_local_test"
+
+	var capturedParams *stripe.CheckoutSessionCreateParams
+	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		capturedParams = params
+		return &stripe.CheckoutSession{
+			ID:  "cs_local_test",
+			URL: "https://checkout.stripe.com/c/pay/cs_local_test",
+		}, nil
+	}
+
+	result, err := genStripeLink(context.Background(), "ref_local_test", "", "", 1, "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, capturedParams)
+	require.NotNil(t, capturedParams.PaymentMethodOptions)
+	require.NotNil(t, capturedParams.PaymentMethodOptions.WeChatPay)
+	require.NotNil(t, capturedParams.PaymentMethodOptions.WeChatPay.Client)
+
+	assert.Equal(t, stripe.CheckoutSessionModePayment, stripe.CheckoutSessionMode(*capturedParams.Mode))
+	assert.Empty(t, capturedParams.PaymentMethodTypes)
+	assert.Equal(t,
+		string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb),
+		*capturedParams.PaymentMethodOptions.WeChatPay.Client,
+	)
 }
 
 func stripeWebhookPayloadForEvent(t *testing.T, secret string, eventID string, eventType stripe.EventType, eventObject any) ([]byte, string) {
@@ -297,7 +332,6 @@ func TestIsPermanentStripeWebhookError(t *testing.T) {
 	assert.True(t, isPermanentStripeWebhookError(model.ErrPaymentMethodMismatch))
 	assert.True(t, isPermanentStripeWebhookError(model.ErrTopUpStatusInvalid))
 	assert.True(t, isPermanentStripeWebhookError(model.ErrStripeSubscriptionMismatch))
-	assert.True(t, isPermanentStripeWebhookError(model.ErrStripeSubscriptionPeriodOverlap))
 	assert.False(t, isPermanentStripeWebhookError(model.ErrTopUpNotFound))
 	assert.False(t, isPermanentStripeWebhookError(assert.AnError))
 }
@@ -728,6 +762,236 @@ func TestStripeAsyncPaymentSuccessCreditsTopUpAfterCheckoutExpired(t *testing.T)
 	assert.Equal(t, paid.PaymentIntent.ID, storedTopUp.ProviderPaymentIntent)
 }
 
+func insertStripeOneTimeSubscriptionOrderForWebhookTest(t *testing.T, db *gorm.DB, tradeNo string) *model.SubscriptionOrder {
+	t.Helper()
+	user := &model.User{
+		Username: "stripe_one_time_subscription_" + tradeNo,
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, db.Create(user).Error)
+	plan := &model.SubscriptionPlan{
+		Title:                   "One-time Stripe plan",
+		PriceAmount:             399,
+		Currency:                model.SubscriptionCurrencyCNY,
+		DurationUnit:            model.SubscriptionDurationMonth,
+		DurationValue:           1,
+		TotalAmount:             1000,
+		QuotaResetPeriod:        model.SubscriptionResetBillingCycle,
+		QuotaResetCustomSeconds: 0,
+		Enabled:                 true,
+		StripePriceId:           "price_one_time_subscription",
+	}
+	require.NoError(t, db.Create(plan).Error)
+	order := &model.SubscriptionOrder{
+		UserId:                  user.Id,
+		PlanId:                  plan.Id,
+		Money:                   plan.PriceAmount,
+		TradeNo:                 tradeNo,
+		PaymentMethod:           model.PaymentMethodStripe,
+		PaymentProvider:         model.PaymentProviderStripe,
+		ProviderOrderId:         "cs_" + tradeNo,
+		ProviderProductId:       plan.StripePriceId,
+		ExpectedAmountMinor:     39900,
+		ExpectedCurrency:        model.SubscriptionCurrencyCNY,
+		PlanTitle:               plan.Title,
+		PlanDurationUnit:        plan.DurationUnit,
+		PlanDurationValue:       plan.DurationValue,
+		PlanTotalAmount:         plan.TotalAmount,
+		PlanResetPeriod:         plan.QuotaResetPeriod,
+		PlanAllowWalletOverflow: true,
+		Status:                  common.TopUpStatusPending,
+	}
+	require.NoError(t, order.Insert())
+	return order
+}
+
+func stripeOneTimeSubscriptionCheckoutForWebhookTest(order *model.SubscriptionOrder) *stripe.CheckoutSession {
+	return &stripe.CheckoutSession{
+		ID:                order.ProviderOrderId,
+		ClientReferenceID: order.TradeNo,
+		Status:            stripe.CheckoutSessionStatusComplete,
+		PaymentStatus:     stripe.CheckoutSessionPaymentStatusPaid,
+		Mode:              stripe.CheckoutSessionModePayment,
+		AmountTotal:       order.ExpectedAmountMinor,
+		Currency:          stripe.CurrencyCNY,
+		Customer:          &stripe.Customer{ID: "cus_" + order.TradeNo},
+		PaymentIntent:     &stripe.PaymentIntent{ID: "pi_" + order.TradeNo, LatestCharge: &stripe.Charge{ID: "ch_" + order.TradeNo}},
+		Metadata: map[string]string{
+			"trade_no": order.TradeNo, "order_kind": "subscription", "price_id": order.ProviderProductId,
+		},
+	}
+}
+
+func TestStripeOneTimeSubscriptionCheckoutCreatesApplicationEntitlement(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "ref_one_time_subscription")
+	checkoutSession := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+
+	require.NoError(t, sessionCompleted(context.Background(), stripe.Event{
+		ID: "evt_one_time_subscription", Type: stripe.EventTypeCheckoutSessionCompleted,
+	}, checkoutSession, "127.0.0.1"))
+
+	storedOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, storedOrder)
+	assert.Equal(t, common.TopUpStatusSuccess, storedOrder.Status)
+	assert.Equal(t, checkoutSession.Customer.ID, storedOrder.ProviderCustomerId)
+
+	var subscription model.UserSubscription
+	require.NoError(t, db.Where("user_id = ? AND plan_id = ?", order.UserId, order.PlanId).First(&subscription).Error)
+	assert.Equal(t, "active", subscription.Status)
+	assert.Equal(t, int64(1000), subscription.AmountTotal)
+	assert.Greater(t, subscription.EndTime, subscription.StartTime)
+
+	var topUp model.TopUp
+	require.NoError(t, db.Where("trade_no = ?", order.TradeNo).First(&topUp).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+	var paymentReference model.StripePaymentReference
+	require.NoError(t, db.Where("payment_intent_id = ?", "pi_"+order.TradeNo).First(&paymentReference).Error)
+	assert.Equal(t, model.StripePaymentTargetSubscriptionEntitlement, paymentReference.TargetKind)
+	assert.Equal(t, subscription.Id, paymentReference.TargetId)
+}
+
+func TestStripeOneTimeSubscriptionUsesPurchasedSnapshotAfterPlanChanges(t *testing.T) {
+	for _, change := range []string{"edited", "deleted"} {
+		t.Run(change, func(t *testing.T) {
+			db := setupStripeWebhookTest(t)
+			order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "snapshot_"+change)
+			order.PlanDowngradeGroup = "default"
+			order.PlanAllowWalletOverflow = false
+			require.NoError(t, db.Save(order).Error)
+			if change == "deleted" {
+				require.NoError(t, db.Delete(&model.SubscriptionPlan{}, order.PlanId).Error)
+			} else {
+				require.NoError(t, db.Model(&model.SubscriptionPlan{}).Where("id = ?", order.PlanId).Updates(map[string]any{
+					"title": "Edited plan", "total_amount": 2000,
+					"duration_unit": model.SubscriptionDurationHour, "duration_value": 2, "custom_seconds": 7200,
+					"quota_reset_period": model.SubscriptionResetCustom, "quota_reset_custom_seconds": 60,
+					"downgrade_group": "edited_default", "allow_wallet_overflow": true,
+				}).Error)
+			}
+			model.InvalidateSubscriptionPlanCache(order.PlanId)
+			checkoutSession := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+			event := stripe.Event{ID: "evt_snapshot_" + change, Type: stripe.EventTypeCheckoutSessionCompleted}
+
+			require.NoError(t, sessionCompleted(context.Background(), event, checkoutSession, "127.0.0.1"))
+			require.NoError(t, sessionCompleted(context.Background(), event, checkoutSession, "127.0.0.1"))
+
+			var subscriptions []model.UserSubscription
+			require.NoError(t, db.Where("user_id = ?", order.UserId).Find(&subscriptions).Error)
+			require.Len(t, subscriptions, 1)
+			subscription := subscriptions[0]
+			assert.Equal(t, "active", subscription.Status)
+			assert.Equal(t, order.PlanTitle, subscription.PlanTitle)
+			assert.Equal(t, order.PlanTotalAmount, subscription.AmountTotal)
+			assert.Zero(t, subscription.AmountUsed)
+			assert.Equal(t, time.Unix(subscription.StartTime, 0).AddDate(0, 1, 0).Unix(), subscription.EndTime)
+			assert.Equal(t, order.PlanResetPeriod, subscription.QuotaResetPeriod)
+			assert.Equal(t, order.PlanResetCustomSeconds, subscription.QuotaResetCustomSeconds)
+			assert.Zero(t, subscription.LastResetTime)
+			assert.Zero(t, subscription.NextResetTime)
+			assert.Equal(t, order.PlanUpgradeGroup, subscription.UpgradeGroup)
+			assert.Equal(t, order.PlanDowngradeGroup, subscription.DowngradeGroup)
+			assert.Equal(t, order.PlanAllowWalletOverflow, subscription.AllowWalletOverflow)
+			storedOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+			require.NotNil(t, storedOrder)
+			assert.Equal(t, common.TopUpStatusSuccess, storedOrder.Status)
+		})
+	}
+}
+
+func TestStripeOneTimeSubscriptionAsyncPaymentSucceededCompletesExpiredOrder(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "ref_one_time_subscription_async")
+	expired := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+	expired.Status = stripe.CheckoutSessionStatusExpired
+	expired.PaymentStatus = stripe.CheckoutSessionPaymentStatusUnpaid
+	expired.PaymentIntent = nil
+
+	require.NoError(t, sessionExpired(context.Background(), expired))
+	storedOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, storedOrder)
+	assert.Equal(t, common.TopUpStatusExpired, storedOrder.Status)
+
+	paid := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+	require.NoError(t, sessionAsyncPaymentSucceeded(context.Background(), stripe.Event{
+		ID: "evt_one_time_subscription_async", Type: stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded,
+	}, paid, "127.0.0.1"))
+
+	storedOrder = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, storedOrder)
+	assert.Equal(t, common.TopUpStatusSuccess, storedOrder.Status)
+	var subscriptions int64
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", order.UserId).Count(&subscriptions).Error)
+	assert.Equal(t, int64(1), subscriptions)
+}
+
+func TestStripeOneTimeSubscriptionSnapshotPreservesPurchaseLimit(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "snapshot_purchase_limit")
+	require.NoError(t, db.Model(&model.SubscriptionPlan{}).Where("id = ?", order.PlanId).Update("max_purchase_per_user", 1).Error)
+	model.InvalidateSubscriptionPlanCache(order.PlanId)
+	require.NoError(t, db.Create(&model.UserSubscription{
+		UserId: order.UserId, PlanId: order.PlanId, Status: "expired",
+	}).Error)
+
+	err := sessionCompleted(context.Background(), stripe.Event{
+		ID: "evt_snapshot_purchase_limit", Type: stripe.EventTypeCheckoutSessionCompleted,
+	}, stripeOneTimeSubscriptionCheckoutForWebhookTest(order), "127.0.0.1")
+
+	require.EqualError(t, err, "已达到该套餐购买上限")
+	storedOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, storedOrder)
+	assert.Equal(t, common.TopUpStatusPending, storedOrder.Status)
+	var count int64
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", order.UserId).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+	require.NoError(t, db.Model(&model.StripePaymentReference{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestStripeOneTimeSubscriptionAsyncPaymentFailedExpiresOrder(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "ref_one_time_subscription_failed")
+	checkoutSession := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+	checkoutSession.PaymentStatus = stripe.CheckoutSessionPaymentStatusUnpaid
+	checkoutSession.PaymentIntent = nil
+
+	require.NoError(t, sessionAsyncPaymentFailed(context.Background(), stripe.Event{
+		ID: "evt_one_time_subscription_failed", Created: 1,
+	}, checkoutSession, "127.0.0.1"))
+
+	storedOrder := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
+	require.NotNil(t, storedOrder)
+	assert.Equal(t, common.TopUpStatusExpired, storedOrder.Status)
+}
+
+func TestStripeOneTimeSubscriptionRefundRevokesApplicationEntitlement(t *testing.T) {
+	db := setupStripeWebhookTest(t)
+	order := insertStripeOneTimeSubscriptionOrderForWebhookTest(t, db, "ref_one_time_subscription_refund")
+	checkoutSession := stripeOneTimeSubscriptionCheckoutForWebhookTest(order)
+	require.NoError(t, sessionCompleted(context.Background(), stripe.Event{
+		ID: "evt_one_time_subscription_refund_payment", Type: stripe.EventTypeCheckoutSessionCompleted,
+	}, checkoutSession, "127.0.0.1"))
+
+	require.NoError(t, processStripeRefund(context.Background(), stripe.Event{
+		ID: "evt_one_time_subscription_refund", Type: stripe.EventTypeRefundCreated,
+		Livemode: false, Created: 2,
+	}, &stripe.Refund{
+		ID:     "re_one_time_subscription",
+		Amount: order.ExpectedAmountMinor, Currency: stripe.CurrencyCNY,
+		PaymentIntent: &stripe.PaymentIntent{ID: "pi_" + order.TradeNo},
+		Charge:        &stripe.Charge{ID: "ch_" + order.TradeNo},
+		Status:        stripe.RefundStatusSucceeded,
+	}, "", ""))
+
+	var subscription model.UserSubscription
+	require.NoError(t, db.Where("user_id = ? AND plan_id = ?", order.UserId, order.PlanId).First(&subscription).Error)
+	assert.Equal(t, "cancelled", subscription.Status)
+	var recovery model.StripePaymentRecovery
+	require.NoError(t, db.Where("target_kind = ? AND target_id = ?", model.StripePaymentTargetSubscriptionEntitlement, subscription.Id).First(&recovery).Error)
+	assert.True(t, recovery.EntitlementRevoked)
+}
+
 func TestStripeExpiredEventCannotInvalidateAlreadyPaidTopUp(t *testing.T) {
 	db := setupStripeWebhookTest(t)
 	user := &model.User{Id: 906, Username: "stripe_paid_expired_user", Status: common.UserStatusEnabled, Quota: 25}
@@ -835,840 +1099,6 @@ func TestValidateStripeCheckoutOrderRejectsSnapshotMismatch(t *testing.T) {
 			)
 
 			require.Error(t, err)
-		})
-	}
-}
-
-func insertStripeSubscriptionOrderForWebhookTest(t *testing.T, db *gorm.DB, tradeNo string) *model.SubscriptionOrder {
-	t.Helper()
-	user := &model.User{
-		Username: "stripe_subscription_" + tradeNo,
-		AffCode:  "aff_" + tradeNo,
-		Status:   common.UserStatusEnabled,
-	}
-	require.NoError(t, db.Create(user).Error)
-	plan := &model.SubscriptionPlan{
-		Title: "Frozen Stripe plan", PriceAmount: 12, Currency: "USD",
-		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
-		Enabled: true, TotalAmount: 1200, StripePriceId: "price_subscription_local",
-	}
-	require.NoError(t, db.Create(plan).Error)
-	order := &model.SubscriptionOrder{
-		UserId: user.Id, PlanId: plan.Id, Money: 12, TradeNo: tradeNo,
-		PaymentMethod: model.PaymentMethodStripe, PaymentProvider: model.PaymentProviderStripe,
-		ProviderOrderId: "cs_" + tradeNo, ProviderProductId: plan.StripePriceId,
-		ProviderCustomerId: "cus_" + tradeNo, ProviderSubscriptionId: common.GetPointer("sub_" + tradeNo),
-		ExpectedAmountMinor: 1200, ExpectedCurrency: "USD",
-		PlanTitle: plan.Title, PlanDurationUnit: plan.DurationUnit, PlanDurationValue: plan.DurationValue,
-		PlanTotalAmount: plan.TotalAmount, PlanResetPeriod: model.SubscriptionResetNever,
-		PlanAllowWalletOverflow: true, Status: common.TopUpStatusPending,
-	}
-	require.NoError(t, order.Insert())
-	return order
-}
-
-func stripeSubscriptionCheckoutForWebhookTest(order *model.SubscriptionOrder) *stripe.CheckoutSession {
-	return &stripe.CheckoutSession{
-		ID: order.ProviderOrderId, ClientReferenceID: order.TradeNo,
-		Mode: stripe.CheckoutSessionModeSubscription, AmountTotal: order.ExpectedAmountMinor,
-		Currency: stripe.CurrencyUSD, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
-		Subscription: &stripe.Subscription{ID: *order.ProviderSubscriptionId},
-		Metadata: map[string]string{
-			"trade_no": order.TradeNo, "order_kind": "subscription", "price_id": order.ProviderProductId,
-		},
-	}
-}
-
-func stripePaidInvoiceForWebhookTest(order *model.SubscriptionOrder, invoiceID string) *stripe.Invoice {
-	periodStart := time.Now().Unix()
-	return &stripe.Invoice{
-		ID: invoiceID, Status: stripe.InvoiceStatusPaid,
-		Currency: stripe.CurrencyUSD, Total: order.ExpectedAmountMinor, AmountPaid: order.ExpectedAmountMinor,
-		CollectionMethod: stripe.InvoiceCollectionMethodChargeAutomatically,
-		BillingReason:    stripe.InvoiceBillingReasonSubscriptionCycle,
-		Customer:         &stripe.Customer{ID: order.ProviderCustomerId},
-		Payments: &stripe.InvoicePaymentList{Data: []*stripe.InvoicePayment{{
-			ID: "inpy_" + invoiceID, AmountPaid: order.ExpectedAmountMinor,
-			Currency: stripe.CurrencyUSD, Livemode: order.ProviderLivemode, Status: "paid",
-			Payment: &stripe.InvoicePaymentPayment{
-				Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
-				PaymentIntent: &stripe.PaymentIntent{ID: "pi_" + invoiceID},
-			},
-		}}},
-		Parent: &stripe.InvoiceParent{
-			Type: stripe.InvoiceParentTypeSubscriptionDetails,
-			SubscriptionDetails: &stripe.InvoiceParentSubscriptionDetails{
-				Subscription: &stripe.Subscription{ID: *order.ProviderSubscriptionId},
-				Metadata: map[string]string{
-					"trade_no": order.TradeNo, "order_kind": "subscription", "price_id": order.ProviderProductId,
-				},
-			},
-		},
-		Lines: &stripe.InvoiceLineItemList{Data: []*stripe.InvoiceLineItem{{
-			Currency: stripe.CurrencyUSD, Quantity: 1,
-			Parent: &stripe.InvoiceLineItemParent{
-				Type: stripe.InvoiceLineItemParentTypeSubscriptionItemDetails,
-				SubscriptionItemDetails: &stripe.InvoiceLineItemParentSubscriptionItemDetails{
-					Subscription: *order.ProviderSubscriptionId, SubscriptionItem: "si_" + order.TradeNo,
-				},
-			},
-			Pricing: &stripe.InvoiceLineItemPricing{
-				Type: stripe.InvoiceLineItemPricingTypePriceDetails,
-				PriceDetails: &stripe.InvoiceLineItemPricingPriceDetails{
-					Price: &stripe.Price{ID: order.ProviderProductId}, Product: "prod_" + order.TradeNo,
-				},
-				UnitAmountDecimal: float64(order.ExpectedAmountMinor),
-			},
-			Period: &stripe.Period{Start: periodStart, End: time.Unix(periodStart, 0).AddDate(0, 1, 0).Unix()},
-		}}},
-	}
-}
-
-func stripePaidInvoiceObjectForWebhookTest(order *model.SubscriptionOrder, invoiceID string) map[string]any {
-	periodStart := int64(1_700_000_000)
-	paymentIntentID := "pi_" + order.TradeNo
-	chargeID := "ch_" + order.TradeNo
-	return map[string]any{
-		"id":                     invoiceID,
-		"object":                 "invoice",
-		"livemode":               false,
-		"status":                 string(stripe.InvoiceStatusPaid),
-		"currency":               string(stripe.CurrencyUSD),
-		"total":                  order.ExpectedAmountMinor,
-		"amount_paid":            order.ExpectedAmountMinor,
-		"amount_remaining":       int64(0),
-		"amount_paid_off_stripe": int64(0),
-		"collection_method":      string(stripe.InvoiceCollectionMethodChargeAutomatically),
-		"billing_reason":         string(stripe.InvoiceBillingReasonSubscriptionCycle),
-		"customer":               order.ProviderCustomerId,
-		"parent": map[string]any{
-			"type": string(stripe.InvoiceParentTypeSubscriptionDetails),
-			"subscription_details": map[string]any{
-				"subscription": *order.ProviderSubscriptionId,
-				"metadata": map[string]string{
-					"trade_no": order.TradeNo, "order_kind": "subscription", "price_id": order.ProviderProductId,
-				},
-			},
-		},
-		"payments": map[string]any{
-			"object":   "list",
-			"has_more": false,
-			"data": []any{map[string]any{
-				"id":          "inpy_" + order.TradeNo,
-				"object":      "invoice_payment",
-				"amount_paid": order.ExpectedAmountMinor,
-				"currency":    string(stripe.CurrencyUSD),
-				"livemode":    false,
-				"status":      "paid",
-				"payment": map[string]any{
-					"type":           "payment_intent",
-					"payment_intent": paymentIntentID,
-					"charge":         chargeID,
-				},
-			}},
-		},
-		"lines": map[string]any{
-			"object": "list",
-			"data": []any{map[string]any{
-				"id":       "il_" + order.TradeNo,
-				"object":   "line_item",
-				"currency": string(stripe.CurrencyUSD),
-				"quantity": int64(1),
-				"parent": map[string]any{
-					"type": string(stripe.InvoiceLineItemParentTypeSubscriptionItemDetails),
-					"subscription_item_details": map[string]any{
-						"subscription": *order.ProviderSubscriptionId,
-						"proration":    false,
-					},
-				},
-				"pricing": map[string]any{
-					"type": string(stripe.InvoiceLineItemPricingTypePriceDetails),
-					"price_details": map[string]any{
-						"price":   order.ProviderProductId,
-						"product": "prod_" + order.TradeNo,
-					},
-					"unit_amount_decimal": fmt.Sprintf("%d", order.ExpectedAmountMinor),
-				},
-				"period": map[string]any{
-					"start": periodStart,
-					"end":   time.Unix(periodStart, 0).AddDate(0, 1, 0).Unix(),
-				},
-			}},
-		},
-	}
-}
-
-func TestStripePaidInvoiceWebhookCompletesDahliaSubscriptionSettlement(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_signed_dahlia")
-	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_signed_dahlia")
-	payload, signature := stripeWebhookPayloadForEvent(
-		t,
-		setting.StripeWebhookSecret,
-		"evt_signed_dahlia_invoice",
-		stripe.EventTypeInvoicePaid,
-		invoiceObject,
-	)
-
-	recorder := invokeStripeWebhook(payload, signature)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	var settlement model.StripeSubscriptionSettlement
-	require.NoError(t, db.Where("invoice_id = ?", "in_signed_dahlia").First(&settlement).Error)
-	assert.Equal(t, order.ExpectedAmountMinor, settlement.InvoiceTotalMinor)
-	assert.Equal(t, *order.ProviderSubscriptionId, settlement.ProviderSubscriptionId)
-	var subscription model.UserSubscription
-	require.NoError(t, db.Where("provider_invoice_id = ?", "in_signed_dahlia").First(&subscription).Error)
-	assert.Equal(t, *order.ProviderSubscriptionId, subscription.ProviderSubscriptionId)
-	var event model.StripeWebhookEvent
-	require.NoError(t, db.Where("stripe_event_id = ?", "evt_signed_dahlia_invoice").First(&event).Error)
-	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
-}
-
-func TestStripePaidInvoiceWebhookTreatsMissingAmountPaidOffStripeAsZero(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_missing_paid_off_stripe")
-	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_missing_paid_off_stripe")
-	delete(invoiceObject, "amount_paid_off_stripe")
-	payload, signature := stripeWebhookPayloadForEvent(
-		t,
-		setting.StripeWebhookSecret,
-		"evt_missing_paid_off_stripe",
-		stripe.EventTypeInvoicePaid,
-		invoiceObject,
-	)
-
-	recorder := invokeStripeWebhook(payload, signature)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	var subscriptions int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", "in_missing_paid_off_stripe").Count(&subscriptions).Error)
-	assert.Equal(t, int64(1), subscriptions)
-	var event model.StripeWebhookEvent
-	require.NoError(t, db.Where("stripe_event_id = ?", "evt_missing_paid_off_stripe").First(&event).Error)
-	assert.Equal(t, model.StripeWebhookEventStatusSucceeded, event.Status)
-}
-
-func TestStripePaidInvoiceWebhookFallsBackToBoundSubscriptionWithoutTradeNo(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_without_trade_no")
-	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_without_trade_no")
-	parent := invoiceObject["parent"].(map[string]any)
-	subscriptionDetails := parent["subscription_details"].(map[string]any)
-	metadata := subscriptionDetails["metadata"].(map[string]string)
-	delete(metadata, "trade_no")
-	payload, signature := stripeWebhookPayloadForEvent(
-		t,
-		setting.StripeWebhookSecret,
-		"evt_without_trade_no",
-		stripe.EventTypeInvoicePaid,
-		invoiceObject,
-	)
-
-	recorder := invokeStripeWebhook(payload, signature)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	var settlement model.StripeSubscriptionSettlement
-	require.NoError(t, db.Where("invoice_id = ?", "in_without_trade_no").First(&settlement).Error)
-	assert.Equal(t, order.Id, settlement.SubscriptionOrderId)
-	assert.Equal(t, *order.ProviderSubscriptionId, settlement.ProviderSubscriptionId)
-}
-
-func TestStripeSubscriptionAsyncPaymentFailureRemainsRetryable(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_async_failed")
-
-	checkoutSession := stripeSubscriptionCheckoutForWebhookTest(order)
-	checkoutSession.Created = 300
-	require.NoError(t, sessionAsyncPaymentFailed(context.Background(), stripe.Event{Created: 100}, checkoutSession, "127.0.0.1"))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusPending, stored.Status)
-	assert.Equal(t, "payment_failed", stored.StripeStatus)
-	assert.Equal(t, int64(100), stored.StripeStatusEventTime)
-
-	paidInvoice := stripePaidInvoiceForWebhookTest(order, "in_async_ordering")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
-	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, "active", stored.StripeStatus)
-	assert.Equal(t, int64(200), stored.StripeStatusEventTime)
-}
-
-func TestStripeInvoiceBeforeCheckoutCompletionBindsSubscription(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_invoice_first")
-	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]any{
-		"provider_customer_id": "", "provider_subscription_id": nil,
-	}).Error)
-	order.ProviderCustomerId = "cus_invoice_first"
-	order.ProviderSubscriptionId = common.GetPointer("sub_invoice_first")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_first")
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	assert.Equal(t, order.ProviderCustomerId, stored.ProviderCustomerId)
-	assert.Equal(t, order.ProviderSubscriptionId, stored.ProviderSubscriptionId)
-	expectedPeriodEnd := invoice.Lines.Data[0].Period.End
-	assert.Equal(t, expectedPeriodEnd, stored.StripeCurrentPeriodEnd)
-
-	// checkout.session.completed may be delivered after invoice.paid.
-	require.NoError(t, bindStripeSubscriptionCheckout(stripeSubscriptionCheckoutForWebhookTest(order)))
-	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, expectedPeriodEnd, stored.StripeCurrentPeriodEnd)
-}
-
-func TestStripeInvoiceBeforeCheckoutCompletionRejectsMismatchedMetadata(t *testing.T) {
-	testCases := []struct {
-		name   string
-		mutate func(*stripe.Invoice)
-	}{
-		{name: "order kind", mutate: func(invoice *stripe.Invoice) {
-			invoice.Parent.SubscriptionDetails.Metadata["order_kind"] = "topup"
-		}},
-		{name: "price", mutate: func(invoice *stripe.Invoice) {
-			invoice.Parent.SubscriptionDetails.Metadata["price_id"] = "price_other"
-		}},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db := setupStripeWebhookTest(t)
-			order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_invoice_first_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			require.NoError(t, db.Model(&model.SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]any{
-				"provider_customer_id": "", "provider_subscription_id": nil,
-			}).Error)
-			order.ProviderCustomerId = "cus_invoice_first_metadata"
-			order.ProviderSubscriptionId = common.GetPointer("sub_invoice_first_metadata")
-			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_first_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			testCase.mutate(invoice)
-
-			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-			require.Error(t, err)
-			stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-			require.NotNil(t, stored)
-			assert.Nil(t, stored.ProviderSubscriptionId)
-			assert.Empty(t, stored.ProviderCustomerId)
-		})
-	}
-}
-
-func TestStripePaidInvoiceAcceptsCustomerCreditThatChangesAmountPaid(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_credit_invoice")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_credit_invoice")
-	invoice.AmountPaid = 0
-	invoice.Payments = nil
-	event := stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}
-
-	require.NoError(t, processStripeInvoice(context.Background(), event, invoice))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	var subscriptions int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", invoice.ID).Count(&subscriptions).Error)
-	assert.Equal(t, int64(1), subscriptions)
-	var settlement model.StripeSubscriptionSettlement
-	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
-	assert.Zero(t, settlement.AmountPaidMinor)
-}
-
-func TestStripePaidInvoiceRetriesWhenCollectedPaymentReferencesAreUnavailable(t *testing.T) {
-	setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, model.DB, "sub_ref_missing_payment_references")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_missing_payment_references")
-	invoice.Payments = nil
-	fetchStripeInvoicePayments = func(_ context.Context, invoiceID string) ([]*stripe.InvoicePayment, error) {
-		assert.Equal(t, invoice.ID, invoiceID)
-		return nil, assert.AnError
-	}
-
-	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-	require.ErrorContains(t, err, "获取 Stripe Invoice")
-	assert.False(t, isPermanentStripeWebhookError(err))
-}
-
-func TestStripePaidInvoiceFetchesCompletePaymentReferences(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_fetch_payment_references")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_fetch_payment_references")
-	invoice.Payments = &stripe.InvoicePaymentList{
-		ListMeta: stripe.ListMeta{HasMore: true},
-		Data:     invoice.Payments.Data,
-	}
-	requestedInvoiceID := ""
-	fetchStripeInvoicePayments = func(_ context.Context, invoiceID string) ([]*stripe.InvoicePayment, error) {
-		requestedInvoiceID = invoiceID
-		return []*stripe.InvoicePayment{
-			{
-				ID: "inpy_fetch_first", AmountPaid: 500, Currency: stripe.CurrencyUSD,
-				Livemode: false, Status: "paid",
-				Payment: &stripe.InvoicePaymentPayment{
-					Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
-					PaymentIntent: &stripe.PaymentIntent{ID: "pi_fetch_first"},
-				},
-			},
-			{
-				ID: "inpy_fetch_second", AmountPaid: 700, Currency: stripe.CurrencyUSD,
-				Livemode: false, Status: "paid",
-				Payment: &stripe.InvoicePaymentPayment{
-					Type:          stripe.InvoicePaymentPaymentTypePaymentIntent,
-					PaymentIntent: &stripe.PaymentIntent{ID: "pi_fetch_second"},
-				},
-			},
-		}, nil
-	}
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-	assert.Equal(t, invoice.ID, requestedInvoiceID)
-
-	var settlement model.StripeSubscriptionSettlement
-	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
-	var references []model.StripePaymentReference
-	require.NoError(t, db.Where("target_kind = ? AND target_id = ?", model.StripePaymentTargetSubscription, settlement.Id).
-		Order("amount_minor asc").Find(&references).Error)
-	require.Len(t, references, 2)
-	assert.Equal(t, int64(500), references[0].AmountMinor)
-	assert.Equal(t, int64(700), references[1].AmountMinor)
-}
-
-func TestStripePaidInvoiceRetriesWhenPaymentReferenceFetchFails(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_payment_references_retry")
-	invoiceObject := stripePaidInvoiceObjectForWebhookTest(order, "in_payment_references_retry")
-	payments := invoiceObject["payments"].(map[string]any)
-	payments["has_more"] = true
-	fetchStripeInvoicePayments = func(_ context.Context, _ string) ([]*stripe.InvoicePayment, error) {
-		return nil, assert.AnError
-	}
-	payload, signature := stripeWebhookPayloadForEvent(
-		t,
-		setting.StripeWebhookSecret,
-		"evt_payment_references_retry",
-		stripe.EventTypeInvoicePaid,
-		invoiceObject,
-	)
-
-	recorder := invokeStripeWebhook(payload, signature)
-
-	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
-	var event model.StripeWebhookEvent
-	require.NoError(t, db.Where("stripe_event_id = ?", "evt_payment_references_retry").First(&event).Error)
-	assert.Equal(t, model.StripeWebhookEventStatusFailed, event.Status)
-	assert.Contains(t, event.LastError, "付款引用")
-}
-
-func TestStripePaidInvoiceRejectsInvalidSettlementEnvelope(t *testing.T) {
-	testCases := []struct {
-		name   string
-		mutate func(*stripe.Invoice)
-	}{
-		{name: "discounted total", mutate: func(invoice *stripe.Invoice) { invoice.Total-- }},
-		{name: "remaining balance", mutate: func(invoice *stripe.Invoice) { invoice.AmountRemaining = 1 }},
-		{name: "paid out of band", mutate: func(invoice *stripe.Invoice) { invoice.AmountPaidOffStripe = 1 }},
-		{name: "manual collection", mutate: func(invoice *stripe.Invoice) {
-			invoice.CollectionMethod = stripe.InvoiceCollectionMethodSendInvoice
-		}},
-		{name: "subscription update", mutate: func(invoice *stripe.Invoice) {
-			invoice.BillingReason = stripe.InvoiceBillingReasonSubscriptionUpdate
-		}},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db := setupStripeWebhookTest(t)
-			order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_invoice_envelope_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_envelope_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			testCase.mutate(invoice)
-
-			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-			require.Error(t, err)
-			var subscriptions int64
-			require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", invoice.ID).Count(&subscriptions).Error)
-			assert.Zero(t, subscriptions)
-		})
-	}
-}
-
-func TestStripeInvoiceRejectsMismatchedSubscriptionMetadata(t *testing.T) {
-	testCases := []struct {
-		name   string
-		mutate func(*stripe.Invoice)
-	}{
-		{name: "trade number", mutate: func(invoice *stripe.Invoice) {
-			invoice.Parent.SubscriptionDetails.Metadata["trade_no"] = "sub_ref_other"
-		}},
-		{name: "order kind", mutate: func(invoice *stripe.Invoice) {
-			invoice.Parent.SubscriptionDetails.Metadata["order_kind"] = "topup"
-		}},
-		{name: "price", mutate: func(invoice *stripe.Invoice) {
-			invoice.Parent.SubscriptionDetails.Metadata["price_id"] = "price_other"
-		}},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db := setupStripeWebhookTest(t)
-			order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_invoice_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			invoice := stripePaidInvoiceForWebhookTest(order, "in_invoice_metadata_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			testCase.mutate(invoice)
-
-			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-			require.Error(t, err)
-			var subscriptions int64
-			require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", invoice.ID).Count(&subscriptions).Error)
-			assert.Zero(t, subscriptions)
-		})
-	}
-}
-
-func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentPayload(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-	invoice.AmountPaid--
-	invoice.Payments.Data[0].AmountPaid--
-
-	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
-}
-
-func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentUnitAmount(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice_unit_amount")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice_unit_amount")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-	invoice.Lines.Data[0].Pricing.UnitAmountDecimal++
-
-	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
-}
-
-func TestStripePaidInvoiceRejectsReusedInvoiceWithDifferentTotal(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_reused_invoice_total")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_reused_invoice_total")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-	var settlement model.StripeSubscriptionSettlement
-	require.NoError(t, db.Where("invoice_id = ?", invoice.ID).First(&settlement).Error)
-	assert.Equal(t, invoice.Total, settlement.InvoiceTotalMinor)
-
-	require.NoError(t, db.Model(&model.SubscriptionOrder{}).
-		Where("id = ?", order.Id).
-		Update("expected_amount_minor", order.ExpectedAmountMinor+1).Error)
-	invoice.Total++
-
-	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-	require.ErrorIs(t, err, model.ErrStripeInvoiceAlreadyBound)
-}
-
-func TestStripeInvoicePaymentFailureCanRecoverWithPaidInvoice(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_retry_recovery")
-	failedInvoice := stripePaidInvoiceForWebhookTest(order, "in_retry_failed")
-	failedInvoice.Status = stripe.InvoiceStatusOpen
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaymentFailed, Created: 100}, failedInvoice))
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusPending, stored.Status)
-	assert.Equal(t, "payment_failed", stored.StripeStatus)
-
-	paidInvoice := stripePaidInvoiceForWebhookTest(order, "in_retry_paid")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, paidInvoice))
-	stored = model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, common.TopUpStatusSuccess, stored.Status)
-	assert.Equal(t, "active", stored.StripeStatus)
-	var subscriptions int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", paidInvoice.ID).Count(&subscriptions).Error)
-	assert.Equal(t, int64(1), subscriptions)
-}
-
-func TestStripeSubscriptionLifecycleIgnoresStaleEvent(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_lifecycle_ordering")
-	subscription := &stripe.Subscription{
-		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
-		Status: stripe.SubscriptionStatusActive,
-		Items:  &stripe.SubscriptionItemList{Data: []*stripe.SubscriptionItem{{CurrentPeriodEnd: 9_000}}},
-	}
-
-	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionUpdated, Created: 200,
-	}, subscription))
-	subscription.Status = stripe.SubscriptionStatusPastDue
-	subscription.Items.Data[0].CurrentPeriodEnd = 8_000
-	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionUpdated, Created: 100,
-	}, subscription))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, string(stripe.SubscriptionStatusActive), stored.StripeStatus)
-	assert.Equal(t, int64(200), stored.StripeStatusEventTime)
-	assert.Equal(t, int64(9_000), stored.StripeCurrentPeriodEnd)
-}
-
-func TestStripeSubscriptionDeletionWinsEqualTimestampRegardlessOfDeliveryOrder(t *testing.T) {
-	testCases := []struct {
-		name        string
-		firstType   stripe.EventType
-		firstState  stripe.SubscriptionStatus
-		secondType  stripe.EventType
-		secondState stripe.SubscriptionStatus
-	}{
-		{
-			name:        "updated then deleted",
-			firstType:   stripe.EventTypeCustomerSubscriptionUpdated,
-			firstState:  stripe.SubscriptionStatusActive,
-			secondType:  stripe.EventTypeCustomerSubscriptionDeleted,
-			secondState: stripe.SubscriptionStatusCanceled,
-		},
-		{
-			name:        "deleted then updated",
-			firstType:   stripe.EventTypeCustomerSubscriptionDeleted,
-			firstState:  stripe.SubscriptionStatusCanceled,
-			secondType:  stripe.EventTypeCustomerSubscriptionUpdated,
-			secondState: stripe.SubscriptionStatusActive,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db := setupStripeWebhookTest(t)
-			order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_equal_lifecycle_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			subscription := &stripe.Subscription{
-				ID:       *order.ProviderSubscriptionId,
-				Customer: &stripe.Customer{ID: order.ProviderCustomerId},
-			}
-
-			subscription.Status = testCase.firstState
-			require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-				Type: testCase.firstType, Created: 200,
-			}, subscription))
-			subscription.Status = testCase.secondState
-			require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-				Type: testCase.secondType, Created: 200,
-			}, subscription))
-
-			stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-			require.NotNil(t, stored)
-			assert.Equal(t, string(stripe.SubscriptionStatusCanceled), stored.StripeStatus)
-			assert.Equal(t, int64(200), stored.StripeStatusEventTime)
-		})
-	}
-}
-
-func TestStripeSubscriptionDeletionPreservesPaidServicePeriod(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_deleted_period")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_deleted_period")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-
-	subscription := &stripe.Subscription{
-		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
-		Status: stripe.SubscriptionStatusCanceled,
-	}
-	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionDeleted, Created: 300,
-	}, subscription))
-
-	var userSubscription model.UserSubscription
-	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
-	assert.Equal(t, "active", userSubscription.Status)
-	assert.Equal(t, invoice.Lines.Data[0].Period.End, userSubscription.EndTime)
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, string(stripe.SubscriptionStatusCanceled), stored.StripeStatus)
-}
-
-func TestStripePaidInvoiceDoesNotRollBackNewerCanceledStatus(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_stale_paid_invoice")
-	subscription := &stripe.Subscription{
-		ID: *order.ProviderSubscriptionId, Customer: &stripe.Customer{ID: order.ProviderCustomerId},
-		Status: stripe.SubscriptionStatusCanceled,
-		Items:  &stripe.SubscriptionItemList{Data: []*stripe.SubscriptionItem{{CurrentPeriodEnd: 9_000}}},
-	}
-	require.NoError(t, processStripeSubscriptionLifecycle(stripe.Event{
-		Type: stripe.EventTypeCustomerSubscriptionDeleted, Created: 300,
-	}, subscription))
-
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_stale_paid_invoice")
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, invoice))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Equal(t, string(stripe.SubscriptionStatusCanceled), stored.StripeStatus)
-	assert.Equal(t, int64(300), stored.StripeStatusEventTime)
-	assert.Equal(t, int64(9_000), stored.StripeCurrentPeriodEnd)
-	var userSubscription model.UserSubscription
-	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
-	assert.Equal(t, "active", userSubscription.Status)
-}
-
-func TestStripePaidInvoiceUsesFrozenPlanSnapshotAfterPlanMutation(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_frozen_plan")
-	require.NoError(t, db.Model(&model.SubscriptionPlan{}).Where("id = ?", order.PlanId).Updates(map[string]any{
-		"title": "Mutated plan", "total_amount": 999999, "duration_value": 12,
-	}).Error)
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_frozen_plan")
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-
-	var userSubscription model.UserSubscription
-	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
-	assert.Equal(t, order.PlanTitle, userSubscription.PlanTitle)
-	assert.Equal(t, order.PlanTotalAmount, userSubscription.AmountTotal)
-	assert.Equal(t, invoice.Lines.Data[0].Period.End, userSubscription.EndTime)
-}
-
-func TestStripePaidInvoiceStoresOnlySettlementAuditFields(t *testing.T) {
-	setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, model.DB, "sub_ref_minimal_payload")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_minimal_payload")
-	invoice.Customer.Email = "private@example.com"
-	invoice.Description = "private invoice description"
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-
-	stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-	require.NotNil(t, stored)
-	assert.Contains(t, stored.ProviderPayload, `"invoice_id":"in_minimal_payload"`)
-	assert.Contains(t, stored.ProviderPayload, `"amount_paid_minor":1200`)
-	assert.NotContains(t, stored.ProviderPayload, "private@example.com")
-	assert.NotContains(t, stored.ProviderPayload, "private invoice description")
-}
-
-func TestStripePaidInvoiceUsesStripeMonthEndPeriodAsAuthoritative(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_month_end_period")
-	invoice := stripePaidInvoiceForWebhookTest(order, "in_month_end_period")
-	invoice.Lines.Data[0].Period = &stripe.Period{
-		Start: time.Date(2026, time.February, 28, 12, 0, 0, 0, time.UTC).Unix(),
-		End:   time.Date(2026, time.March, 31, 12, 0, 0, 0, time.UTC).Unix(),
-	}
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice))
-
-	var userSubscription model.UserSubscription
-	require.NoError(t, db.Where("provider_invoice_id = ?", invoice.ID).First(&userSubscription).Error)
-	assert.Equal(t, invoice.Lines.Data[0].Period.Start, userSubscription.StartTime)
-	assert.Equal(t, invoice.Lines.Data[0].Period.End, userSubscription.EndTime)
-}
-
-func TestStripePaidInvoiceRejectsOverlappingServicePeriodForSameSubscription(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_overlap_period")
-	firstInvoice := stripePaidInvoiceForWebhookTest(order, "in_overlap_period_first")
-	firstInvoice.Lines.Data[0].Period = &stripe.Period{Start: 100, End: 200}
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
-
-	overlappingInvoice := stripePaidInvoiceForWebhookTest(order, "in_overlap_period_second")
-	overlappingInvoice.Lines.Data[0].Period = &stripe.Period{Start: 150, End: 250}
-
-	err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, overlappingInvoice)
-
-	require.ErrorIs(t, err, model.ErrStripeSubscriptionPeriodOverlap)
-	var subscriptions int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).
-		Where("provider_subscription_id = ?", *order.ProviderSubscriptionId).
-		Count(&subscriptions).Error)
-	assert.Equal(t, int64(1), subscriptions)
-}
-
-func TestStripeSubscriptionCannotBindToAnotherLocalOrder(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	firstOrder := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_unique_binding_first")
-	secondOrder := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_unique_binding_second")
-
-	err := secondOrder.BindStripeSubscription(
-		secondOrder.ProviderCustomerId,
-		*firstOrder.ProviderSubscriptionId,
-		secondOrder.ProviderLivemode,
-	)
-
-	require.ErrorIs(t, err, model.ErrStripeSubscriptionMismatch)
-	stored := model.GetSubscriptionOrderByTradeNo(secondOrder.TradeNo)
-	require.NotNil(t, stored)
-	require.NotNil(t, stored.ProviderSubscriptionId)
-	assert.Equal(t, *secondOrder.ProviderSubscriptionId, *stored.ProviderSubscriptionId)
-}
-
-func TestStripePaidInvoiceAllowsAdjacentServicePeriodsForSameSubscription(t *testing.T) {
-	db := setupStripeWebhookTest(t)
-	order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_adjacent_period")
-	firstInvoice := stripePaidInvoiceForWebhookTest(order, "in_adjacent_period_first")
-	firstInvoice.Lines.Data[0].Period = &stripe.Period{Start: 100, End: 200}
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, firstInvoice))
-
-	adjacentInvoice := stripePaidInvoiceForWebhookTest(order, "in_adjacent_period_second")
-	adjacentInvoice.Lines.Data[0].Period = &stripe.Period{Start: 200, End: 300}
-
-	require.NoError(t, processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 200}, adjacentInvoice))
-	var subscriptions int64
-	require.NoError(t, db.Model(&model.UserSubscription{}).
-		Where("provider_subscription_id = ?", *order.ProviderSubscriptionId).
-		Count(&subscriptions).Error)
-	assert.Equal(t, int64(2), subscriptions)
-}
-
-func TestStripePaidInvoiceRejectsImmutableSnapshotMismatches(t *testing.T) {
-	testCases := []struct {
-		name   string
-		mutate func(*stripe.Invoice)
-	}{
-		{name: "customer", mutate: func(invoice *stripe.Invoice) { invoice.Customer.ID = "cus_other" }},
-		{name: "subscription", mutate: func(invoice *stripe.Invoice) { invoice.Parent.SubscriptionDetails.Subscription.ID = "sub_other" }},
-		{name: "price", mutate: func(invoice *stripe.Invoice) { invoice.Lines.Data[0].Pricing.PriceDetails.Price.ID = "price_other" }},
-		{name: "quantity", mutate: func(invoice *stripe.Invoice) { invoice.Lines.Data[0].Quantity = 2 }},
-		{name: "unit amount", mutate: func(invoice *stripe.Invoice) { invoice.Lines.Data[0].Pricing.UnitAmountDecimal++ }},
-		{name: "currency", mutate: func(invoice *stripe.Invoice) { invoice.Currency = stripe.CurrencyEUR }},
-		{name: "livemode", mutate: func(invoice *stripe.Invoice) { invoice.Livemode = true }},
-		{name: "period", mutate: func(invoice *stripe.Invoice) { invoice.Lines.Data[0].Period.End = invoice.Lines.Data[0].Period.Start }},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			db := setupStripeWebhookTest(t)
-			order := insertStripeSubscriptionOrderForWebhookTest(t, db, "sub_ref_mismatch_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			invoice := stripePaidInvoiceForWebhookTest(order, "in_mismatch_"+strings.ReplaceAll(testCase.name, " ", "_"))
-			testCase.mutate(invoice)
-
-			err := processStripeInvoice(context.Background(), stripe.Event{Type: stripe.EventTypeInvoicePaid, Created: 100}, invoice)
-
-			require.Error(t, err)
-			stored := model.GetSubscriptionOrderByTradeNo(order.TradeNo)
-			require.NotNil(t, stored)
-			assert.Equal(t, common.TopUpStatusPending, stored.Status)
-			var subscriptions int64
-			require.NoError(t, db.Model(&model.UserSubscription{}).Where("provider_invoice_id = ?", invoice.ID).Count(&subscriptions).Error)
-			assert.Zero(t, subscriptions)
 		})
 	}
 }

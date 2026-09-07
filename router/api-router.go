@@ -169,8 +169,6 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
-			subscriptionRoute.POST("/stripe/cancel", middleware.CriticalRateLimit(), controller.CancelStripeSubscription)
-			subscriptionRoute.POST("/stripe/portal", middleware.CriticalRateLimit(), controller.CreateStripeBillingPortalSession)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.AdminAuth())

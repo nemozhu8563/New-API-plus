@@ -16,6 +16,7 @@ import {
 } from '@/features/subscriptions/lib'
 import type { PublicSubscriptionPlan } from '@/features/subscriptions/types'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
+import { amountBucket, trackEvent } from '@/lib/site-telemetry'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -132,8 +133,7 @@ function PlanCard(props: {
       <ul className='mt-5 flex-1 space-y-3 text-sm leading-6 text-white/78'>
         {[
           t('Monthly quota {{quota}}', { quota: quotaLabel }),
-          t('Included amount refreshes with each monthly renewal'),
-          t('Renews automatically every month'),
+          t('Valid for one month'),
         ].map((benefit) => (
           <li key={benefit} className='flex items-start gap-3'>
             <HugeiconsIcon
@@ -189,7 +189,17 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
       }
       return checkoutUrl
     },
-    onSuccess: (checkoutUrl) => {
+    onSuccess: (checkoutUrl, planId) => {
+      const plan = landingPlans.find(
+        (record) => record.plan.id === planId
+      )?.plan
+      trackEvent('checkout_created', {
+        checkout_type: 'landing_subscription',
+        provider: 'stripe',
+        plan_id: planId,
+        currency: plan?.currency,
+        amount_bucket: amountBucket(Number(plan?.price_amount || 0)),
+      })
       redirectToCheckout(checkoutUrl)
     },
     onError: () => {
@@ -204,11 +214,6 @@ export function LandingPlansSection(props: LandingPlansSectionProps) {
           <h2 className='text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl'>
             {t('Choose the plan that fits your work')}
           </h2>
-          <p className='mt-4 text-sm leading-7 text-white/55 sm:text-base'>
-            {t(
-              'Every plan includes one monthly quota pool, refreshed after each successful monthly renewal.'
-            )}
-          </p>
           <p className='mt-6 text-xs font-semibold tracking-[0.18em] text-[#ef884c] uppercase'>
             {t('Subscription plans')}
           </p>

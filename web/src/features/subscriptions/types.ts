@@ -88,8 +88,6 @@ export const userSubscriptionSchema = z.object({
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
-  provider: z.string().optional(),
-  provider_subscription_id: z.string().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
@@ -136,34 +134,6 @@ export interface SubscriptionPayResponse {
   url?: string
 }
 
-export type StripeBillingPortalResponse = ApiResponse<{
-  portal_url: string
-}>
-
-export interface StripeSubscriptionSummary {
-  subscription_id: string
-  customer_id: string
-  plan_id: number
-  plan_title: string
-  status: string
-  cancel_at_period_end: boolean
-  cancel_at: number
-  current_period_end: number
-  livemode: boolean
-}
-
-export interface StripeInvoiceSummary {
-  invoice_id: string
-  subscription_id: string
-  plan_title: string
-  amount_paid_minor: number
-  currency: string
-  period_start: number
-  period_end: number
-  created_at: number
-  livemode: boolean
-}
-
 export interface CreateUserSubscriptionRequest {
   plan_id: number
 }
@@ -193,8 +163,7 @@ export interface SelfSubscriptionData {
   billing_preference: string
   subscriptions: UserSubscriptionRecord[]
   all_subscriptions: UserSubscriptionRecord[]
-  stripe_subscriptions: StripeSubscriptionSummary[]
-  stripe_invoices: StripeInvoiceSummary[]
+
   billing_debt: number
 }
 

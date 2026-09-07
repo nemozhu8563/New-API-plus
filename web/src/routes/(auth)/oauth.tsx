@@ -8,6 +8,7 @@ import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle, isAuthBundle } from '@/lib/api'
 import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { trackEvent } from '@/lib/site-telemetry'
 
 function OAuthComponent() {
   const navigate = useNavigate()
@@ -25,6 +26,7 @@ function OAuthComponent() {
           const res = await wechatLoginByCode(search.code)
           if (res?.success && isAuthBundle(res.data)) {
             applyAuthBundle(res.data)
+            trackEvent('login', { method: 'wechat' })
             const target =
               sanitizeAuthRedirect(search?.redirect, window.location.origin) ??
               DEFAULT_CONSOLE_ROUTE

@@ -101,7 +101,11 @@ test('labels the Stripe Checkout action as Pay', async () => {
   )
   assert.ok(buttonLabels.has('Pay'))
   assert.equal(buttonLabels.has('Stripe'), false)
-  assert.match(document.body.textContent || '', /Monthly billing/)
+  assert.match(document.body.textContent || '', /Valid for one month/)
+  assert.doesNotMatch(
+    document.body.textContent || '',
+    /One-time payment|No automatic renewal|Monthly billing/
+  )
   assert.match(document.body.textContent || '', /Monthly Quota/)
   assert.doesNotMatch(document.body.textContent || '', /Reset Period/)
 

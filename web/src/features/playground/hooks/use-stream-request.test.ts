@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { ChatCompletionRequest } from '../types'
 import { createStreamRequestController } from './use-stream-request'
@@ -78,6 +78,53 @@ const noopCallbacks = {
 }
 
 describe('latest-wins stream request coordination', () => {
+  test('tracks a successful model request only after the stream finishes', async () => {
+    const source = new FakeStreamSource()
+    const track = vi.fn()
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer current' }),
+      createSource: () => source,
+      setStreaming: () => undefined,
+      track,
+    })
+
+    await controller.send(payload, noopCallbacks)
+    expect(track).toHaveBeenCalledWith('model_request_started', {
+      model: 'test-model',
+      stream: true,
+    })
+
+    source.emit('message', '[DONE]')
+
+    expect(track).toHaveBeenCalledWith(
+      'model_request_succeeded',
+      expect.objectContaining({ model: 'test-model', stream: true })
+    )
+  })
+
+  test('does not mark an errored stream as successful', async () => {
+    const source = new FakeStreamSource()
+    const track = vi.fn()
+    const controller = createStreamRequestController({
+      getHeaders: () => Promise.resolve({ Authorization: 'Bearer current' }),
+      createSource: () => source,
+      setStreaming: () => undefined,
+      track,
+    })
+
+    await controller.send(payload, noopCallbacks)
+    source.emit('error', JSON.stringify({ error: { message: 'failed' } }))
+
+    expect(track).toHaveBeenCalledWith('model_request_started', {
+      model: 'test-model',
+      stream: true,
+    })
+    expect(track).not.toHaveBeenCalledWith(
+      'model_request_succeeded',
+      expect.anything()
+    )
+  })
+
   test('only creates a stream for the latest header request', async () => {
     const firstHeaders = deferred<Record<string, string>>()
     const secondHeaders = deferred<Record<string, string>>()

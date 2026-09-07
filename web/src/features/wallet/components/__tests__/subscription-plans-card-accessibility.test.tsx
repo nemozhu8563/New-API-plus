@@ -109,8 +109,7 @@ describe('subscription plans accessibility', () => {
                     },
                   },
                 ],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }

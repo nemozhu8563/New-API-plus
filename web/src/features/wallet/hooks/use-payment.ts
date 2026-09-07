@@ -2,6 +2,8 @@ import i18next from 'i18next'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
+import { amountBucket, trackEvent } from '@/lib/site-telemetry'
+
 import {
   calculateAmount,
   calculateStripeAmount,
@@ -114,6 +116,11 @@ export function usePayment() {
 
         // Handle Stripe payment
         if (isStripe && response.data?.pay_link) {
+          trackEvent('checkout_created', {
+            checkout_type: 'wallet_topup',
+            provider: 'stripe',
+            amount_bucket: amountBucket(amount),
+          })
           toast.success(i18next.t('Redirecting to payment page...'))
           redirectToHostedCheckout(response.data.pay_link as string)
           return true
@@ -123,6 +130,11 @@ export function usePayment() {
         if (!isStripe && response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
+            trackEvent('checkout_created', {
+              checkout_type: 'wallet_topup',
+              provider: 'online_payment',
+              amount_bucket: amountBucket(amount),
+            })
             submitPaymentForm(url, response.data)
             toast.success(i18next.t('Redirecting to payment page...'))
             return true

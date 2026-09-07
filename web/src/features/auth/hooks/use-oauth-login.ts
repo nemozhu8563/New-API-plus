@@ -183,7 +183,9 @@ export function useOAuthLogin(
       }
 
       setIsTelegramDialogOpen(false)
-      await handleLoginSuccess(response.data, redirectTo)
+      await handleLoginSuccess(response.data, redirectTo, {
+        method: 'telegram',
+      })
       toast.success(t('Welcome back!'))
     } catch {
       toast.error(t('Login failed'))

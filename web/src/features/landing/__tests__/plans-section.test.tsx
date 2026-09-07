@@ -231,6 +231,11 @@ describe('landing subscription plans', { concurrent: false }, () => {
 
       assert.match(view.container.textContent || '', /¥399/)
       assert.match(view.container.textContent || '', /Monthly quota \$440/)
+      assert.match(view.container.textContent || '', /Valid for one month/)
+      assert.doesNotMatch(
+        view.container.textContent || '',
+        /One-time payment|Pay once|No automatic renewal|Renews automatically/i
+      )
       assert.doesNotMatch(
         view.container.textContent || '',
         /per[- ]?(?:token|model|request)|unit price/i
@@ -239,23 +244,13 @@ describe('landing subscription plans', { concurrent: false }, () => {
         (heading) =>
           heading.textContent === 'Choose the plan that fits your work'
       )
-      const sectionSubtitle = [...view.container.querySelectorAll('p')].find(
-        (paragraph) =>
-          paragraph.textContent ===
-          'Every plan includes one monthly quota pool, refreshed after each successful monthly renewal.'
-      )
       const sectionLabel = [...view.container.querySelectorAll('p')].find(
         (paragraph) => paragraph.textContent === 'Subscription plans'
       )
       assert.ok(sectionHeading)
-      assert.ok(sectionSubtitle)
       assert.ok(sectionLabel)
       assert.ok(
-        sectionHeading.compareDocumentPosition(sectionSubtitle) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-      )
-      assert.ok(
-        sectionSubtitle.compareDocumentPosition(sectionLabel) &
+        sectionHeading.compareDocumentPosition(sectionLabel) &
           Node.DOCUMENT_POSITION_FOLLOWING
       )
       const professionalHeading = [

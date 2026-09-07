@@ -257,9 +257,6 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	if err := migrateSubscriptionOrderProviderSubscriptionId(); err != nil {
-		return err
-	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -295,8 +292,6 @@ func migrateDB() error {
 		&Checkin{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
-		&StripeSubscriptionSettlement{},
-		&StripeSubscriptionLock{},
 		&SubscriptionPlanLock{},
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
@@ -333,10 +328,6 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
-	if err := migrateSubscriptionOrderProviderSubscriptionId(); err != nil {
-		return err
-	}
-
 	var wg sync.WaitGroup
 
 	migrations := []struct {
@@ -376,8 +367,6 @@ func migrateDBFast() error {
 		{&Checkin{}, "Checkin"},
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
-		{&StripeSubscriptionSettlement{}, "StripeSubscriptionSettlement"},
-		{&StripeSubscriptionLock{}, "StripeSubscriptionLock"},
 		{&SubscriptionPlanLock{}, "SubscriptionPlanLock"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
@@ -429,85 +418,6 @@ func migrateDBFast() error {
 		return err
 	}
 	common.SysLog("database migrated")
-	return nil
-}
-
-// migrateSubscriptionOrderProviderSubscriptionId makes legacy unbound values
-// compatible with the nullable provider/subscription unique key used by Stripe.
-// It runs before AutoMigrate so multiple legacy empty strings cannot block index
-// creation, and so every dialect can safely remove the old NOT NULL/default.
-func migrateSubscriptionOrderProviderSubscriptionId() error {
-	if !DB.Migrator().HasTable(&SubscriptionOrder{}) ||
-		!DB.Migrator().HasColumn(&SubscriptionOrder{}, "provider_subscription_id") {
-		return nil
-	}
-
-	type duplicateProviderSubscription struct {
-		PaymentProvider        string `gorm:"column:payment_provider"`
-		ProviderSubscriptionId string `gorm:"column:provider_subscription_id"`
-		OrderIds               string `gorm:"column:order_ids"`
-	}
-	var duplicates []duplicateProviderSubscription
-	selectOrderIds := "GROUP_CONCAT(id) AS order_ids"
-	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		selectOrderIds = "STRING_AGG(CAST(id AS TEXT), ',' ORDER BY id) AS order_ids"
-	}
-	if err := DB.Model(&SubscriptionOrder{}).
-		Select("payment_provider, provider_subscription_id, "+selectOrderIds).
-		Where("provider_subscription_id IS NOT NULL AND TRIM(provider_subscription_id) <> ?", "").
-		Group("payment_provider, provider_subscription_id").
-		Having("COUNT(*) > 1").
-		Scan(&duplicates).Error; err != nil {
-		return fmt.Errorf("failed to inspect duplicate subscription order provider IDs: %w", err)
-	}
-	if len(duplicates) > 0 {
-		return fmt.Errorf(
-			"duplicate subscription order provider binding blocks migration: provider=%q subscription_id=%q order_ids=%s",
-			duplicates[0].PaymentProvider,
-			duplicates[0].ProviderSubscriptionId,
-			duplicates[0].OrderIds,
-		)
-	}
-
-	columnTypes, err := DB.Migrator().ColumnTypes(&SubscriptionOrder{})
-	if err != nil {
-		return fmt.Errorf("failed to inspect subscription order provider ID schema: %w", err)
-	}
-	columnNullable := false
-	nullableKnown := false
-	needsAlter := false
-	for _, columnType := range columnTypes {
-		if !strings.EqualFold(columnType.Name(), "provider_subscription_id") {
-			continue
-		}
-		columnNullable, nullableKnown = columnType.Nullable()
-		_, hasDefault := columnType.DefaultValue()
-		needsAlter = (nullableKnown && !columnNullable) || hasDefault
-		break
-	}
-	normalizeEmptyValues := func() error {
-		if err := DB.Model(&SubscriptionOrder{}).
-			Where("TRIM(provider_subscription_id) = ?", "").
-			Update("provider_subscription_id", nil).Error; err != nil {
-			return fmt.Errorf("failed to normalize empty subscription order provider IDs: %w", err)
-		}
-		return nil
-	}
-	if nullableKnown && columnNullable {
-		if err := normalizeEmptyValues(); err != nil {
-			return err
-		}
-	}
-	if needsAlter {
-		if err := DB.Migrator().AlterColumn(&SubscriptionOrder{}, "ProviderSubscriptionId"); err != nil {
-			return fmt.Errorf("failed to make subscription order provider ID nullable: %w", err)
-		}
-	}
-	if !nullableKnown || !columnNullable {
-		if err := normalizeEmptyValues(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

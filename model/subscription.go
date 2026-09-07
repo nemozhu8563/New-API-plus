@@ -37,11 +37,9 @@ const (
 )
 
 var (
-	ErrSubscriptionOrderNotFound       = errors.New("subscription order not found")
-	ErrSubscriptionOrderStatusInvalid  = errors.New("subscription order status invalid")
-	ErrStripeSubscriptionMismatch      = errors.New("stripe subscription does not match the immutable order snapshot")
-	ErrStripeInvoiceAlreadyBound       = errors.New("stripe invoice already belongs to another order")
-	ErrStripeSubscriptionPeriodOverlap = errors.New("stripe subscription invoice overlaps an existing service period")
+	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
+	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrStripeSubscriptionMismatch     = errors.New("stripe subscription does not match the immutable order snapshot")
 )
 
 const (
@@ -267,35 +265,28 @@ type SubscriptionOrder struct {
 	PlanId int     `json:"plan_id" gorm:"index"`
 	Money  float64 `json:"money"`
 
-	TradeNo                 string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod           string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider         string  `json:"payment_provider" gorm:"type:varchar(50);default:'';uniqueIndex:idx_subscription_order_provider_subscription,priority:1"`
-	ProviderOrderId         string  `json:"provider_order_id" gorm:"type:varchar(255);default:'';index"`
-	ProviderProductId       string  `json:"provider_product_id" gorm:"type:varchar(255);default:''"`
-	ProviderCustomerId      string  `json:"provider_customer_id" gorm:"type:varchar(255);default:'';index"`
-	ProviderSubscriptionId  *string `json:"provider_subscription_id" gorm:"type:varchar(255);uniqueIndex:idx_subscription_order_provider_subscription,priority:2"`
-	ProviderLivemode        bool    `json:"provider_livemode"`
-	ExpectedAmountMinor     int64   `json:"expected_amount_minor" gorm:"type:bigint;not null;default:0"`
-	ExpectedCurrency        string  `json:"expected_currency" gorm:"type:varchar(8);default:''"`
-	PlanTitle               string  `json:"plan_title" gorm:"type:varchar(128);default:''"`
-	PlanDurationUnit        string  `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
-	PlanDurationValue       int     `json:"plan_duration_value" gorm:"type:int;default:0"`
-	PlanCustomSeconds       int64   `json:"plan_custom_seconds" gorm:"type:bigint;default:0"`
-	PlanTotalAmount         int64   `json:"plan_total_amount" gorm:"type:bigint;default:0"`
-	PlanResetPeriod         string  `json:"plan_reset_period" gorm:"type:varchar(16);default:'never'"`
-	PlanResetCustomSeconds  int64   `json:"plan_reset_custom_seconds" gorm:"type:bigint;default:0"`
-	PlanUpgradeGroup        string  `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
-	PlanDowngradeGroup      string  `json:"plan_downgrade_group" gorm:"type:varchar(64);default:''"`
-	PlanAllowWalletOverflow bool    `json:"plan_allow_wallet_overflow"`
-	StripeStatus            string  `json:"stripe_status" gorm:"type:varchar(32);default:''"`
-	StripeStatusEventTime   int64   `json:"stripe_status_event_time" gorm:"type:bigint;default:0"`
-	StripeCancelAtPeriodEnd bool    `json:"stripe_cancel_at_period_end"`
-	StripeCancelAt          int64   `json:"stripe_cancel_at" gorm:"type:bigint;not null;default:0"`
-	StripeCancelRequestedAt int64   `json:"stripe_cancel_requested_at" gorm:"type:bigint;not null;default:0"`
-	StripeCurrentPeriodEnd  int64   `json:"stripe_current_period_end" gorm:"type:bigint;not null;default:0"`
-	Status                  string  `json:"status"`
-	CreateTime              int64   `json:"create_time"`
-	CompleteTime            int64   `json:"complete_time"`
+	TradeNo                 string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod           string `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider         string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	ProviderOrderId         string `json:"provider_order_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderProductId       string `json:"provider_product_id" gorm:"type:varchar(255);default:''"`
+	ProviderCustomerId      string `json:"provider_customer_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderLivemode        bool   `json:"provider_livemode"`
+	ExpectedAmountMinor     int64  `json:"expected_amount_minor" gorm:"type:bigint;not null;default:0"`
+	ExpectedCurrency        string `json:"expected_currency" gorm:"type:varchar(8);default:''"`
+	PlanTitle               string `json:"plan_title" gorm:"type:varchar(128);default:''"`
+	PlanDurationUnit        string `json:"plan_duration_unit" gorm:"type:varchar(16);default:''"`
+	PlanDurationValue       int    `json:"plan_duration_value" gorm:"type:int;default:0"`
+	PlanCustomSeconds       int64  `json:"plan_custom_seconds" gorm:"type:bigint;default:0"`
+	PlanTotalAmount         int64  `json:"plan_total_amount" gorm:"type:bigint;default:0"`
+	PlanResetPeriod         string `json:"plan_reset_period" gorm:"type:varchar(16);default:'never'"`
+	PlanResetCustomSeconds  int64  `json:"plan_reset_custom_seconds" gorm:"type:bigint;default:0"`
+	PlanUpgradeGroup        string `json:"plan_upgrade_group" gorm:"type:varchar(64);default:''"`
+	PlanDowngradeGroup      string `json:"plan_downgrade_group" gorm:"type:varchar(64);default:''"`
+	PlanAllowWalletOverflow bool   `json:"plan_allow_wallet_overflow"`
+	Status                  string `json:"status"`
+	CreateTime              int64  `json:"create_time"`
+	CompleteTime            int64  `json:"complete_time"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
@@ -314,7 +305,6 @@ func (o *SubscriptionOrder) Update() error {
 type StripeSubscriptionCheckoutBinding struct {
 	CheckoutSessionId string
 	CustomerId        string
-	SubscriptionId    string
 	PriceId           string
 	AmountMinor       int64
 	Currency          string
@@ -326,9 +316,6 @@ func (o *SubscriptionOrder) BindStripeCheckout(binding StripeSubscriptionCheckou
 		strings.TrimSpace(binding.PriceId) == "" || binding.AmountMinor <= 0 ||
 		strings.TrimSpace(binding.Currency) == "" {
 		return errors.New("invalid Stripe subscription Checkout binding")
-	}
-	if (binding.CustomerId == "") != (binding.SubscriptionId == "") {
-		return errors.New("incomplete Stripe subscription Checkout binding")
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var stored SubscriptionOrder
@@ -353,13 +340,9 @@ func (o *SubscriptionOrder) BindStripeCheckout(binding StripeSubscriptionCheckou
 		if stored.ProviderCustomerId != "" && stored.ProviderCustomerId != binding.CustomerId {
 			return fmt.Errorf("%w: Customer mismatch", ErrStripeSubscriptionMismatch)
 		}
-		if stored.ProviderSubscriptionId != nil && *stored.ProviderSubscriptionId != binding.SubscriptionId {
-			return fmt.Errorf("%w: Subscription mismatch", ErrStripeSubscriptionMismatch)
-		}
 		stored.ProviderOrderId = binding.CheckoutSessionId
 		if binding.CustomerId != "" {
 			stored.ProviderCustomerId = binding.CustomerId
-			stored.ProviderSubscriptionId = common.GetPointer(binding.SubscriptionId)
 		}
 		stored.ExpectedAmountMinor = binding.AmountMinor
 		stored.ExpectedCurrency = strings.ToUpper(binding.Currency)
@@ -372,58 +355,6 @@ func (o *SubscriptionOrder) BindStripeCheckout(binding StripeSubscriptionCheckou
 	})
 }
 
-func (o *SubscriptionOrder) BindStripeSubscription(customerId string, subscriptionId string, livemode bool) error {
-	if o == nil || o.Id == 0 || strings.TrimSpace(customerId) == "" || strings.TrimSpace(subscriptionId) == "" {
-		return errors.New("invalid Stripe subscription binding")
-	}
-	var bindWriteErr error
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		var stored SubscriptionOrder
-		if err := lockForUpdate(tx).Where("id = ?", o.Id).First(&stored).Error; err != nil {
-			return err
-		}
-		if stored.PaymentProvider != PaymentProviderStripe || stored.PaymentMethod != PaymentMethodStripe {
-			return ErrPaymentMethodMismatch
-		}
-		if stored.ProviderOrderId == "" || stored.ProviderProductId == "" ||
-			stored.ExpectedAmountMinor <= 0 || stored.ExpectedCurrency == "" {
-			return ErrStripeCheckoutUnbound
-		}
-		if stored.ProviderCustomerId != "" && stored.ProviderCustomerId != customerId {
-			return fmt.Errorf("%w: Customer mismatch", ErrStripeSubscriptionMismatch)
-		}
-		if stored.ProviderSubscriptionId != nil && *stored.ProviderSubscriptionId != subscriptionId {
-			return fmt.Errorf("%w: Subscription mismatch", ErrStripeSubscriptionMismatch)
-		}
-		if stored.ProviderLivemode != livemode {
-			return fmt.Errorf("%w: livemode mismatch", ErrStripeSubscriptionMismatch)
-		}
-		stored.ProviderCustomerId = customerId
-		stored.ProviderSubscriptionId = common.GetPointer(subscriptionId)
-		if err := tx.Save(&stored).Error; err != nil {
-			bindWriteErr = err
-			return err
-		}
-		*o = stored
-		return nil
-	})
-	if err == nil || bindWriteErr == nil {
-		return err
-	}
-
-	// A PostgreSQL unique violation aborts the transaction, so ownership must
-	// be checked only after rollback. MySQL and SQLite use the same path to
-	// keep conflict classification portable across all supported databases.
-	var ownerCount int64
-	if countErr := DB.Model(&SubscriptionOrder{}).
-		Where("payment_provider = ? AND provider_subscription_id = ? AND id <> ?",
-			PaymentProviderStripe, subscriptionId, o.Id).
-		Count(&ownerCount).Error; countErr == nil && ownerCount > 0 {
-		return fmt.Errorf("%w: Subscription already bound to another order", ErrStripeSubscriptionMismatch)
-	}
-	return err
-}
-
 func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 	if tradeNo == "" {
 		return nil
@@ -433,236 +364,6 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 		return nil
 	}
 	return &order
-}
-
-func GetStripeSubscriptionOrderByProviderSubscriptionId(subscriptionId string) *SubscriptionOrder {
-	if strings.TrimSpace(subscriptionId) == "" {
-		return nil
-	}
-	var order SubscriptionOrder
-	if err := DB.Where("payment_provider = ? AND provider_subscription_id = ?", PaymentProviderStripe, subscriptionId).
-		First(&order).Error; err != nil {
-		return nil
-	}
-	return &order
-}
-
-func UpdateStripeSubscriptionLifecycle(subscriptionId string, customerId string, stripeStatus string, livemode bool, eventCreated int64, terminal bool, cancelAtPeriodEnd bool, cancelAt int64, currentPeriodEnd int64) error {
-	if strings.TrimSpace(subscriptionId) == "" || strings.TrimSpace(customerId) == "" || strings.TrimSpace(stripeStatus) == "" || eventCreated <= 0 {
-		return errors.New("invalid Stripe subscription lifecycle update")
-	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var order SubscriptionOrder
-		if err := lockForUpdate(tx).
-			Where("payment_provider = ? AND provider_subscription_id = ?", PaymentProviderStripe, subscriptionId).
-			First(&order).Error; err != nil {
-			return ErrSubscriptionOrderNotFound
-		}
-		if order.ProviderCustomerId != customerId || order.ProviderLivemode != livemode {
-			return fmt.Errorf("%w: Customer or livemode mismatch", ErrStripeSubscriptionMismatch)
-		}
-		if eventCreated < order.StripeStatusEventTime {
-			return nil
-		}
-		// Stripe event.created has second precision and webhook delivery is not
-		// ordered. For equal timestamps, never let an updated event resurrect a
-		// subscription after the terminal deleted event has been recorded.
-		if eventCreated == order.StripeStatusEventTime &&
-			(order.StripeStatus == "canceled" || !terminal) {
-			return nil
-		}
-		order.StripeStatus = stripeStatus
-		order.StripeStatusEventTime = eventCreated
-		order.StripeCancelAtPeriodEnd = cancelAtPeriodEnd
-		order.StripeCancelAt = cancelAt
-		order.StripeCurrentPeriodEnd = currentPeriodEnd
-		return tx.Save(&order).Error
-	})
-}
-
-type StripeSubscriptionSummary struct {
-	SubscriptionId    string `json:"subscription_id"`
-	CustomerId        string `json:"customer_id"`
-	PlanId            int    `json:"plan_id"`
-	PlanTitle         string `json:"plan_title"`
-	Status            string `json:"status"`
-	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
-	CancelAt          int64  `json:"cancel_at"`
-	CurrentPeriodEnd  int64  `json:"current_period_end"`
-	Livemode          bool   `json:"livemode"`
-}
-
-type StripeInvoiceSummary struct {
-	InvoiceId       string `json:"invoice_id"`
-	SubscriptionId  string `json:"subscription_id"`
-	PlanTitle       string `json:"plan_title"`
-	AmountPaidMinor int64  `json:"amount_paid_minor"`
-	Currency        string `json:"currency"`
-	PeriodStart     int64  `json:"period_start"`
-	PeriodEnd       int64  `json:"period_end"`
-	CreatedAt       int64  `json:"created_at"`
-	Livemode        bool   `json:"livemode"`
-}
-
-func GetStripeSubscriptionOrderForUser(userId int, subscriptionId string, livemode bool) (*SubscriptionOrder, error) {
-	if userId <= 0 || strings.TrimSpace(subscriptionId) == "" {
-		return nil, errors.New("invalid Stripe subscription lookup")
-	}
-	var order SubscriptionOrder
-	if err := DB.Where(
-		"user_id = ? AND payment_provider = ? AND provider_subscription_id = ? AND provider_livemode = ?",
-		userId, PaymentProviderStripe, subscriptionId, livemode,
-	).First(&order).Error; err != nil {
-		return nil, err
-	}
-	return &order, nil
-}
-
-func MarkStripeSubscriptionCancellationRequested(userId int, subscriptionId string, customerId string, livemode bool, stripeStatus string, cancelAt int64, currentPeriodEnd int64) error {
-	if userId <= 0 || strings.TrimSpace(subscriptionId) == "" || strings.TrimSpace(customerId) == "" ||
-		strings.TrimSpace(stripeStatus) == "" || currentPeriodEnd <= 0 {
-		return errors.New("invalid Stripe cancellation response")
-	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var order SubscriptionOrder
-		if err := lockForUpdate(tx).Where(
-			"user_id = ? AND payment_provider = ? AND provider_subscription_id = ? AND provider_livemode = ?",
-			userId, PaymentProviderStripe, subscriptionId, livemode,
-		).First(&order).Error; err != nil {
-			return err
-		}
-		if order.ProviderCustomerId != customerId {
-			return fmt.Errorf("%w: Stripe Customer mismatch", ErrStripeSubscriptionMismatch)
-		}
-		order.StripeStatus = stripeStatus
-		order.StripeCancelAtPeriodEnd = true
-		order.StripeCancelAt = cancelAt
-		order.StripeCancelRequestedAt = common.GetTimestamp()
-		order.StripeCurrentPeriodEnd = currentPeriodEnd
-		return tx.Save(&order).Error
-	})
-}
-
-func GetStripeSubscriptionBilling(userId int, livemode bool) ([]StripeSubscriptionSummary, []StripeInvoiceSummary, error) {
-	if userId <= 0 {
-		return nil, nil, errors.New("invalid userId")
-	}
-	var orders []SubscriptionOrder
-	if err := DB.Where(
-		"user_id = ? AND payment_provider = ? AND provider_subscription_id IS NOT NULL AND provider_livemode = ?",
-		userId, PaymentProviderStripe, livemode,
-	).Order("stripe_current_period_end desc, id desc").Find(&orders).Error; err != nil {
-		return nil, nil, err
-	}
-	subscriptions := make([]StripeSubscriptionSummary, 0, len(orders))
-	orderTitles := make(map[int]string, len(orders))
-	currentPeriodEndOrderIds := make([]int, 0)
-	currentPeriodEndSubscriptionIndexes := make(map[int]int)
-	for _, order := range orders {
-		if order.ProviderSubscriptionId == nil || strings.TrimSpace(*order.ProviderSubscriptionId) == "" {
-			continue
-		}
-		orderTitles[order.Id] = order.PlanTitle
-		switch strings.TrimSpace(order.StripeStatus) {
-		case "active", "trialing", "past_due", "unpaid":
-		default:
-			continue
-		}
-		subscription := StripeSubscriptionSummary{
-			SubscriptionId:    *order.ProviderSubscriptionId,
-			CustomerId:        order.ProviderCustomerId,
-			PlanId:            order.PlanId,
-			PlanTitle:         order.PlanTitle,
-			Status:            order.StripeStatus,
-			CancelAtPeriodEnd: order.StripeCancelAtPeriodEnd,
-			CancelAt:          order.StripeCancelAt,
-			CurrentPeriodEnd:  order.StripeCurrentPeriodEnd,
-			Livemode:          order.ProviderLivemode,
-		}
-		subscriptions = append(subscriptions, subscription)
-		currentPeriodEndOrderIds = append(currentPeriodEndOrderIds, order.Id)
-		currentPeriodEndSubscriptionIndexes[order.Id] = len(subscriptions) - 1
-	}
-	if len(currentPeriodEndOrderIds) > 0 {
-		var settlementPeriodEnds []struct {
-			SubscriptionOrderId int   `gorm:"column:subscription_order_id"`
-			PeriodEnd           int64 `gorm:"column:period_end"`
-		}
-		if err := DB.Model(&StripeSubscriptionSettlement{}).
-			Select("subscription_order_id, MAX(period_end) AS period_end").
-			Where("subscription_order_id IN ? AND livemode = ? AND period_end > ?", currentPeriodEndOrderIds, livemode, 0).
-			Group("subscription_order_id").
-			Scan(&settlementPeriodEnds).Error; err != nil {
-			return nil, nil, err
-		}
-		for _, settlementPeriodEnd := range settlementPeriodEnds {
-			if index, ok := currentPeriodEndSubscriptionIndexes[settlementPeriodEnd.SubscriptionOrderId]; ok &&
-				settlementPeriodEnd.PeriodEnd > subscriptions[index].CurrentPeriodEnd {
-				subscriptions[index].CurrentPeriodEnd = settlementPeriodEnd.PeriodEnd
-			}
-		}
-	}
-	if len(orderTitles) == 0 {
-		return subscriptions, []StripeInvoiceSummary{}, nil
-	}
-	orderIds := make([]int, 0, len(orderTitles))
-	for orderId := range orderTitles {
-		orderIds = append(orderIds, orderId)
-	}
-	var settlements []StripeSubscriptionSettlement
-	if err := DB.Where("subscription_order_id IN ? AND livemode = ?", orderIds, livemode).
-		Order("period_end desc, id desc").Limit(100).Find(&settlements).Error; err != nil {
-		return nil, nil, err
-	}
-	invoices := make([]StripeInvoiceSummary, 0, len(settlements))
-	for _, settlement := range settlements {
-		invoices = append(invoices, StripeInvoiceSummary{
-			InvoiceId:       settlement.InvoiceId,
-			SubscriptionId:  settlement.ProviderSubscriptionId,
-			PlanTitle:       orderTitles[settlement.SubscriptionOrderId],
-			AmountPaidMinor: settlement.AmountPaidMinor,
-			Currency:        settlement.Currency,
-			PeriodStart:     settlement.PeriodStart,
-			PeriodEnd:       settlement.PeriodEnd,
-			CreatedAt:       settlement.CreatedAt,
-			Livemode:        settlement.Livemode,
-		})
-	}
-	return subscriptions, invoices, nil
-}
-
-func MarkStripeSubscriptionPaymentFailed(tradeNo string, subscriptionId string, customerId string, livemode bool, eventCreated int64) error {
-	if strings.TrimSpace(tradeNo) == "" || strings.TrimSpace(subscriptionId) == "" || strings.TrimSpace(customerId) == "" || eventCreated <= 0 {
-		return errors.New("invalid Stripe subscription payment failure")
-	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var order SubscriptionOrder
-		if err := lockForUpdate(tx).
-			Where("payment_provider = ? AND trade_no = ?", PaymentProviderStripe, tradeNo).
-			First(&order).Error; err != nil {
-			return ErrSubscriptionOrderNotFound
-		}
-		if order.ProviderOrderId == "" || order.ProviderProductId == "" ||
-			order.ExpectedAmountMinor <= 0 || order.ExpectedCurrency == "" {
-			return ErrStripeCheckoutUnbound
-		}
-		if order.ProviderCustomerId != "" && order.ProviderCustomerId != customerId {
-			return fmt.Errorf("%w: Customer mismatch", ErrStripeSubscriptionMismatch)
-		}
-		if order.ProviderSubscriptionId != nil && *order.ProviderSubscriptionId != subscriptionId {
-			return fmt.Errorf("%w: Subscription mismatch", ErrStripeSubscriptionMismatch)
-		}
-		if order.ProviderLivemode != livemode {
-			return fmt.Errorf("%w: livemode mismatch", ErrStripeSubscriptionMismatch)
-		}
-		order.ProviderCustomerId = customerId
-		order.ProviderSubscriptionId = common.GetPointer(subscriptionId)
-		if eventCreated > order.StripeStatusEventTime {
-			order.StripeStatus = "payment_failed"
-			order.StripeStatusEventTime = eventCreated
-		}
-		return tx.Save(&order).Error
-	})
 }
 
 // User subscription instance
@@ -694,42 +395,9 @@ type UserSubscription struct {
 	PlanTitle               string `json:"plan_title" gorm:"type:varchar(128);default:''"`
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
-	Provider                string `json:"provider" gorm:"type:varchar(50);default:''"`
-	ProviderSubscriptionId  string `json:"provider_subscription_id" gorm:"type:varchar(255);default:'';index"`
-	ProviderInvoiceId       string `json:"provider_invoice_id" gorm:"type:varchar(255);default:'';index"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
-}
-
-type StripeSubscriptionSettlement struct {
-	Id                     int    `json:"id"`
-	InvoiceId              string `json:"invoice_id" gorm:"type:varchar(255);uniqueIndex"`
-	SubscriptionOrderId    int    `json:"subscription_order_id" gorm:"index;not null"`
-	UserSubscriptionId     int    `json:"user_subscription_id" gorm:"uniqueIndex;not null"`
-	ProviderCustomerId     string `json:"provider_customer_id" gorm:"type:varchar(255);not null;index"`
-	ProviderSubscriptionId string `json:"provider_subscription_id" gorm:"type:varchar(255);not null;index;uniqueIndex:idx_stripe_subscription_period,priority:1"`
-	ProviderProductId      string `json:"provider_product_id" gorm:"type:varchar(255);not null"`
-	Quantity               int64  `json:"quantity" gorm:"type:bigint;not null"`
-	UnitAmountMinor        int64  `json:"unit_amount_minor" gorm:"type:bigint;not null"`
-	InvoiceTotalMinor      int64  `json:"invoice_total_minor" gorm:"type:bigint;not null;default:0"`
-	AmountPaidMinor        int64  `json:"amount_paid_minor" gorm:"type:bigint;not null"`
-	Currency               string `json:"currency" gorm:"type:varchar(8);not null"`
-	Livemode               bool   `json:"livemode" gorm:"uniqueIndex:idx_stripe_subscription_period,priority:2"`
-	PeriodStart            int64  `json:"period_start" gorm:"type:bigint;not null;uniqueIndex:idx_stripe_subscription_period,priority:3"`
-	PeriodEnd              int64  `json:"period_end" gorm:"type:bigint;not null;uniqueIndex:idx_stripe_subscription_period,priority:4"`
-	CreatedAt              int64  `json:"created_at" gorm:"type:bigint"`
-}
-
-// StripeSubscriptionLock provides a durable row-level serialization point for
-// all invoices belonging to one Stripe subscription. SubscriptionOrder cannot
-// serve that purpose before the first invoice binds its provider ID because
-// nullable unique columns allow multiple unbound local orders.
-type StripeSubscriptionLock struct {
-	Id                     int    `json:"id"`
-	ProviderSubscriptionId string `json:"provider_subscription_id" gorm:"type:varchar(255);not null;uniqueIndex:idx_stripe_subscription_lock,priority:1"`
-	Livemode               bool   `json:"livemode" gorm:"not null;uniqueIndex:idx_stripe_subscription_lock,priority:2"`
-	CreatedAt              int64  `json:"created_at" gorm:"type:bigint"`
 }
 
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
@@ -1029,10 +697,48 @@ func refreshSubscriptionUserGroupCache(userId int, operation string) {
 	}
 }
 
+// StripeOneTimeSubscriptionPayment is the immutable payment snapshot needed to
+// reconcile refunds and disputes for a one-time Stripe subscription purchase.
+type StripeOneTimeSubscriptionPayment struct {
+	PaymentIntentId string
+	ChargeId        string
+	CustomerId      string
+	AmountMinor     int64
+	Currency        string
+	Livemode        bool
+}
+
+func (order *SubscriptionOrder) planSnapshot() *SubscriptionPlan {
+	return &SubscriptionPlan{
+		Id:                      order.PlanId,
+		Title:                   order.PlanTitle,
+		DurationUnit:            order.PlanDurationUnit,
+		DurationValue:           order.PlanDurationValue,
+		CustomSeconds:           order.PlanCustomSeconds,
+		TotalAmount:             order.PlanTotalAmount,
+		QuotaResetPeriod:        order.PlanResetPeriod,
+		QuotaResetCustomSeconds: order.PlanResetCustomSeconds,
+		UpgradeGroup:            order.PlanUpgradeGroup,
+		DowngradeGroup:          order.PlanDowngradeGroup,
+		AllowWalletOverflow:     common.GetPointer(order.PlanAllowWalletOverflow),
+	}
+}
+
 // Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
+	return completeSubscriptionOrder(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, nil, false)
+}
+
+// CompleteStripeOneTimeSubscriptionOrder completes a Stripe Checkout payment
+// and registers its provider payment IDs against the granted application
+// entitlement so later refunds or disputes can be reconciled safely.
+func CompleteStripeOneTimeSubscriptionOrder(tradeNo string, providerPayload string, payment StripeOneTimeSubscriptionPayment) error {
+	return completeSubscriptionOrder(tradeNo, providerPayload, PaymentProviderStripe, "", &payment, true)
+}
+
+func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, stripePayment *StripeOneTimeSubscriptionPayment, allowExpired bool) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -1056,15 +762,36 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
 		}
-		if order.Status != common.TopUpStatusPending {
+		if order.Status != common.TopUpStatusPending && !(allowExpired && order.Status == common.TopUpStatusExpired) {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
-		if err != nil {
-			return err
+		if stripePayment != nil {
+			if stripePayment.AmountMinor <= 0 || strings.TrimSpace(stripePayment.Currency) == "" ||
+				strings.TrimSpace(stripePayment.PaymentIntentId) == "" && strings.TrimSpace(stripePayment.ChargeId) == "" {
+				return fmt.Errorf("%w: invalid one-time Stripe payment", ErrStripeSubscriptionMismatch)
+			}
+			if stripePayment.AmountMinor != order.ExpectedAmountMinor ||
+				!strings.EqualFold(stripePayment.Currency, order.ExpectedCurrency) ||
+				stripePayment.Livemode != order.ProviderLivemode {
+				return fmt.Errorf("%w: one-time Stripe payment does not match order", ErrStripeSubscriptionMismatch)
+			}
+			if order.ProviderCustomerId != "" && order.ProviderCustomerId != stripePayment.CustomerId {
+				return fmt.Errorf("%w: one-time Stripe Customer does not match order", ErrStripeSubscriptionMismatch)
+			}
 		}
-		if !plan.Enabled {
-			// still allow completion for already purchased orders
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+		if stripePayment != nil {
+			snapshot := order.planSnapshot()
+			if err == nil {
+				// Keep the existing purchase-limit guard, but never re-price paid benefits.
+				snapshot.MaxPurchasePerUser = plan.MaxPurchasePerUser
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			// A deleted catalog plan does not invalidate an already-purchased snapshot.
+			plan = snapshot
+		} else if err != nil {
+			return err
 		}
 		// 锁定用户行：并发完成同一用户的不同订单（包括多实例部署下）时，
 		// 使 CreateUserSubscriptionFromPlanTx 的 MaxPurchasePerUser 检查按用户串行。
@@ -1078,6 +805,14 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
+		}
+		if stripePayment != nil {
+			if err := registerStripeSubscriptionEntitlementPaymentTx(tx, subscription, *stripePayment); err != nil {
+				return err
+			}
+			if stripePayment.CustomerId != "" {
+				order.ProviderCustomerId = stripePayment.CustomerId
+			}
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
@@ -1108,292 +843,6 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	if logUserId > 0 {
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
-	}
-	return nil
-}
-
-type StripeInvoiceSettlementInput struct {
-	InvoiceId         string
-	TradeNo           string
-	CustomerId        string
-	SubscriptionId    string
-	ProductId         string
-	Quantity          int64
-	UnitAmountMinor   int64
-	InvoiceTotalMinor int64
-	AmountPaidMinor   int64
-	Currency          string
-	Livemode          bool
-	PeriodStart       int64
-	PeriodEnd         int64
-	EventCreated      int64
-	ProviderPayload   string
-	Payments          []StripePaymentSnapshot
-}
-
-func stripeInvoiceSettlementMatchesInput(existing *StripeSubscriptionSettlement, input StripeInvoiceSettlementInput) bool {
-	return existing != nil &&
-		existing.ProviderCustomerId == input.CustomerId &&
-		existing.ProviderSubscriptionId == input.SubscriptionId &&
-		existing.ProviderProductId == input.ProductId &&
-		existing.Quantity == input.Quantity &&
-		existing.UnitAmountMinor == input.UnitAmountMinor &&
-		existing.InvoiceTotalMinor == input.InvoiceTotalMinor &&
-		existing.AmountPaidMinor == input.AmountPaidMinor &&
-		strings.EqualFold(existing.Currency, input.Currency) &&
-		existing.Livemode == input.Livemode &&
-		existing.PeriodStart == input.PeriodStart &&
-		existing.PeriodEnd == input.PeriodEnd
-}
-
-func CompleteStripeSubscriptionInvoice(input StripeInvoiceSettlementInput) error {
-	if strings.TrimSpace(input.InvoiceId) == "" || strings.TrimSpace(input.CustomerId) == "" ||
-		strings.TrimSpace(input.SubscriptionId) == "" || strings.TrimSpace(input.ProductId) == "" ||
-		strings.TrimSpace(input.Currency) == "" || input.Quantity != 1 || input.UnitAmountMinor <= 0 ||
-		input.InvoiceTotalMinor <= 0 ||
-		input.AmountPaidMinor < 0 ||
-		input.PeriodStart <= 0 || input.PeriodEnd <= input.PeriodStart || input.EventCreated <= 0 {
-		return fmt.Errorf("%w: invalid invoice settlement", ErrStripeSubscriptionMismatch)
-	}
-
-	var logUserId int
-	var logPlanTitle string
-	var logMoney float64
-	var upgradeGroup string
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		lockRow := StripeSubscriptionLock{
-			ProviderSubscriptionId: input.SubscriptionId,
-			Livemode:               input.Livemode,
-			CreatedAt:              common.GetTimestamp(),
-		}
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&lockRow).Error; err != nil {
-			return err
-		}
-		if err := lockForUpdate(tx).Where(
-			"provider_subscription_id = ? AND livemode = ?",
-			input.SubscriptionId,
-			input.Livemode,
-		).First(&lockRow).Error; err != nil {
-			return err
-		}
-
-		var existing StripeSubscriptionSettlement
-		query := tx.Where("invoice_id = ?", input.InvoiceId).Limit(1).Find(&existing)
-		if query.Error != nil {
-			return query.Error
-		}
-		if query.RowsAffected > 0 {
-			if !stripeInvoiceSettlementMatchesInput(&existing, input) {
-				return ErrStripeInvoiceAlreadyBound
-			}
-			if len(input.Payments) > 0 {
-				var existingSub UserSubscription
-				if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&existingSub).Error; err != nil {
-					return err
-				}
-				if err := registerStripeSubscriptionPaymentsTx(tx, &existing, &existingSub, input.Payments); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-
-		var order SubscriptionOrder
-		tradeNo := strings.TrimSpace(input.TradeNo)
-		boundOrderQuery := lockForUpdate(tx).
-			Where("payment_provider = ? AND provider_subscription_id = ?", PaymentProviderStripe, input.SubscriptionId).
-			Limit(1).
-			Find(&order)
-		if boundOrderQuery.Error != nil {
-			return boundOrderQuery.Error
-		}
-		if boundOrderQuery.RowsAffected == 0 {
-			if tradeNo == "" {
-				return ErrSubscriptionOrderNotFound
-			}
-			if err := lockForUpdate(tx).
-				Where("payment_provider = ? AND trade_no = ?", PaymentProviderStripe, tradeNo).
-				First(&order).Error; err != nil {
-				return ErrSubscriptionOrderNotFound
-			}
-		}
-		if tradeNo != "" && order.TradeNo != tradeNo {
-			return fmt.Errorf("%w: invoice trade number does not match the bound subscription order", ErrStripeSubscriptionMismatch)
-		}
-
-		// The subscription order row serializes invoice settlement. Recheck the
-		// invoice after acquiring it so concurrent deliveries of the same invoice
-		// remain idempotent instead of being misclassified as overlapping periods.
-		existing = StripeSubscriptionSettlement{}
-		query = tx.Where("invoice_id = ?", input.InvoiceId).Limit(1).Find(&existing)
-		if query.Error != nil {
-			return query.Error
-		}
-		if query.RowsAffected > 0 {
-			if !stripeInvoiceSettlementMatchesInput(&existing, input) {
-				return ErrStripeInvoiceAlreadyBound
-			}
-			if len(input.Payments) > 0 {
-				var existingSub UserSubscription
-				if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&existingSub).Error; err != nil {
-					return err
-				}
-				if err := registerStripeSubscriptionPaymentsTx(tx, &existing, &existingSub, input.Payments); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if order.ProviderOrderId == "" || order.ProviderProductId == "" ||
-			order.ExpectedAmountMinor <= 0 || order.ExpectedCurrency == "" {
-			return ErrStripeCheckoutUnbound
-		}
-		if (order.ProviderCustomerId != "" && order.ProviderCustomerId != input.CustomerId) ||
-			(order.ProviderSubscriptionId != nil && *order.ProviderSubscriptionId != input.SubscriptionId) ||
-			order.ProviderProductId != input.ProductId || order.ProviderLivemode != input.Livemode ||
-			order.ExpectedAmountMinor != input.UnitAmountMinor ||
-			order.ExpectedAmountMinor != input.InvoiceTotalMinor ||
-			!strings.EqualFold(order.ExpectedCurrency, input.Currency) {
-			return fmt.Errorf("%w: invoice does not match order", ErrStripeSubscriptionMismatch)
-		}
-		if order.Status != common.TopUpStatusPending && order.Status != common.TopUpStatusSuccess {
-			return ErrSubscriptionOrderStatusInvalid
-		}
-		// The locked order row is the serialization point for all invoices of this
-		// Stripe subscription. A second local order must never bind the same
-		// provider subscription, or concurrent period checks could lock different
-		// rows and both commit.
-		var boundOrderCount int64
-		if err := tx.Model(&SubscriptionOrder{}).
-			Where("payment_provider = ? AND provider_subscription_id = ? AND id <> ?",
-				PaymentProviderStripe, input.SubscriptionId, order.Id).
-			Count(&boundOrderCount).Error; err != nil {
-			return err
-		}
-		if boundOrderCount > 0 {
-			return fmt.Errorf("%w: Subscription already bound to another order", ErrStripeSubscriptionMismatch)
-		}
-
-		var overlappingSettlement StripeSubscriptionSettlement
-		overlapQuery := lockForUpdate(tx).
-			Where("provider_subscription_id = ? AND livemode = ? AND period_start < ? AND period_end > ?",
-				input.SubscriptionId, input.Livemode, input.PeriodEnd, input.PeriodStart).
-			Limit(1).
-			Find(&overlappingSettlement)
-		if overlapQuery.Error != nil {
-			return overlapQuery.Error
-		}
-		if overlapQuery.RowsAffected > 0 {
-			return ErrStripeSubscriptionPeriodOverlap
-		}
-
-		plan := &SubscriptionPlan{
-			Id:                      order.PlanId,
-			Title:                   order.PlanTitle,
-			DurationUnit:            order.PlanDurationUnit,
-			DurationValue:           order.PlanDurationValue,
-			CustomSeconds:           order.PlanCustomSeconds,
-			TotalAmount:             order.PlanTotalAmount,
-			QuotaResetPeriod:        order.PlanResetPeriod,
-			QuotaResetCustomSeconds: order.PlanResetCustomSeconds,
-			UpgradeGroup:            order.PlanUpgradeGroup,
-			DowngradeGroup:          order.PlanDowngradeGroup,
-			AllowWalletOverflow:     common.GetPointer(order.PlanAllowWalletOverflow),
-		}
-		// Stripe's invoice line is authoritative for the paid service period.
-		// Recomputing calendar periods locally breaks valid month-end billing anchors.
-		startTime := input.PeriodStart
-		endTime := input.PeriodEnd
-		if endTime <= startTime {
-			return fmt.Errorf("%w: invalid invoice service period", ErrStripeSubscriptionMismatch)
-		}
-		lastReset := int64(0)
-		nextReset := calcNextResetTimeForSnapshot(time.Unix(startTime, 0), plan.QuotaResetPeriod, plan.QuotaResetCustomSeconds, endTime)
-		if nextReset > 0 {
-			lastReset = startTime
-		}
-		prevGroup := ""
-		if strings.TrimSpace(plan.UpgradeGroup) != "" {
-			currentGroup, err := getUserGroupByIdTx(tx, order.UserId)
-			if err != nil {
-				return err
-			}
-			if currentGroup != strings.TrimSpace(plan.UpgradeGroup) {
-				prevGroup = currentGroup
-				if err := tx.Model(&User{}).Where("id = ?", order.UserId).
-					Update("group", strings.TrimSpace(plan.UpgradeGroup)).Error; err != nil {
-					return err
-				}
-				upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-			}
-		}
-		sub := &UserSubscription{
-			UserId: order.UserId, PlanId: order.PlanId, AmountTotal: plan.TotalAmount,
-			AmountUsed: 0,
-			StartTime:  startTime, EndTime: endTime, Status: "active", Source: "stripe_invoice",
-			LastResetTime: lastReset, NextResetTime: nextReset,
-			UpgradeGroup: strings.TrimSpace(plan.UpgradeGroup), PrevUserGroup: prevGroup,
-			DowngradeGroup: strings.TrimSpace(plan.DowngradeGroup), AllowWalletOverflow: order.PlanAllowWalletOverflow,
-			PlanTitle: order.PlanTitle, QuotaResetPeriod: NormalizeResetPeriod(order.PlanResetPeriod),
-			QuotaResetCustomSeconds: order.PlanResetCustomSeconds, Provider: PaymentProviderStripe,
-			ProviderSubscriptionId: input.SubscriptionId, ProviderInvoiceId: input.InvoiceId,
-		}
-		if err := tx.Create(sub).Error; err != nil {
-			return err
-		}
-		settlement := &StripeSubscriptionSettlement{
-			InvoiceId: input.InvoiceId, SubscriptionOrderId: order.Id, UserSubscriptionId: sub.Id,
-			ProviderCustomerId: input.CustomerId, ProviderSubscriptionId: input.SubscriptionId,
-			ProviderProductId: input.ProductId, Quantity: input.Quantity, UnitAmountMinor: input.UnitAmountMinor,
-			InvoiceTotalMinor: input.InvoiceTotalMinor, AmountPaidMinor: input.AmountPaidMinor,
-			Currency: strings.ToUpper(input.Currency), Livemode: input.Livemode,
-			PeriodStart: input.PeriodStart, PeriodEnd: input.PeriodEnd, CreatedAt: common.GetTimestamp(),
-		}
-		if err := tx.Create(settlement).Error; err != nil {
-			return err
-		}
-		if len(input.Payments) > 0 {
-			if err := registerStripeSubscriptionPaymentsTx(tx, settlement, sub, input.Payments); err != nil {
-				return err
-			}
-		}
-		if order.Status == common.TopUpStatusPending {
-			if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
-				return err
-			}
-			order.Status = common.TopUpStatusSuccess
-			order.CompleteTime = common.GetTimestamp()
-		}
-		order.ProviderCustomerId = input.CustomerId
-		order.ProviderSubscriptionId = common.GetPointer(input.SubscriptionId)
-		// Invoice delivery can lag behind a newer subscription lifecycle event.
-		// Fill a missing period, or replace it only when this invoice is newer.
-		if order.StripeCurrentPeriodEnd <= 0 || input.EventCreated > order.StripeStatusEventTime {
-			order.StripeCurrentPeriodEnd = input.PeriodEnd
-		}
-		if input.EventCreated > order.StripeStatusEventTime {
-			order.StripeStatus = "active"
-			order.StripeStatusEventTime = input.EventCreated
-		}
-		if input.ProviderPayload != "" {
-			order.ProviderPayload = input.ProviderPayload
-		}
-		if err := tx.Save(&order).Error; err != nil {
-			return err
-		}
-		logUserId = order.UserId
-		logPlanTitle = order.PlanTitle
-		logMoney = order.Money
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if upgradeGroup != "" && logUserId > 0 {
-		refreshSubscriptionUserGroupCache(logUserId, "Stripe subscription invoice")
-	}
-	if logUserId > 0 {
-		RecordLog(logUserId, LogTypeTopup, fmt.Sprintf("Stripe 订阅账单支付成功，套餐: %s，支付金额: %.2f", logPlanTitle, logMoney))
 	}
 	return nil
 }

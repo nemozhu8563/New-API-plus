@@ -168,7 +168,7 @@ export function UserAuthForm({
         if (!isAuthBundle(res.data)) {
           throw new Error(t('Login failed'))
         }
-        await handleLoginSuccess(res.data, redirectTo)
+        await handleLoginSuccess(res.data, redirectTo, { method: 'password' })
         toast.success(t('Welcome back!'))
       }
     } catch (error: unknown) {
@@ -206,7 +206,7 @@ export function UserAuthForm({
     try {
       const res = await wechatLoginByCode(wechatCode)
       if (res?.success && isAuthBundle(res.data)) {
-        await handleLoginSuccess(res.data, redirectTo)
+        await handleLoginSuccess(res.data, redirectTo, { method: 'wechat' })
         toast.success(t('Signed in via WeChat'))
         handleWeChatDialogChange(false)
       } else {
@@ -277,7 +277,7 @@ export function UserAuthForm({
         throw new Error(t('Missing user data from Passkey login response'))
       }
 
-      await handleLoginSuccess(finish.data, redirectTo)
+      await handleLoginSuccess(finish.data, redirectTo, { method: 'passkey' })
       toast.success(t('Signed in with Passkey'))
     } catch (error: unknown) {
       if (getServerErrorMessageKey(error)) return

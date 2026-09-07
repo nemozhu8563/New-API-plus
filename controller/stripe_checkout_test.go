@@ -182,12 +182,19 @@ func TestGenStripeSubscriptionLinkUsesContextIdempotencyAndMetadata(t *testing.T
 	assert.Regexp(t, `^tryvalo_subscription_[a-z]{8}$`, *captured.IntegrationIdentifier)
 	assert.Equal(t, "subscription", captured.Metadata["order_kind"])
 	assert.Equal(t, "price_local_subscription", captured.Metadata["price_id"])
-	require.NotNil(t, captured.SubscriptionData)
-	assert.Equal(t, captured.Metadata, captured.SubscriptionData.Metadata)
-	assert.Equal(t, string(stripe.CheckoutSessionModeSubscription), *captured.Mode)
+	require.NotNil(t, captured.PaymentMethodOptions)
+	require.NotNil(t, captured.PaymentMethodOptions.WeChatPay)
+	require.NotNil(t, captured.PaymentMethodOptions.WeChatPay.Client)
+	assert.Equal(t, string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb), *captured.PaymentMethodOptions.WeChatPay.Client)
+	require.NotNil(t, captured.PaymentIntentData)
+	assert.Equal(t, captured.Metadata, captured.PaymentIntentData.Metadata)
+	require.Len(t, captured.Expand, 1)
+	assert.Equal(t, "payment_intent.latest_charge", *captured.Expand[0])
+	assert.Equal(t, string(stripe.CheckoutSessionModePayment), *captured.Mode)
+	assert.Nil(t, captured.SubscriptionData)
 }
 
-func TestGenStripeSubscriptionLinkLetsSubscriptionModeCreateCustomer(t *testing.T) {
+func TestGenStripeSubscriptionLinkLetsOneTimeCheckoutReuseCustomer(t *testing.T) {
 	originalCreate := createStripeCheckoutSession
 	var captured *stripe.CheckoutSessionCreateParams
 	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
@@ -206,19 +213,15 @@ func TestGenStripeSubscriptionLinkLetsSubscriptionModeCreateCustomer(t *testing.
 	assert.Nil(t, captured.CustomerCreation)
 }
 
-func TestValidateStripeSubscriptionPriceRequiresExactFixedRecurringContract(t *testing.T) {
+func TestValidateStripeSubscriptionPriceRequiresExactFixedOneTimeContract(t *testing.T) {
 	plan := &model.SubscriptionPlan{
 		StripePriceId: "price_local_subscription", PriceAmount: 12, Currency: "USD",
 		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
 		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
 	}
 	validPrice := &stripe.Price{
-		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeRecurring,
+		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeOneTime,
 		BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyUSD, UnitAmount: 1200,
-		Recurring: &stripe.PriceRecurring{
-			Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
-			UsageType: stripe.PriceRecurringUsageTypeLicensed,
-		},
 	}
 
 	require.NoError(t, validateStripeSubscriptionPrice(plan, validPrice, 1200, "USD", false))
@@ -228,44 +231,36 @@ func TestValidateStripeSubscriptionPriceRequiresExactFixedRecurringContract(t *t
 		mutate func(*stripe.Price)
 	}{
 		{name: "inactive", mutate: func(price *stripe.Price) { price.Active = false }},
-		{name: "one time", mutate: func(price *stripe.Price) { price.Type = stripe.PriceTypeOneTime }},
-		{name: "metered", mutate: func(price *stripe.Price) { price.Recurring.UsageType = stripe.PriceRecurringUsageTypeMetered }},
+		{name: "recurring", mutate: func(price *stripe.Price) {
+			price.Type = stripe.PriceTypeRecurring
+			price.Recurring = &stripe.PriceRecurring{}
+		}},
 		{name: "tiered", mutate: func(price *stripe.Price) { price.BillingScheme = stripe.PriceBillingSchemeTiered }},
+		{name: "custom amount", mutate: func(price *stripe.Price) { price.CustomUnitAmount = &stripe.PriceCustomUnitAmount{} }},
+		{name: "transformed quantity", mutate: func(price *stripe.Price) { price.TransformQuantity = &stripe.PriceTransformQuantity{} }},
 		{name: "amount", mutate: func(price *stripe.Price) { price.UnitAmount++ }},
 		{name: "currency", mutate: func(price *stripe.Price) { price.Currency = stripe.CurrencyEUR }},
-		{name: "interval", mutate: func(price *stripe.Price) { price.Recurring.Interval = stripe.PriceRecurringIntervalYear }},
-		{name: "four week interval", mutate: func(price *stripe.Price) {
-			price.Recurring.Interval = stripe.PriceRecurringIntervalWeek
-			price.Recurring.IntervalCount = 4
-		}},
-		{name: "interval count", mutate: func(price *stripe.Price) { price.Recurring.IntervalCount = 2 }},
 		{name: "livemode", mutate: func(price *stripe.Price) { price.Livemode = true }},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			priceCopy := *validPrice
-			recurringCopy := *validPrice.Recurring
-			priceCopy.Recurring = &recurringCopy
 			testCase.mutate(&priceCopy)
 			require.Error(t, validateStripeSubscriptionPrice(plan, &priceCopy, 1200, "USD", false))
 		})
 	}
 }
 
-func TestValidateStripeSubscriptionPriceAcceptsMonthlyCNYContract(t *testing.T) {
+func TestValidateStripeSubscriptionPriceAcceptsMonthlyEntitlementWithOneTimePrice(t *testing.T) {
 	plan := &model.SubscriptionPlan{
 		StripePriceId: "price_monthly", PriceAmount: 399, Currency: "CNY",
 		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1,
 		QuotaResetPeriod: model.SubscriptionResetBillingCycle,
 	}
 	stripePrice := &stripe.Price{
-		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeRecurring,
+		ID: plan.StripePriceId, Active: true, Type: stripe.PriceTypeOneTime,
 		BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 39900,
-		Recurring: &stripe.PriceRecurring{
-			Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
-			UsageType: stripe.PriceRecurringUsageTypeLicensed,
-		},
 	}
 
 	require.NoError(t, validateStripeSubscriptionPrice(plan, stripePrice, 39900, "CNY", false))
@@ -317,8 +312,6 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
-		&model.StripeSubscriptionSettlement{},
-		&model.StripeSubscriptionLock{},
 	))
 	model.DB = db
 	model.LOG_DB = db
@@ -335,12 +328,8 @@ func setupStripeCheckoutHandlerTest(t *testing.T) *gorm.DB {
 			}, nil
 		}
 		return &stripe.Price{
-			ID: priceId, Active: true, Type: stripe.PriceTypeRecurring,
+			ID: priceId, Active: true, Type: stripe.PriceTypeOneTime,
 			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 39900,
-			Recurring: &stripe.PriceRecurring{
-				Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
-				UsageType: stripe.PriceRecurringUsageTypeLicensed,
-			},
 		}, nil
 	}
 	gin.SetMode(gin.TestMode)
@@ -660,7 +649,7 @@ func TestStripeSubscriptionCheckoutFailureLeavesExpiredLocalOrder(t *testing.T) 
 	assert.Empty(t, orders[0].ProviderOrderId)
 }
 
-func TestStripeSubscriptionCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *testing.T) {
+func TestStripeSubscriptionCheckoutRejectsRecurringPrice(t *testing.T) {
 	db := setupStripeCheckoutHandlerTest(t)
 	user := &model.User{Id: 1005, Username: "stripe_subscription_price_mismatch", Email: "user@example.test", Status: common.UserStatusEnabled}
 	require.NoError(t, db.Create(user).Error)
@@ -674,23 +663,27 @@ func TestStripeSubscriptionCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *
 	retrieveStripePrice = func(_ context.Context, priceId string) (*stripe.Price, error) {
 		return &stripe.Price{
 			ID: priceId, Active: true, Type: stripe.PriceTypeRecurring,
-			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 40000,
+			BillingScheme: stripe.PriceBillingSchemePerUnit, Currency: stripe.CurrencyCNY, UnitAmount: 39900,
 			Recurring: &stripe.PriceRecurring{
 				Interval: stripe.PriceRecurringIntervalMonth, IntervalCount: 1,
 				UsageType: stripe.PriceRecurringUsageTypeLicensed,
 			},
 		}, nil
 	}
-	createCalled := false
-	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
-		createCalled = true
-		return nil, errors.New("should not create Checkout")
+	var captured *stripe.CheckoutSessionCreateParams
+	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		captured = params
+		return &stripe.CheckoutSession{
+			ID: "cs_recurring_subscription", URL: "https://checkout.stripe.test/recurring-subscription",
+			AmountTotal: 39900, Currency: stripe.CurrencyCNY,
+		}, nil
 	}
 
 	response := invokeStripeCheckoutHandler(t, SubscriptionRequestStripePay, user.Id, `{"plan_id":1}`)
 
+	assert.Equal(t, false, response["success"])
 	assert.Equal(t, "Stripe 套餐价格配置与本地套餐不匹配", response["message"])
-	assert.False(t, createCalled)
+	assert.Nil(t, captured)
 	var orders int64
 	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Count(&orders).Error)
 	assert.Zero(t, orders)

@@ -125,17 +125,12 @@ export function TryvaloLandingPage() {
                 </Button>
               </div>
               <div className='text-muted-foreground mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs'>
-                {['OpenAI-compatible', 'Monthly Quota', 'Monthly billing'].map(
-                  (item) => (
-                    <span
-                      key={item}
-                      className='inline-flex items-center gap-1.5'
-                    >
-                      <Check className='text-success size-3.5' />
-                      {t(item)}
-                    </span>
-                  )
-                )}
+                {['OpenAI-compatible', 'Monthly Quota'].map((item) => (
+                  <span key={item} className='inline-flex items-center gap-1.5'>
+                    <Check className='text-success size-3.5' />
+                    {t(item)}
+                  </span>
+                ))}
               </div>
             </div>
 

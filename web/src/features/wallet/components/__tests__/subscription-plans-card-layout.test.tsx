@@ -136,8 +136,7 @@ describe('subscription plans layout', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [],
                 all_subscriptions: [],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }

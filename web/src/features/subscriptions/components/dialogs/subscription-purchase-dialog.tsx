@@ -18,6 +18,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
 import { formatQuota } from '@/lib/format'
+import { amountBucket, trackEvent } from '@/lib/site-telemetry'
 
 import {
   paySubscriptionStripe,
@@ -82,12 +83,22 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
+  const checkoutTelemetry = (provider: string) => {
+    trackEvent('checkout_created', {
+      checkout_type: 'subscription',
+      provider,
+      plan_id: plan.id,
+      currency: plan.currency,
+      amount_bucket: amountBucket(Number(plan.price_amount || 0)),
+    })
+  }
 
   const handlePayStripe = async () => {
     setPaying(true)
     try {
       const res = await paySubscriptionStripe({ plan_id: plan.id })
       if (res.message === 'success' && res.data?.pay_link) {
+        checkoutTelemetry('stripe')
         toast.success(t('Redirecting to payment page...'))
         redirectToHostedCheckout(res.data.pay_link)
       } else {
@@ -109,6 +120,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     try {
       const res = await paySubscriptionCreem({ plan_id: plan.id })
       if (res.message === 'success' && res.data?.checkout_url) {
+        checkoutTelemetry('creem')
         window.open(res.data.checkout_url, '_blank')
         toast.success(t('Payment page opened'))
         props.onOpenChange(false)
@@ -133,6 +145,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     try {
       const res = await paySubscriptionWaffoPancake({ plan_id: plan.id })
       if (res.message === 'success' && res.data?.checkout_url) {
+        checkoutTelemetry('waffo_pancake')
         toast.success(t('Redirecting to payment page...'))
         window.location.href = res.data.checkout_url
       } else {
@@ -165,6 +178,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
         payment_method: selectedEpayMethod,
       })
       if (res.message === 'success' && res.url) {
+        checkoutTelemetry('epay')
         const form = document.createElement('form')
         form.action = res.url
         form.method = 'POST'
@@ -224,11 +238,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
           <div className='flex items-center justify-between'>
             <span className='text-muted-foreground text-sm'>
-              {t('Billing')}
+              {t('Validity Period')}
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <CalendarClock className='h-3.5 w-3.5' />
-              {t('Monthly billing')}
+              {t('Valid for one month')}
             </span>
           </div>
           <div className='flex items-center justify-between'>

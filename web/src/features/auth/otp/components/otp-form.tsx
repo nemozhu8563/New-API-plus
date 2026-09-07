@@ -97,7 +97,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
         throw new Error(t('Login failed'))
       }
 
-      await handleLoginSuccess(res.data)
+      await handleLoginSuccess(res.data, undefined, { method: 'otp' })
       toast.success(t('Signed in'))
     } catch (error) {
       // eslint-disable-next-line no-console

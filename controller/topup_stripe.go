@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -59,9 +58,7 @@ func isPermanentStripeWebhookError(err error) bool {
 		errors.Is(err, model.ErrTopUpStatusInvalid) ||
 		errors.Is(err, model.ErrStripeSnapshotMismatch) ||
 		errors.Is(err, model.ErrStripeAdjustmentMismatch) ||
-		errors.Is(err, model.ErrStripeSubscriptionMismatch) ||
-		errors.Is(err, model.ErrStripeInvoiceAlreadyBound) ||
-		errors.Is(err, model.ErrStripeSubscriptionPeriodOverlap)
+		errors.Is(err, model.ErrStripeSubscriptionMismatch)
 }
 
 var createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
@@ -82,22 +79,6 @@ var fetchStripeRefundsForCharge = func(ctx context.Context, chargeId string) ([]
 	return refunds, nil
 }
 
-var fetchStripeInvoicePayments = func(ctx context.Context, invoiceId string) ([]*stripe.InvoicePayment, error) {
-	client := stripe.NewClient(setting.StripeApiSecret)
-	params := &stripe.InvoicePaymentListParams{
-		Invoice: stripe.String(invoiceId),
-		Status:  stripe.String("paid"),
-	}
-	payments := make([]*stripe.InvoicePayment, 0)
-	for payment, err := range client.V1InvoicePayments.List(ctx, params).All(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		payments = append(payments, payment)
-	}
-	return payments, nil
-}
-
 // StripePayRequest represents a payment request for Stripe checkout.
 type StripePayRequest struct {
 	// Amount is the displayed credit amount to add to the local wallet.
@@ -114,23 +95,6 @@ type StripePayRequest struct {
 }
 
 type StripeAdaptor struct {
-}
-
-type stripeInvoiceAuditSnapshot struct {
-	InvoiceId            string `json:"invoice_id"`
-	CustomerId           string `json:"customer_id"`
-	SubscriptionId       string `json:"subscription_id"`
-	ProductId            string `json:"product_id"`
-	Quantity             int64  `json:"quantity"`
-	UnitAmountMinor      int64  `json:"unit_amount_minor"`
-	InvoiceTotalMinor    int64  `json:"invoice_total_minor"`
-	AmountPaidMinor      int64  `json:"amount_paid_minor"`
-	AmountRemainingMinor int64  `json:"amount_remaining_minor"`
-	Currency             string `json:"currency"`
-	Livemode             bool   `json:"livemode"`
-	PeriodStart          int64  `json:"period_start"`
-	PeriodEnd            int64  `json:"period_end"`
-	EventCreated         int64  `json:"event_created"`
 }
 
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
@@ -390,24 +354,6 @@ func processStripeWebhookEvent(ctx context.Context, event stripe.Event, callerIp
 		default:
 			return sessionAsyncPaymentFailed(ctx, event, &checkoutSession, callerIp)
 		}
-	case stripe.EventTypeInvoicePaid, stripe.EventTypeInvoicePaymentFailed:
-		if event.Data == nil || len(event.Data.Raw) == 0 {
-			return rejectStripeWebhook("Stripe webhook 缺少 Invoice 数据")
-		}
-		var invoice stripe.Invoice
-		if err := common.Unmarshal(event.Data.Raw, &invoice); err != nil {
-			return rejectStripeWebhook("Stripe webhook Invoice 无效")
-		}
-		return processStripeInvoice(ctx, event, &invoice)
-	case stripe.EventTypeCustomerSubscriptionUpdated, stripe.EventTypeCustomerSubscriptionDeleted:
-		if event.Data == nil || len(event.Data.Raw) == 0 {
-			return rejectStripeWebhook("Stripe webhook 缺少 Subscription 数据")
-		}
-		var subscription stripe.Subscription
-		if err := common.Unmarshal(event.Data.Raw, &subscription); err != nil {
-			return rejectStripeWebhook("Stripe webhook Subscription 无效")
-		}
-		return processStripeSubscriptionLifecycle(event, &subscription)
 	case stripe.EventTypeChargeRefunded:
 		if event.Data == nil || len(event.Data.Raw) == 0 {
 			return rejectStripeWebhook("Stripe webhook 缺少 Charge 数据")
@@ -593,11 +539,7 @@ func sessionCompleted(ctx context.Context, event stripe.Event, checkoutSession *
 		return rejectStripeWebhook(fmt.Sprintf("checkout.completed 状态异常 trade_no=%s status=%s", checkoutSession.ClientReferenceID, checkoutSession.Status))
 	}
 
-	switch checkoutSession.Mode {
-	case stripe.CheckoutSessionModeSubscription:
-		return bindStripeSubscriptionCheckout(checkoutSession)
-	case stripe.CheckoutSessionModePayment:
-	default:
+	if checkoutSession.Mode != stripe.CheckoutSessionModePayment {
 		return rejectStripeWebhook("Stripe Checkout Session 订单类型无效")
 	}
 
@@ -606,6 +548,9 @@ func sessionCompleted(ctx context.Context, event stripe.Event, checkoutSession *
 		return nil
 	}
 
+	if isStripeSubscriptionPayment(checkoutSession) {
+		return fulfillSubscriptionOrder(ctx, event, checkoutSession, callerIp)
+	}
 	return fulfillOrder(ctx, event, checkoutSession, callerIp)
 }
 
@@ -616,19 +561,17 @@ func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, check
 		return rejectStripeWebhook("Stripe 异步支付成功事件的 payment_status 不是 paid")
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 异步支付成功 trade_no=%s client_ip=%s", checkoutSession.ClientReferenceID, callerIp))
-	switch checkoutSession.Mode {
-	case stripe.CheckoutSessionModeSubscription:
-		return bindStripeSubscriptionCheckout(checkoutSession)
-	case stripe.CheckoutSessionModePayment:
-	default:
+	if checkoutSession.Mode != stripe.CheckoutSessionModePayment {
 		return rejectStripeWebhook("Stripe Checkout Session 订单类型无效")
 	}
 
+	if isStripeSubscriptionPayment(checkoutSession) {
+		return fulfillSubscriptionOrder(ctx, event, checkoutSession, callerIp)
+	}
 	return fulfillOrder(ctx, event, checkoutSession, callerIp)
 }
 
-// sessionAsyncPaymentFailed records a delayed payment failure. Subscription
-// invoices can still be retried by Stripe, so their local order remains open.
+// sessionAsyncPaymentFailed records a delayed one-time payment failure.
 func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, checkoutSession *stripe.CheckoutSession, callerIp string) error {
 	referenceId := checkoutSession.ClientReferenceID
 	logger.LogWarn(ctx, fmt.Sprintf("Stripe 异步支付失败 trade_no=%s client_ip=%s", referenceId, callerIp))
@@ -641,29 +584,10 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, checkout
 	defer UnlockOrder(referenceId)
 
 	switch checkoutSession.Mode {
-	case stripe.CheckoutSessionModeSubscription:
-		order := model.GetSubscriptionOrderByTradeNo(referenceId)
-		if order == nil {
-			return model.ErrSubscriptionOrderNotFound
-		}
-		if err := validateStripeSubscriptionOrder(order, checkoutSession); err != nil {
-			return err
-		}
-		if order.Status != common.TopUpStatusPending {
-			return nil
-		}
-		if checkoutSession.Customer == nil || checkoutSession.Customer.ID == "" ||
-			checkoutSession.Subscription == nil || checkoutSession.Subscription.ID == "" {
-			return model.ErrStripeCheckoutUnbound
-		}
-		return model.MarkStripeSubscriptionPaymentFailed(
-			referenceId,
-			checkoutSession.Subscription.ID,
-			checkoutSession.Customer.ID,
-			checkoutSession.Livemode,
-			event.Created,
-		)
 	case stripe.CheckoutSessionModePayment:
+		if isStripeSubscriptionPayment(checkoutSession) {
+			return expireStripeSubscriptionPaymentOrder(ctx, checkoutSession, "异步支付失败")
+		}
 	default:
 		return rejectStripeWebhook("Stripe Checkout Session 订单类型无效")
 	}
@@ -682,6 +606,86 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, checkout
 		return err
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值订单已标记为失败 trade_no=%s client_ip=%s", referenceId, callerIp))
+	return nil
+}
+
+func isStripeSubscriptionPayment(checkoutSession *stripe.CheckoutSession) bool {
+	return checkoutSession != nil &&
+		checkoutSession.Mode == stripe.CheckoutSessionModePayment &&
+		checkoutSession.Metadata["order_kind"] == "subscription"
+}
+
+// expireStripeSubscriptionPaymentOrder must be called while the order lock is held.
+func expireStripeSubscriptionPaymentOrder(ctx context.Context, checkoutSession *stripe.CheckoutSession, reason string) error {
+	referenceId := checkoutSession.ClientReferenceID
+	order := model.GetSubscriptionOrderByTradeNo(referenceId)
+	if order == nil {
+		return model.ErrSubscriptionOrderNotFound
+	}
+	if err := validateStripeSubscriptionPaymentOrder(order, checkoutSession); err != nil {
+		return err
+	}
+	if order.Status != common.TopUpStatusPending {
+		return nil
+	}
+	if err := model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe); err != nil {
+		return err
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe 一次性订阅订单已标记为%s trade_no=%s", reason, referenceId))
+	return nil
+}
+
+func fulfillSubscriptionOrder(ctx context.Context, event stripe.Event, checkoutSession *stripe.CheckoutSession, callerIp string) error {
+	referenceId := checkoutSession.ClientReferenceID
+	if referenceId == "" {
+		return errors.New("Stripe 完成订阅订单时缺少订单号")
+	}
+	if checkoutSession.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
+		return rejectStripeWebhook("Stripe 一次性订阅 Checkout Session 尚未支付")
+	}
+
+	LockOrder(referenceId)
+	defer UnlockOrder(referenceId)
+	order := model.GetSubscriptionOrderByTradeNo(referenceId)
+	if order == nil {
+		return model.ErrSubscriptionOrderNotFound
+	}
+	if err := validateStripeSubscriptionPaymentOrder(order, checkoutSession); err != nil {
+		return err
+	}
+	paymentIntentId := ""
+	chargeId := ""
+	if checkoutSession.PaymentIntent != nil {
+		paymentIntentId = checkoutSession.PaymentIntent.ID
+		if checkoutSession.PaymentIntent.LatestCharge != nil {
+			chargeId = checkoutSession.PaymentIntent.LatestCharge.ID
+		}
+	}
+	if paymentIntentId == "" && chargeId == "" {
+		return rejectStripeWebhook("Stripe 一次性订阅 Checkout Session 缺少 PaymentIntent 或 Charge")
+	}
+	customerId := ""
+	if checkoutSession.Customer != nil {
+		customerId = checkoutSession.Customer.ID
+	}
+	if err := model.CompleteStripeOneTimeSubscriptionOrder(
+		referenceId,
+		common.GetJsonString(checkoutSession),
+		model.StripeOneTimeSubscriptionPayment{
+			PaymentIntentId: paymentIntentId,
+			ChargeId:        chargeId,
+			CustomerId:      customerId,
+			AmountMinor:     checkoutSession.AmountTotal,
+			Currency:        string(checkoutSession.Currency),
+			Livemode:        checkoutSession.Livemode,
+		},
+	); err != nil {
+		return err
+	}
+	logger.LogInfo(ctx, fmt.Sprintf(
+		"Stripe 一次性订阅权益发放成功 trade_no=%s event_type=%s client_ip=%s",
+		referenceId, string(event.Type), callerIp,
+	))
 	return nil
 }
 
@@ -744,23 +748,10 @@ func sessionExpired(ctx context.Context, checkoutSession *stripe.CheckoutSession
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
 	switch checkoutSession.Mode {
-	case stripe.CheckoutSessionModeSubscription:
-		order := model.GetSubscriptionOrderByTradeNo(referenceId)
-		if order == nil {
-			return model.ErrSubscriptionOrderNotFound
-		}
-		if err := validateStripeSubscriptionOrder(order, checkoutSession); err != nil {
-			return err
-		}
-		if order.Status != common.TopUpStatusPending {
-			return nil
-		}
-		if err := model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe); err != nil {
-			return err
-		}
-		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单已过期 trade_no=%s", referenceId))
-		return nil
 	case stripe.CheckoutSessionModePayment:
+		if isStripeSubscriptionPayment(checkoutSession) {
+			return expireStripeSubscriptionPaymentOrder(ctx, checkoutSession, "Checkout 已过期")
+		}
 	default:
 		return rejectStripeWebhook("Stripe Checkout Session 订单类型无效")
 	}
@@ -804,24 +795,24 @@ func validateStripeTopUp(topUp *model.TopUp, checkoutSession *stripe.CheckoutSes
 	return nil
 }
 
-func validateStripeSubscriptionOrder(order *model.SubscriptionOrder, checkoutSession *stripe.CheckoutSession) error {
+func validateStripeSubscriptionPaymentOrder(order *model.SubscriptionOrder, checkoutSession *stripe.CheckoutSession) error {
 	if order.PaymentProvider != model.PaymentProviderStripe {
 		return model.ErrPaymentMethodMismatch
 	}
-	if err := validateStripeCheckoutOrder(order.TradeNo, "subscription", order.ProviderOrderId, order.ProviderProductId, stripe.CheckoutSessionModeSubscription, checkoutSession); err != nil {
+	if err := validateStripeCheckoutOrder(order.TradeNo, "subscription", order.ProviderOrderId, order.ProviderProductId, stripe.CheckoutSessionModePayment, checkoutSession); err != nil {
 		return err
 	}
 	if order.ExpectedAmountMinor <= 0 || order.ExpectedCurrency == "" ||
 		checkoutSession.AmountTotal != order.ExpectedAmountMinor ||
 		!strings.EqualFold(string(checkoutSession.Currency), order.ExpectedCurrency) ||
 		checkoutSession.Livemode != order.ProviderLivemode {
-		return rejectStripeWebhook("Stripe 订阅 Checkout Session 金额、币种或模式不匹配")
+		return rejectStripeWebhook("Stripe 一次性订阅 Checkout Session 金额、币种或模式不匹配")
 	}
 	if order.ProviderCustomerId != "" && (checkoutSession.Customer == nil || checkoutSession.Customer.ID != order.ProviderCustomerId) {
-		return rejectStripeWebhook("Stripe 订阅 Checkout Session Customer 不匹配")
+		return rejectStripeWebhook("Stripe 一次性订阅 Checkout Session Customer 不匹配")
 	}
-	if order.ProviderSubscriptionId != nil && (checkoutSession.Subscription == nil || checkoutSession.Subscription.ID != *order.ProviderSubscriptionId) {
-		return rejectStripeWebhook("Stripe 订阅 Checkout Session Subscription 不匹配")
+	if checkoutSession.Subscription != nil && checkoutSession.Subscription.ID != "" {
+		return rejectStripeWebhook("Stripe 一次性订阅 Checkout Session 不应包含 Subscription")
 	}
 	return nil
 }
@@ -849,232 +840,6 @@ func validateStripeCheckoutOrder(tradeNo string, orderKind string, providerOrder
 		return rejectStripeWebhook("Stripe Checkout Session Price 不匹配")
 	}
 	return nil
-}
-
-func bindStripeSubscriptionCheckout(checkoutSession *stripe.CheckoutSession) error {
-	if checkoutSession == nil || checkoutSession.ClientReferenceID == "" {
-		return rejectStripeWebhook("Stripe 订阅 Checkout Session 缺少订单号")
-	}
-	order := model.GetSubscriptionOrderByTradeNo(checkoutSession.ClientReferenceID)
-	if order == nil {
-		return model.ErrSubscriptionOrderNotFound
-	}
-	if err := validateStripeSubscriptionOrder(order, checkoutSession); err != nil {
-		return err
-	}
-	if checkoutSession.Customer == nil || checkoutSession.Customer.ID == "" ||
-		checkoutSession.Subscription == nil || checkoutSession.Subscription.ID == "" {
-		return errors.New("Stripe 订阅 Checkout Session 尚未包含 Customer 或 Subscription")
-	}
-	return order.BindStripeSubscription(checkoutSession.Customer.ID, checkoutSession.Subscription.ID, checkoutSession.Livemode)
-}
-
-func processStripeInvoice(ctx context.Context, event stripe.Event, invoice *stripe.Invoice) error {
-	if invoice == nil || invoice.ID == "" || invoice.Livemode != event.Livemode {
-		return rejectStripeWebhook("Stripe Invoice 数据无效")
-	}
-	tradeNo := ""
-	orderKind := ""
-	metadataPriceId := ""
-	subscriptionId := ""
-	if invoice.Parent != nil &&
-		invoice.Parent.Type == stripe.InvoiceParentTypeSubscriptionDetails &&
-		invoice.Parent.SubscriptionDetails != nil {
-		subscriptionDetails := invoice.Parent.SubscriptionDetails
-		tradeNo = strings.TrimSpace(subscriptionDetails.Metadata["trade_no"])
-		orderKind = strings.TrimSpace(subscriptionDetails.Metadata["order_kind"])
-		metadataPriceId = strings.TrimSpace(subscriptionDetails.Metadata["price_id"])
-		if subscriptionDetails.Subscription != nil {
-			subscriptionId = strings.TrimSpace(subscriptionDetails.Subscription.ID)
-		}
-	}
-	if tradeNo == "" && subscriptionId == "" {
-		return rejectStripeWebhook("Stripe Invoice 缺少订阅订单标识")
-	}
-	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-	if order == nil && subscriptionId != "" {
-		order = model.GetStripeSubscriptionOrderByProviderSubscriptionId(subscriptionId)
-	}
-	if order == nil {
-		return model.ErrSubscriptionOrderNotFound
-	}
-	if orderKind != "subscription" || metadataPriceId == "" || metadataPriceId != order.ProviderProductId {
-		return rejectStripeWebhook("Stripe Invoice metadata 与订阅订单不匹配")
-	}
-	if tradeNo != "" && tradeNo != order.TradeNo {
-		return rejectStripeWebhook("Stripe Invoice metadata 订单号不匹配")
-	}
-	if event.Type == stripe.EventTypeInvoicePaymentFailed {
-		if subscriptionId == "" || invoice.Customer == nil || invoice.Customer.ID == "" {
-			return rejectStripeWebhook("Stripe 失败账单缺少 Customer 或 Subscription")
-		}
-		return model.MarkStripeSubscriptionPaymentFailed(order.TradeNo, subscriptionId, invoice.Customer.ID, invoice.Livemode, event.Created)
-	}
-	if event.Type != stripe.EventTypeInvoicePaid || invoice.Status != stripe.InvoiceStatusPaid {
-		return rejectStripeWebhook("Stripe invoice.paid 状态无效")
-	}
-	if invoice.AmountRemaining != 0 || invoice.AmountPaidOffStripe != 0 ||
-		invoice.CollectionMethod != stripe.InvoiceCollectionMethodChargeAutomatically ||
-		(invoice.BillingReason != stripe.InvoiceBillingReasonSubscriptionCreate &&
-			invoice.BillingReason != stripe.InvoiceBillingReasonSubscriptionCycle) {
-		return rejectStripeWebhook("Stripe invoice.paid 结算方式或账单原因无效")
-	}
-	if subscriptionId == "" || invoice.Customer == nil || invoice.Customer.ID == "" {
-		return rejectStripeWebhook("Stripe invoice.paid 缺少 Customer 或 Subscription")
-	}
-	var priceId string
-	var quantity int64
-	var unitAmountMinor int64
-	var periodStart int64
-	var periodEnd int64
-	if invoice.Lines != nil {
-		for _, line := range invoice.Lines.Data {
-			if line == nil || line.Parent == nil ||
-				line.Parent.Type != stripe.InvoiceLineItemParentTypeSubscriptionItemDetails ||
-				line.Parent.SubscriptionItemDetails == nil || line.Parent.SubscriptionItemDetails.Proration ||
-				line.Pricing == nil || line.Pricing.Type != stripe.InvoiceLineItemPricingTypePriceDetails ||
-				line.Pricing.PriceDetails == nil || line.Pricing.PriceDetails.Price == nil ||
-				line.Pricing.PriceDetails.Price.ID == "" || line.Period == nil {
-				continue
-			}
-			lineSubscriptionId := strings.TrimSpace(line.Parent.SubscriptionItemDetails.Subscription)
-			if lineSubscriptionId == "" || lineSubscriptionId != subscriptionId {
-				continue
-			}
-			if priceId != "" {
-				return rejectStripeWebhook("Stripe Invoice 包含多个订阅 Price")
-			}
-			unitAmountDecimal := line.Pricing.UnitAmountDecimal
-			if line.Quantity != 1 || unitAmountDecimal <= 0 || math.IsNaN(unitAmountDecimal) ||
-				math.IsInf(unitAmountDecimal, 0) || unitAmountDecimal != math.Trunc(unitAmountDecimal) ||
-				unitAmountDecimal >= float64(math.MaxInt64) ||
-				!strings.EqualFold(string(line.Currency), string(invoice.Currency)) {
-				return rejectStripeWebhook("Stripe Invoice 订阅行的数量、单价或币种无效")
-			}
-			priceId = line.Pricing.PriceDetails.Price.ID
-			quantity = line.Quantity
-			unitAmountMinor = int64(unitAmountDecimal)
-			periodStart = line.Period.Start
-			periodEnd = line.Period.End
-		}
-	}
-	if priceId == "" || quantity != 1 || unitAmountMinor <= 0 || periodStart <= 0 || periodEnd <= periodStart {
-		return rejectStripeWebhook("Stripe Invoice 缺少有效的订阅行项目")
-	}
-	if invoice.Total != order.ExpectedAmountMinor {
-		return rejectStripeWebhook("Stripe Invoice 总额与订阅订单不匹配")
-	}
-	var invoicePayments []*stripe.InvoicePayment
-	fetchedInvoicePayments := false
-	if invoice.AmountPaid > 0 && (invoice.Payments == nil || len(invoice.Payments.Data) == 0 || invoice.Payments.HasMore) {
-		fetchedInvoicePayments = true
-		var err error
-		invoicePayments, err = fetchStripeInvoicePayments(ctx, invoice.ID)
-		if err != nil {
-			return fmt.Errorf("获取 Stripe Invoice %s 的完整付款引用失败: %w", invoice.ID, err)
-		}
-		if len(invoicePayments) == 0 {
-			return fmt.Errorf("Stripe Invoice %s 的完整付款引用暂不可用", invoice.ID)
-		}
-	} else if invoice.Payments != nil {
-		invoicePayments = invoice.Payments.Data
-	}
-	paymentSnapshots := make([]model.StripePaymentSnapshot, 0, len(invoicePayments))
-	var referencedAmountPaid int64
-	for _, invoicePayment := range invoicePayments {
-		if invoicePayment == nil || invoicePayment.Status != "paid" || invoicePayment.AmountPaid <= 0 ||
-			invoicePayment.Livemode != invoice.Livemode || !strings.EqualFold(string(invoicePayment.Currency), string(invoice.Currency)) ||
-			invoicePayment.Payment == nil {
-			continue
-		}
-		paymentIntentId := ""
-		chargeId := ""
-		if invoicePayment.Payment.PaymentIntent != nil {
-			paymentIntentId = strings.TrimSpace(invoicePayment.Payment.PaymentIntent.ID)
-		}
-		if invoicePayment.Payment.Charge != nil {
-			chargeId = strings.TrimSpace(invoicePayment.Payment.Charge.ID)
-		}
-		if paymentIntentId == "" && chargeId == "" {
-			if fetchedInvoicePayments {
-				return fmt.Errorf("Stripe Invoice %s 的付款引用暂缺少 PaymentIntent 或 Charge", invoice.ID)
-			}
-			return rejectStripeWebhook("Stripe invoice.paid 付款引用缺少 PaymentIntent 或 Charge")
-		}
-		if referencedAmountPaid > invoice.AmountPaid-invoicePayment.AmountPaid {
-			if fetchedInvoicePayments {
-				return fmt.Errorf("Stripe Invoice %s 的付款引用金额暂不一致", invoice.ID)
-			}
-			return rejectStripeWebhook("Stripe invoice.paid 付款引用金额溢出")
-		}
-		referencedAmountPaid += invoicePayment.AmountPaid
-		paymentSnapshots = append(paymentSnapshots, model.StripePaymentSnapshot{
-			PaymentIntentId: paymentIntentId,
-			ChargeId:        chargeId,
-			AmountMinor:     invoicePayment.AmountPaid,
-		})
-	}
-	if (invoice.AmountPaid > 0 && len(paymentSnapshots) == 0) || referencedAmountPaid != invoice.AmountPaid {
-		if fetchedInvoicePayments {
-			return fmt.Errorf("Stripe Invoice %s 的付款引用金额暂与账单不一致", invoice.ID)
-		}
-		return rejectStripeWebhook("Stripe invoice.paid 付款引用金额与账单不一致")
-	}
-	payload, err := common.Marshal(stripeInvoiceAuditSnapshot{
-		InvoiceId: invoice.ID, CustomerId: invoice.Customer.ID, SubscriptionId: subscriptionId,
-		ProductId: priceId, Quantity: quantity, UnitAmountMinor: unitAmountMinor,
-		InvoiceTotalMinor: invoice.Total, AmountPaidMinor: invoice.AmountPaid, AmountRemainingMinor: invoice.AmountRemaining,
-		Currency: strings.ToUpper(string(invoice.Currency)), Livemode: invoice.Livemode,
-		PeriodStart: periodStart, PeriodEnd: periodEnd, EventCreated: event.Created,
-	})
-	if err != nil {
-		return err
-	}
-	return model.CompleteStripeSubscriptionInvoice(model.StripeInvoiceSettlementInput{
-		InvoiceId: invoice.ID, TradeNo: tradeNo, CustomerId: invoice.Customer.ID,
-		SubscriptionId: subscriptionId, ProductId: priceId, Quantity: quantity,
-		UnitAmountMinor: unitAmountMinor, InvoiceTotalMinor: invoice.Total, AmountPaidMinor: invoice.AmountPaid,
-		Currency: string(invoice.Currency), Livemode: invoice.Livemode,
-		PeriodStart: periodStart, PeriodEnd: periodEnd, EventCreated: event.Created, ProviderPayload: string(payload),
-		Payments: paymentSnapshots,
-	})
-}
-
-func processStripeSubscriptionLifecycle(event stripe.Event, subscription *stripe.Subscription) error {
-	if subscription == nil || subscription.ID == "" || subscription.Customer == nil || subscription.Customer.ID == "" {
-		return rejectStripeWebhook("Stripe Subscription 生命周期事件数据无效")
-	}
-	if subscription.Livemode != event.Livemode {
-		return rejectStripeWebhook("Stripe Subscription livemode 不匹配")
-	}
-	if event.Created <= 0 {
-		return rejectStripeWebhook("Stripe Subscription 生命周期事件缺少创建时间")
-	}
-	tradeNo := strings.TrimSpace(subscription.Metadata["trade_no"])
-	order := model.GetStripeSubscriptionOrderByProviderSubscriptionId(subscription.ID)
-	if order == nil && tradeNo != "" {
-		order = model.GetSubscriptionOrderByTradeNo(tradeNo)
-		if order != nil {
-			if err := order.BindStripeSubscription(subscription.Customer.ID, subscription.ID, subscription.Livemode); err != nil {
-				return err
-			}
-		}
-	}
-	if order == nil {
-		return model.ErrSubscriptionOrderNotFound
-	}
-	currentPeriodEnd := stripeSubscriptionCurrentPeriodEnd(subscription)
-	return model.UpdateStripeSubscriptionLifecycle(
-		subscription.ID,
-		subscription.Customer.ID,
-		string(subscription.Status),
-		subscription.Livemode,
-		event.Created,
-		event.Type == stripe.EventTypeCustomerSubscriptionDeleted,
-		subscription.CancelAtPeriodEnd,
-		subscription.CancelAt,
-		currentPeriodEnd,
-	)
 }
 
 // genStripeLink generates a Stripe Checkout session URL for payment.
@@ -1126,7 +891,12 @@ func genStripeLink(ctx context.Context, referenceId string, customerId string, e
 				Quantity: stripe.Int64(quantity),
 			},
 		},
-		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
+		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
+		PaymentMethodOptions: &stripe.CheckoutSessionCreatePaymentMethodOptionsParams{
+			WeChatPay: &stripe.CheckoutSessionCreatePaymentMethodOptionsWeChatPayParams{
+				Client: stripe.String(string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb)),
+			},
+		},
 		AllowPromotionCodes: stripe.Bool(false),
 		Metadata: map[string]string{
 			"trade_no":   referenceId,

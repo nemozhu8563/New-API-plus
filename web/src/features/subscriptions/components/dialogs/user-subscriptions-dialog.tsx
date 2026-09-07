@@ -380,7 +380,7 @@ export function UserSubscriptionsDialog(props: Props) {
                             })
                           }
                         >
-                          {t('Invalidate')}
+                          {t('Cancel subscription')}
                           <DropdownMenuShortcut>
                             <Ban size={16} />
                           </DropdownMenuShortcut>
@@ -416,7 +416,7 @@ export function UserSubscriptionsDialog(props: Props) {
           onOpenChange={(v) => !v && setConfirmAction(null)}
           title={
             confirmAction.type === 'invalidate'
-              ? t('Confirm invalidate')
+              ? t('Cancel subscription')
               : t('Confirm delete')
           }
           desc={

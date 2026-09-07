@@ -132,8 +132,7 @@ describe('subscription plans quota copy', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [{ subscription }],
                 all_subscriptions: [{ subscription }],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }
@@ -242,8 +241,7 @@ describe('subscription plans quota copy', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [{ subscription }],
                 all_subscriptions: [{ subscription }],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }
@@ -274,6 +272,11 @@ describe('subscription plans quota copy', () => {
 
     const text = container.textContent || ''
     assert.match(text, /Monthly Quota:/)
+    assert.match(text, /Valid for one month/)
+    assert.doesNotMatch(
+      text,
+      /One-time payment|No automatic renewal|Monthly billing/
+    )
 
     const cardTextByTitle = new Map<string, string>()
     for (const heading of container.querySelectorAll('h4')) {
@@ -379,8 +382,7 @@ describe('subscription plans quota copy', () => {
                 billing_preference: 'subscription_first',
                 subscriptions: [],
                 all_subscriptions: [],
-                stripe_subscriptions: [],
-                stripe_invoices: [],
+
                 billing_debt: 0,
               },
             }

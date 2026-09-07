@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	StripePaymentTargetTopUp        = "topup"
-	StripePaymentTargetSubscription = "subscription"
-	StripeAdjustmentRefund          = "refund"
-	StripeAdjustmentDispute         = "dispute"
+	StripePaymentTargetTopUp                   = "topup"
+	StripePaymentTargetSubscriptionEntitlement = "subscription_entitlement"
+	StripeAdjustmentRefund                     = "refund"
+	StripeAdjustmentDispute                    = "dispute"
 )
 
 var (
@@ -82,12 +82,6 @@ type StripePaymentAdjustment struct {
 	UpdatedAt          int64  `json:"updated_at" gorm:"type:bigint;not null"`
 }
 
-type StripePaymentSnapshot struct {
-	PaymentIntentId string
-	ChargeId        string
-	AmountMinor     int64
-}
-
 type StripePaymentAdjustmentInput struct {
 	ObjectType      string
 	ObjectId        string
@@ -152,7 +146,7 @@ func findStripePaymentReferenceTx(tx *gorm.DB, paymentIntentId string, chargeId 
 
 func registerStripePaymentReferenceTx(tx *gorm.DB, ref StripePaymentReference, originalAmountMinor int64, originalQuota int64) error {
 	if tx == nil || ref.UserId <= 0 || ref.TargetId <= 0 ||
-		(ref.TargetKind != StripePaymentTargetTopUp && ref.TargetKind != StripePaymentTargetSubscription) ||
+		(ref.TargetKind != StripePaymentTargetTopUp && ref.TargetKind != StripePaymentTargetSubscriptionEntitlement) ||
 		ref.AmountMinor <= 0 || originalAmountMinor <= 0 || originalQuota < 0 || strings.TrimSpace(ref.Currency) == "" ||
 		(ref.PaymentIntentId == nil && ref.ChargeId == nil) {
 		return fmt.Errorf("%w: invalid payment reference", ErrStripeAdjustmentMismatch)
@@ -217,36 +211,20 @@ func registerStripeTopUpPaymentTx(tx *gorm.DB, topUp *TopUp, settlement StripeTo
 	}, settlement.AmountMinor, topUp.CreditedQuota)
 }
 
-func registerStripeSubscriptionPaymentsTx(tx *gorm.DB, settlement *StripeSubscriptionSettlement, sub *UserSubscription, payments []StripePaymentSnapshot) error {
-	if tx == nil || settlement == nil || sub == nil || len(payments) == 0 {
-		return fmt.Errorf("%w: subscription invoice has no payment reference", ErrStripeAdjustmentMismatch)
+func registerStripeSubscriptionEntitlementPaymentTx(tx *gorm.DB, sub *UserSubscription, payment StripeOneTimeSubscriptionPayment) error {
+	if sub == nil {
+		return fmt.Errorf("%w: subscription entitlement is nil", ErrStripeAdjustmentMismatch)
 	}
-	var paid int64
-	for _, payment := range payments {
-		if payment.AmountMinor <= 0 || (strings.TrimSpace(payment.PaymentIntentId) == "" && strings.TrimSpace(payment.ChargeId) == "") {
-			return fmt.Errorf("%w: invalid subscription invoice payment", ErrStripeAdjustmentMismatch)
-		}
-		if paid > settlement.AmountPaidMinor-payment.AmountMinor {
-			return fmt.Errorf("%w: subscription invoice payment total overflow", ErrStripeAdjustmentMismatch)
-		}
-		paid += payment.AmountMinor
-		if err := registerStripePaymentReferenceTx(tx, StripePaymentReference{
-			PaymentIntentId: normalizeStripeProviderId(payment.PaymentIntentId),
-			ChargeId:        normalizeStripeProviderId(payment.ChargeId),
-			Livemode:        settlement.Livemode,
-			TargetKind:      StripePaymentTargetSubscription,
-			TargetId:        settlement.Id,
-			UserId:          sub.UserId,
-			AmountMinor:     payment.AmountMinor,
-			Currency:        settlement.Currency,
-		}, settlement.AmountPaidMinor, sub.AmountTotal); err != nil {
-			return err
-		}
-	}
-	if paid != settlement.AmountPaidMinor {
-		return fmt.Errorf("%w: subscription invoice payments do not equal amount paid", ErrStripeAdjustmentMismatch)
-	}
-	return nil
+	return registerStripePaymentReferenceTx(tx, StripePaymentReference{
+		PaymentIntentId: normalizeStripeProviderId(payment.PaymentIntentId),
+		ChargeId:        normalizeStripeProviderId(payment.ChargeId),
+		Livemode:        payment.Livemode,
+		TargetKind:      StripePaymentTargetSubscriptionEntitlement,
+		TargetId:        sub.Id,
+		UserId:          sub.UserId,
+		AmountMinor:     payment.AmountMinor,
+		Currency:        payment.Currency,
+	}, payment.AmountMinor, sub.AmountTotal)
 }
 
 func backfillStripeTopUpPaymentReference(paymentIntentId string, chargeId string, livemode bool) error {
@@ -457,8 +435,8 @@ func ApplyStripePaymentAdjustment(input StripePaymentAdjustmentInput) (*StripePa
 			if err := applyTopUpRecoveryTx(tx, &user, &recovery, int64(desired)); err != nil {
 				return err
 			}
-		} else if recovery.TargetKind == StripePaymentTargetSubscription {
-			changed, err := applySubscriptionRecoveryTx(tx, &user, &recovery, activeLoss)
+		} else if recovery.TargetKind == StripePaymentTargetSubscriptionEntitlement {
+			changed, err := applySubscriptionEntitlementRecoveryTx(tx, &user, &recovery, activeLoss)
 			if err != nil {
 				return err
 			}
@@ -567,15 +545,15 @@ func applyTopUpRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymentRecove
 	return nil
 }
 
-func applySubscriptionRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymentRecovery, activeLoss int64) (bool, error) {
-	var settlement StripeSubscriptionSettlement
-	if err := tx.Where("id = ?", recovery.TargetId).First(&settlement).Error; err != nil {
-		return false, err
-	}
+func applySubscriptionEntitlementRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymentRecovery, activeLoss int64) (bool, error) {
 	var sub UserSubscription
-	if err := lockForUpdate(tx).Where("id = ? AND user_id = ?", settlement.UserSubscriptionId, recovery.UserId).First(&sub).Error; err != nil {
+	if err := lockForUpdate(tx).Where("id = ? AND user_id = ?", recovery.TargetId, recovery.UserId).First(&sub).Error; err != nil {
 		return false, err
 	}
+	return applySubscriptionEntitlementRecoveryStateTx(tx, user, recovery, &sub, activeLoss)
+}
+
+func applySubscriptionEntitlementRecoveryStateTx(tx *gorm.DB, user *User, recovery *StripePaymentRecovery, sub *UserSubscription, activeLoss int64) (bool, error) {
 	groupChanged := false
 	desired := int64(0)
 	newTotal := recovery.OriginalQuota
@@ -632,7 +610,7 @@ func applySubscriptionRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymen
 	}
 	if revokeEntitlement && !wasRevoked {
 		sub.Status = "cancelled"
-		if target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, common.GetTimestamp()); err != nil {
+		if target, err := downgradeUserGroupForSubscriptionTx(tx, sub, common.GetTimestamp()); err != nil {
 			return false, err
 		} else if target != "" {
 			groupChanged = true

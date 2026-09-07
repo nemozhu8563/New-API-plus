@@ -575,18 +575,16 @@ export function SubscriptionsMutateDrawer({
               </div>
             </SideDrawerSection>
 
-            {/* Billing contract */}
+            {/* Plan validity */}
             <SideDrawerSection>
               <h3 className='flex items-center gap-2 text-sm font-medium'>
                 <IconBadge tone='chart-4' size='xs'>
                   <CalendarClock />
                 </IconBadge>
-                {t('Monthly billing')}
+                {t('Validity Period')}
               </h3>
               <p className='text-muted-foreground text-sm leading-6'>
-                {t(
-                  'Each successful monthly payment grants the configured monthly quota. Unused quota expires at the end of that billing period.'
-                )}
+                {t('Valid for one month')}
               </p>
             </SideDrawerSection>
 

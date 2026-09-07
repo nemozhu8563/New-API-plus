@@ -27,6 +27,7 @@ import {
 import { api, applyAuthBundle, isAuthBundle } from '@/lib/api'
 import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { trackEvent } from '@/lib/site-telemetry'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
   skipBusinessError?: boolean
@@ -186,6 +187,7 @@ function OAuthCallback() {
         const response = await api.get(`/api/oauth/${provider}`, config)
         if (response.data?.success && isAuthBundle(response.data?.data)) {
           applyAuthBundle(response.data.data)
+          trackEvent('login', { method: provider })
           safeNavigate(search.redirect)
           toast.success(i18next.t('Signed in successfully!'))
           return

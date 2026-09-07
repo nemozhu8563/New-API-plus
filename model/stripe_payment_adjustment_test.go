@@ -154,130 +154,21 @@ func TestRefundingDebtPaymentTopUpRecreatesMatchingDebt(t *testing.T) {
 	assert.Equal(t, int64(100), user.BillingDebt)
 }
 
-func TestStripeSubscriptionAdjustmentAggregatesLossAcrossPaymentReferences(t *testing.T) {
-	truncateTables(t)
-	insertUserForPaymentGuardTest(t, 805, 0)
-	now := time.Now()
-	order := SubscriptionOrder{
-		UserId: 805, PlanId: 1, PlanTitle: "Multi-payment", PaymentMethod: PaymentMethodStripe,
-		PaymentProvider: PaymentProviderStripe, ProviderCustomerId: "cus_subscription_multi_payment",
-		ProviderSubscriptionId: common.GetPointer("sub_multi_payment"), Status: common.TopUpStatusSuccess,
-		TradeNo: "stripe-subscription-multi-payment", CreateTime: now.Unix(),
-	}
-	require.NoError(t, DB.Create(&order).Error)
-	subscription := UserSubscription{
-		UserId: 805, PlanId: 1, AmountTotal: 1000, StartTime: now.Add(-time.Hour).Unix(),
-		EndTime: now.Add(time.Hour).Unix(), Status: "active", Source: "stripe_invoice",
-		Provider: PaymentProviderStripe, ProviderSubscriptionId: "sub_multi_payment",
-		ProviderInvoiceId: "in_multi_payment",
-	}
-	require.NoError(t, DB.Create(&subscription).Error)
-	settlement := StripeSubscriptionSettlement{
-		InvoiceId: "in_multi_payment", SubscriptionOrderId: order.Id, UserSubscriptionId: subscription.Id,
-		ProviderCustomerId: "cus_subscription_multi_payment", ProviderSubscriptionId: "sub_multi_payment",
-		ProviderProductId: "price_subscription_multi_payment", Quantity: 1, UnitAmountMinor: 100,
-		InvoiceTotalMinor: 100, AmountPaidMinor: 100, Currency: "CNY",
-		PeriodStart: subscription.StartTime, PeriodEnd: subscription.EndTime, CreatedAt: now.Unix(),
-	}
-	require.NoError(t, DB.Create(&settlement).Error)
-	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
-		return registerStripeSubscriptionPaymentsTx(tx, &settlement, &subscription, []StripePaymentSnapshot{
-			{PaymentIntentId: "pi_multi_payment_1", ChargeId: "ch_multi_payment_1", AmountMinor: 60},
-			{PaymentIntentId: "pi_multi_payment_2", ChargeId: "ch_multi_payment_2", AmountMinor: 40},
-		})
-	}))
-
-	testCases := []struct {
-		name             string
-		objectType       string
-		objectID         string
-		paymentIntentID  string
-		chargeID         string
-		amountMinor      int64
-		expectedRecovery int64
-		expectedTotal    int64
-		expectedStatus   string
-	}{
-		{
-			name: "first refund on first payment", objectType: StripeAdjustmentRefund, objectID: "re_multi_1a",
-			paymentIntentID: "pi_multi_payment_1", chargeID: "ch_multi_payment_1", amountMinor: 40,
-			expectedRecovery: 400, expectedTotal: 600, expectedStatus: "active",
-		},
-		{
-			name: "refund sum is capped at first payment", objectType: StripeAdjustmentRefund, objectID: "re_multi_1b",
-			paymentIntentID: "pi_multi_payment_1", chargeID: "ch_multi_payment_1", amountMinor: 30,
-			expectedRecovery: 600, expectedTotal: 400, expectedStatus: "active",
-		},
-		{
-			name: "dispute does not stack on refunds for first payment", objectType: StripeAdjustmentDispute, objectID: "dp_multi_1",
-			paymentIntentID: "pi_multi_payment_1", chargeID: "ch_multi_payment_1", amountMinor: 50,
-			expectedRecovery: 600, expectedTotal: 400, expectedStatus: "active",
-		},
-		{
-			name: "loss from second payment is added", objectType: StripeAdjustmentRefund, objectID: "re_multi_2a",
-			paymentIntentID: "pi_multi_payment_2", chargeID: "ch_multi_payment_2", amountMinor: 10,
-			expectedRecovery: 700, expectedTotal: 300, expectedStatus: "active",
-		},
-		{
-			name: "larger dispute wins within second payment", objectType: StripeAdjustmentDispute, objectID: "dp_multi_2",
-			paymentIntentID: "pi_multi_payment_2", chargeID: "ch_multi_payment_2", amountMinor: 30,
-			expectedRecovery: 900, expectedTotal: 100, expectedStatus: "active",
-		},
-		{
-			name: "invoice loss is capped at invoice total", objectType: StripeAdjustmentRefund, objectID: "re_multi_2b",
-			paymentIntentID: "pi_multi_payment_2", chargeID: "ch_multi_payment_2", amountMinor: 35,
-			expectedRecovery: 1000, expectedTotal: 0, expectedStatus: "cancelled",
-		},
-	}
-
-	for i, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			result, err := ApplyStripePaymentAdjustment(StripePaymentAdjustmentInput{
-				ObjectType: testCase.objectType, ObjectId: testCase.objectID,
-				EventId: fmt.Sprintf("evt_multi_payment_%d", i), PaymentIntentId: testCase.paymentIntentID,
-				ChargeId: testCase.chargeID, AmountMinor: testCase.amountMinor, Currency: "CNY",
-				Status: "active", Active: true, EventCreated: int64(i + 1), EventPriority: 3,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, testCase.expectedRecovery, result.RecoveredQuota)
-			require.NoError(t, DB.Where("id = ?", subscription.Id).First(&subscription).Error)
-			assert.Equal(t, testCase.expectedTotal, subscription.AmountTotal)
-			assert.Equal(t, testCase.expectedStatus, subscription.Status)
-		})
-	}
-}
-
 func TestUnlimitedStripeSubscriptionOnlyRevokesOnFullPaymentLoss(t *testing.T) {
 	truncateTables(t)
 	insertUserForPaymentGuardTest(t, 804, 0)
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", 804).Update("group", "vip").Error)
-	order := SubscriptionOrder{
-		UserId: 804, PlanId: 1, PlanTitle: "Unlimited", PaymentMethod: PaymentMethodStripe,
-		PaymentProvider: PaymentProviderStripe, ProviderCustomerId: "cus_subscription_adjustment",
-		ProviderSubscriptionId: common.GetPointer("sub_adjustment"), Status: common.TopUpStatusSuccess,
-		TradeNo: "stripe-subscription-adjustment", CreateTime: time.Now().Unix(),
-	}
-	require.NoError(t, DB.Create(&order).Error)
 	subscription := UserSubscription{
 		UserId: 804, PlanId: 1, AmountTotal: 0, StartTime: time.Now().Add(-time.Hour).Unix(),
-		EndTime: time.Now().Add(time.Hour).Unix(), Status: "active", Source: "stripe_invoice",
-		UpgradeGroup: "vip", PrevUserGroup: "default", Provider: PaymentProviderStripe,
-		ProviderSubscriptionId: "sub_adjustment", ProviderInvoiceId: "in_adjustment",
+		EndTime: time.Now().Add(time.Hour).Unix(), Status: "active", Source: "purchase",
+		UpgradeGroup: "vip", PrevUserGroup: "default",
 	}
 	require.NoError(t, DB.Create(&subscription).Error)
-	settlement := StripeSubscriptionSettlement{
-		InvoiceId: "in_adjustment", SubscriptionOrderId: order.Id, UserSubscriptionId: subscription.Id,
-		ProviderCustomerId: "cus_subscription_adjustment", ProviderSubscriptionId: "sub_adjustment",
-		ProviderProductId: "price_subscription_adjustment", Quantity: 1, UnitAmountMinor: 100,
-		InvoiceTotalMinor: 100, AmountPaidMinor: 100, Currency: "CNY",
-		PeriodStart: subscription.StartTime, PeriodEnd: subscription.EndTime, CreatedAt: time.Now().Unix(),
-	}
-	require.NoError(t, DB.Create(&settlement).Error)
 	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {
 		return registerStripePaymentReferenceTx(tx, StripePaymentReference{
 			PaymentIntentId: common.GetPointer("pi_subscription_adjustment"),
 			ChargeId:        common.GetPointer("ch_subscription_adjustment"),
-			TargetKind:      StripePaymentTargetSubscription, TargetId: settlement.Id, UserId: 804,
+			TargetKind:      StripePaymentTargetSubscriptionEntitlement, TargetId: subscription.Id, UserId: 804,
 			AmountMinor: 100, Currency: "CNY",
 		}, 100, 0)
 	}))
