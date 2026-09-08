@@ -892,6 +892,9 @@ func genStripeLink(ctx context.Context, referenceId string, customerId string, e
 			},
 		},
 		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
+		ManagedPayments: &stripe.CheckoutSessionCreateManagedPaymentsParams{
+			Enabled: stripe.Bool(false),
+		},
 		PaymentMethodOptions: &stripe.CheckoutSessionCreatePaymentMethodOptionsParams{
 			WeChatPay: &stripe.CheckoutSessionCreatePaymentMethodOptionsWeChatPayParams{
 				Client: stripe.String(string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb)),

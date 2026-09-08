@@ -240,6 +240,9 @@ func genStripeSubscriptionLink(ctx context.Context, referenceId string, customer
 		},
 	}
 	params.Mode = stripe.String(string(stripe.CheckoutSessionModePayment))
+	params.ManagedPayments = &stripe.CheckoutSessionCreateManagedPaymentsParams{
+		Enabled: stripe.Bool(false),
+	}
 	params.Expand = []*string{stripe.String("payment_intent.latest_charge")}
 	params.PaymentMethodOptions = &stripe.CheckoutSessionCreatePaymentMethodOptionsParams{
 		WeChatPay: &stripe.CheckoutSessionCreatePaymentMethodOptionsWeChatPayParams{
