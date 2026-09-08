@@ -6,6 +6,8 @@
 
 ## 状态
 
+最新 Stripe 发布已确认（2026-09-08 10:25:42，Asia/Shanghai）：正式应用升级为 `3186b5c8d`，充值及一次性套餐 Checkout 显式退出 Managed Payments。新建 CNY 20 充值及 CNY 259 Standard Checkout 均已由 Stripe API 与页面确认微信支付可用，未进行付款。测试保留上一镜像，Stripe 全局设置及应用环境变量未变。当前部署见 `docs/facts/deployment.md`，支付与税务边界见 `docs/facts/integrations.md`，执行记录见 `docs/operations/2026-09-08-stripe-managed-payments-opt-out-release.md`；下列早期发布记录的同镜像与微信待定结论已由本条更新。
+
 已确认：当前仓库由根 Go API 网关服务、独立 Go 模块 `relaykit/` 和 React 前端 `web/` 三个稳定范围组成。根服务将 `web/dist` 嵌入可执行文件，也可以通过 `FRONTEND_BASE_URL` 将未匹配请求重定向到独立前端。2026-08-31 在以提交 `bdbc07608167` 为基线的当前工作树上完成了根模块与 `relaykit` 测试、静态检查和构建，以及前端类型检查、测试和构建。
 
 已确认（2026-09-07，Asia/Shanghai）：提交 `22a1b1d82ed26a03f4bcd76a8a1dd74c3332fc48` 已发布到 GreenCloud 测试和正式应用。测试 `new-api-test` 与正式 `new-api` 均运行镜像 ID `sha256:44fe064881dc38b72405976d72e8646fb1ff0ed6ce62ba909e253be4c5f388f6`，均为 `running/healthy`、重启次数 `0`。Sandbox 对外套餐 `2/3/4` 与 Live 对外套餐 `1/2/3` 已分别绑定新的 one-time Price，公开套餐接口均标记 Stripe Checkout 可用；正式 PostgreSQL 和 Redis 未重建。完整部署事实见 `docs/facts/deployment.md`，Stripe 集成边界见 `docs/facts/integrations.md`，执行和回滚边界见 `docs/operations/2026-09-07-stripe-one-time-cutover.md`。
@@ -63,6 +65,7 @@
 
 | 刷新范围 | 日期 | 依据 | 结果 |
 | --- | --- | --- | --- |
+| Stripe Managed Payments opt-out 正式发布 | 2026-09-08 10:25～10:31（Asia/Shanghai） | `3186b5c8d`、本地测试/vet/镜像、GreenCloud 容器与配置摘要、两笔新 Live Session API 和页面 | 已确认：仅正式应用升级，充值及 Standard 微信选项出现，两笔均未付款；退出 Managed Payments 后两笔自动税务为关闭，支付与税务闭环不由本次验证证明。 |
 | 全部 Facts 与三个范围文件 | 2026-08-31（Asia/Shanghai） | 当前代码、测试、配置、`makefile`、GitHub Actions、Docker 文件和本次命令输出 | 已确认：建立当前事实索引；未能由仓库和本地运行证明的外部状态保持待定。 |
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |
 | GreenCloud、Zgo、公网、生产聚合和 Stripe 测试边界 | 2026-09-01 09:21～09:33（Asia/Shanghai） | 当前 DNS/HTTP 响应头；GreenCloud 与 Zgo SSH 只读回读；Docker、PostgreSQL 聚合和既有 Stripe 验收记录 | 已确认：当前应用与依赖健康、生产边缘路径和部分真实上游活动；Stripe Sandbox 未完成的生命周期继续保持待定。 |
