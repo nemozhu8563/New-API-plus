@@ -155,6 +155,10 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值额度无效"})
 		return
 	}
+	if err := model.ValidateStripeTopUpQuotaCapacity(user, int64(creditedQuota)); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值后余额将超过系统上限或额度无效"})
+		return
+	}
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 

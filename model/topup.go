@@ -71,7 +71,7 @@ func topUpQuotaMaxCurrent(creditedQuota int) (int, error) {
 	if creditedQuota <= 0 || creditedQuota >= common.MaxQuota {
 		return 0, ErrInvalidTopUpQuota
 	}
-	return common.MaxQuota - 1 - creditedQuota, nil
+	return common.MaxWalletQuota - creditedQuota, nil
 }
 
 // ValidateTopUpQuotaCapacity performs the user-facing pre-payment check. The
@@ -93,7 +93,7 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 	return nil
 }
 
-// creditTopUpQuota atomically enforces the int32 wallet ceiling while adding
+// creditTopUpQuota atomically enforces the wallet ceiling while adding
 // quota. Keeping the predicate and increment in one UPDATE prevents two
 // concurrent callbacks from both passing a separate read/check.
 func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]interface{}) error {
@@ -126,6 +126,19 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 		return gorm.ErrRecordNotFound
 	}
 	return ErrTopUpQuotaLimitExceeded
+}
+
+// ValidateStripeTopUpQuotaCapacity uses the same debt-first capacity check
+// before Checkout creation and again under the settlement transaction's lock.
+func ValidateStripeTopUpQuotaCapacity(user *User, creditedQuota int64) error {
+	if creditedQuota <= 0 || creditedQuota > int64(common.MaxQuota) || user.BillingDebt < 0 {
+		return ErrInvalidTopUpQuota
+	}
+	walletCredit := creditedQuota - min(creditedQuota, user.BillingDebt)
+	if !common.CanAddWalletQuota(user.Quota, walletCredit) {
+		return ErrTopUpQuotaLimitExceeded
+	}
+	return nil
 }
 
 func (topUp *TopUp) Update() error {
@@ -372,14 +385,14 @@ func Recharge(referenceId string, settlement StripeTopUpSettlement, callerIp str
 		if err := lockForUpdate(tx).Where("id = ?", topUp.UserId).First(&user).Error; err != nil {
 			return errors.New("用户不存在")
 		}
+		if err := ValidateStripeTopUpQuotaCapacity(&user, topUp.CreditedQuota); err != nil {
+			return err
+		}
 		debtPayment := topUp.CreditedQuota
 		if debtPayment > user.BillingDebt {
 			debtPayment = user.BillingDebt
 		}
 		walletCredit := topUp.CreditedQuota - debtPayment
-		if walletCredit < 0 || int64(user.Quota)+walletCredit > int64(common.MaxQuota) {
-			return errors.New("用户余额将超过系统上限")
-		}
 		if debtPayment > 0 {
 			if _, err := applyStripeBillingDebtPaymentTx(tx, topUp.UserId, debtPayment); err != nil {
 				return err

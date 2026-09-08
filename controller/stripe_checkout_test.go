@@ -615,9 +615,27 @@ func TestStripeTopUpCheckoutRejectsMismatchedPriceBeforeCreatingOrder(t *testing
 	assert.Zero(t, topUps)
 }
 
+func TestStripeTopUpRejectsWalletOverflowBeforeOrderAndCheckout(t *testing.T) {
+	db := setupStripeCheckoutHandlerTest(t)
+	user := &model.User{Id: 1013, Username: "stripe_wallet_full", Status: common.UserStatusEnabled, Quota: common.MaxWalletQuota - 1}
+	require.NoError(t, db.Create(user).Error)
+	called := false
+	createStripeCheckoutSession = func(*stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		called = true
+		return nil, errors.New("must not create Checkout")
+	}
+	response := invokeStripeCheckoutHandler(t, RequestStripePay, user.Id, `{"amount":20,"payment_method":"stripe"}`)
+	assert.Equal(t, "error", response["message"])
+	assert.Contains(t, response["data"], "超过系统上限")
+	assert.False(t, called)
+	var count int64
+	require.NoError(t, db.Model(&model.TopUp{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestStripeTopUpCheckoutSuccessBindsImmutableSnapshot(t *testing.T) {
 	db := setupStripeCheckoutHandlerTest(t)
-	user := &model.User{Id: 1003, Username: "stripe_topup_success", Group: "default", Status: common.UserStatusEnabled}
+	user := &model.User{Id: 1003, Username: "stripe_topup_success", Group: "default", Status: common.UserStatusEnabled, Quota: 2_500_000_000}
 	require.NoError(t, db.Create(user).Error)
 	var captured *stripe.CheckoutSessionCreateParams
 	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {

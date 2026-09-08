@@ -278,12 +278,12 @@ func TestRechargeStripe_RejectsInvalidQuotaWithoutChangingOrderOrBalance(t *test
 func TestRechargeStripe_RollsBackWhenBalanceWouldExceedMaxQuota(t *testing.T) {
 	truncateTables(t)
 
-	insertUserForPaymentGuardTest(t, 606, common.MaxQuota-100)
+	insertUserForPaymentGuardTest(t, 606, common.MaxWalletQuota-100)
 	insertTopUpForPaymentGuardTest(t, "stripe-balance-overflow", 606, PaymentProviderStripe)
 
 	require.Error(t, Recharge("stripe-balance-overflow", stripeSettlementForPaymentGuardTest("stripe-balance-overflow"), "127.0.0.1"))
 
-	assert.Equal(t, common.MaxQuota-100, getUserQuotaForPaymentGuardTest(t, 606))
+	assert.Equal(t, common.MaxWalletQuota-100, getUserQuotaForPaymentGuardTest(t, 606))
 	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, "stripe-balance-overflow"))
 }
 
@@ -459,15 +459,15 @@ func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
 	}{
 		{
 			name:         "allows exact highest representable wallet balance",
-			currentQuota: common.MaxQuota - 1 - 1_000_000,
-			wantQuota:    common.MaxQuota - 1,
+			currentQuota: common.MaxWalletQuota - 1_000_000,
+			wantQuota:    common.MaxWalletQuota,
 			wantStatus:   common.TopUpStatusSuccess,
 		},
 		{
-			name:         "rejects balance above int32 quota domain",
-			currentQuota: common.MaxQuota - 1_000_000,
+			name:         "rejects balance above wallet quota domain",
+			currentQuota: common.MaxWalletQuota - 1_000_000 + 1,
 			wantErr:      true,
-			wantQuota:    common.MaxQuota - 1_000_000,
+			wantQuota:    common.MaxWalletQuota - 1_000_000 + 1,
 			wantStatus:   common.TopUpStatusPending,
 		},
 	}

@@ -683,7 +683,7 @@ func TestStripeWebhookTopUpNearQuotaLimitFailsWithoutPartialSettlement(t *testin
 	db := setupStripeWebhookTest(t)
 	user := &model.User{
 		Id: 906, Username: "stripe_quota_limit_user", Status: common.UserStatusEnabled,
-		Quota: common.MaxQuota - 100,
+		Quota: common.MaxWalletQuota - 100,
 	}
 	require.NoError(t, db.Create(user).Error)
 	topUp := &model.TopUp{
@@ -709,7 +709,7 @@ func TestStripeWebhookTopUpNearQuotaLimitFailsWithoutPartialSettlement(t *testin
 	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 	var storedUser model.User
 	require.NoError(t, db.First(&storedUser, user.Id).Error)
-	assert.Equal(t, common.MaxQuota-100, storedUser.Quota)
+	assert.Equal(t, common.MaxWalletQuota-100, storedUser.Quota)
 	storedTopUp := model.GetTopUpByTradeNo(topUp.TradeNo)
 	require.NotNil(t, storedTopUp)
 	assert.Equal(t, common.TopUpStatusPending, storedTopUp.Status)
@@ -719,6 +719,17 @@ func TestStripeWebhookTopUpNearQuotaLimitFailsWithoutPartialSettlement(t *testin
 	var logCount int64
 	require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).Count(&logCount).Error)
 	assert.Zero(t, logCount)
+
+	// A failed delivery can settle after capacity is corrected, even when the
+	// wallet is still above the single-charge int32 limit. Replays stay idempotent.
+	require.NoError(t, db.Model(user).Update("quota", 2_500_000_000).Error)
+	assert.Equal(t, http.StatusOK, invokeStripeWebhook(payload, signature).Code)
+	assert.Equal(t, http.StatusOK, invokeStripeWebhook(payload, signature).Code)
+	require.NoError(t, db.First(&storedUser, user.Id).Error)
+	assert.Equal(t, 2_500_000_200, storedUser.Quota)
+	assert.Equal(t, common.TopUpStatusSuccess, model.GetTopUpByTradeNo(topUp.TradeNo).Status)
+	require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount)
 }
 
 func TestStripeAsyncPaymentSuccessCreditsTopUpAfterCheckoutExpired(t *testing.T) {

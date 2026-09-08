@@ -143,7 +143,7 @@ func TestRequestAmountRejectsTopUpThatWouldOverflowWallet(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.User{
 		Id:       42,
 		Username: "topup_capacity_user",
-		Quota:    1_000_000,
+		Quota:    common.MaxWalletQuota - 1_000_000,
 		Status:   common.UserStatusEnabled,
 	}).Error)
 

@@ -522,7 +522,7 @@ func applyTopUpRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymentRecove
 		if release > recovery.DebtPaidQuota {
 			release = recovery.DebtPaidQuota
 		}
-		if int64(user.Quota)+release > int64(common.MaxQuota)+user.BillingDebt {
+		if !common.CanAddWalletQuota(user.Quota, release) {
 			return errors.New("Stripe adjustment restoration would exceed the quota limit")
 		}
 		recovery.DebtPaidQuota -= release
@@ -532,7 +532,7 @@ func applyTopUpRecoveryTx(tx *gorm.DB, user *User, recovery *StripePaymentRecove
 		if remaining > recovery.WalletRecoveredQuota {
 			return fmt.Errorf("%w: recovery accounting is inconsistent", ErrStripeAdjustmentMismatch)
 		}
-		if int64(user.Quota)+remaining > int64(common.MaxQuota)+user.BillingDebt {
+		if !common.CanAddWalletQuota(user.Quota, remaining) {
 			return errors.New("Stripe adjustment restoration would exceed the quota limit")
 		}
 		recovery.WalletRecoveredQuota -= remaining
@@ -594,7 +594,7 @@ func applySubscriptionEntitlementRecoveryStateTx(tx *gorm.DB, user *User, recove
 		if remaining > recovery.DebtPaidQuota {
 			return false, fmt.Errorf("%w: subscription debt accounting is inconsistent", ErrStripeAdjustmentMismatch)
 		}
-		if int64(user.Quota)+remaining > int64(common.MaxQuota)+user.BillingDebt {
+		if !common.CanAddWalletQuota(user.Quota, remaining) {
 			return false, errors.New("Stripe adjustment restoration would exceed the quota limit")
 		}
 		recovery.DebtPaidQuota -= remaining

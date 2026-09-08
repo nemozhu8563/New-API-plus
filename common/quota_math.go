@@ -8,13 +8,23 @@ import (
 )
 
 // Quota conversions are centralized here so every billing path shares one
-// saturation + logging policy. Quota columns (user/token/log) are 32-bit
-// integers in the database, so an oversized product must clamp to the int32
-// range instead of wrapping around and turning a charge into a credit.
+// saturation + logging policy. Individual charges retain an int32 safety
+// boundary instead of wrapping around and turning a charge into a credit.
+// This is not the cumulative wallet balance limit.
 const (
 	MaxQuota = math.MaxInt32
 	MinQuota = math.MinInt32
+	// Wallet balances use bigint storage, but must remain exact in JavaScript
+	// and Redis Lua numbers, and fit the application's native int.
+	MaxWalletQuota = min(1<<53-1, math.MaxInt)
 )
+
+// CanAddWalletQuota checks before addition so even hostile int64 inputs cannot
+// overflow. Negative existing balances are allowed; negative credits are not.
+func CanAddWalletQuota(current int, credit int64) bool {
+	return credit >= 0 && credit <= int64(MaxWalletQuota) &&
+		int64(current) <= int64(MaxWalletQuota)-credit
+}
 
 // QuotaClampKind identifies why a quota conversion had to be saturated.
 type QuotaClampKind string
