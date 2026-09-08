@@ -161,6 +161,7 @@ func TestGenStripeLinkRejectsUntrustedRedirectURLsBeforeStripeRequest(t *testing
 }
 
 func TestGenStripeSubscriptionLinkUsesContextIdempotencyAndMetadata(t *testing.T) {
+	t.Setenv(stripeSubscriptionPaymentMethodConfigurationEnv, "")
 	originalCreate := createStripeCheckoutSession
 	var captured *stripe.CheckoutSessionCreateParams
 	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
@@ -192,6 +193,25 @@ func TestGenStripeSubscriptionLinkUsesContextIdempotencyAndMetadata(t *testing.T
 	assert.Equal(t, "payment_intent.latest_charge", *captured.Expand[0])
 	assert.Equal(t, string(stripe.CheckoutSessionModePayment), *captured.Mode)
 	assert.Nil(t, captured.SubscriptionData)
+	assert.Nil(t, captured.PaymentMethodConfiguration)
+}
+
+func TestGenStripeSubscriptionLinkUsesConfiguredPaymentMethodConfiguration(t *testing.T) {
+	t.Setenv(stripeSubscriptionPaymentMethodConfigurationEnv, "  pmc_local_wechat  ")
+	originalCreate := createStripeCheckoutSession
+	var captured *stripe.CheckoutSessionCreateParams
+	createStripeCheckoutSession = func(params *stripe.CheckoutSessionCreateParams) (*stripe.CheckoutSession, error) {
+		captured = params
+		return &stripe.CheckoutSession{ID: "cs_local_subscription", URL: "https://checkout.stripe.test/subscription"}, nil
+	}
+	t.Cleanup(func() { createStripeCheckoutSession = originalCreate })
+
+	_, err := genStripeSubscriptionLink(context.Background(), "sub_ref_configured_pmc", "", "user@example.test", "price_local_subscription")
+
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.NotNil(t, captured.PaymentMethodConfiguration)
+	assert.Equal(t, "pmc_local_wechat", *captured.PaymentMethodConfiguration)
 }
 
 func TestGenStripeSubscriptionLinkLetsOneTimeCheckoutReuseCustomer(t *testing.T) {

@@ -18,6 +18,8 @@ import (
 	"github.com/thanhpk/randstr"
 )
 
+const stripeSubscriptionPaymentMethodConfigurationEnv = "STRIPE_SUBSCRIPTION_PAYMENT_METHOD_CONFIGURATION"
+
 var retrieveStripePrice = func(ctx context.Context, priceId string) (*stripe.Price, error) {
 	client := stripe.NewClient(setting.StripeApiSecret)
 	return client.V1Prices.Retrieve(ctx, priceId, &stripe.PriceRetrieveParams{})
@@ -246,6 +248,11 @@ func genStripeSubscriptionLink(ctx context.Context, referenceId string, customer
 	}
 	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
 		Metadata: params.Metadata,
+	}
+	if paymentMethodConfiguration := strings.TrimSpace(
+		common.GetEnvOrDefaultString(stripeSubscriptionPaymentMethodConfigurationEnv, ""),
+	); paymentMethodConfiguration != "" {
+		params.PaymentMethodConfiguration = stripe.String(paymentMethodConfiguration)
 	}
 	params.SetIdempotencyKey("checkout-" + referenceId)
 
