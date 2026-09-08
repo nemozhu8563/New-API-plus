@@ -8,10 +8,10 @@
 | --- | --- | --- | --- | --- |
 | AI 上游渠道 | OpenAI/Claude/Gemini 兼容请求及 AWS、Azure、国内外模型与异步任务渠道适配 | 已确认：代码适配器和路由存在。2026-09-01 生产库近 24 小时存在来自两个不同渠道的消费成功记录，所查询条件下没有渠道错误记录；测试库当前配置的渠道均为禁用。该快照不证明所有账号、模型和能力可用 | `relay/channel/`、`constant/channel.go`、`router/relay-router.go`、`router/video-router.go`；GreenCloud 生产/测试库只读聚合 | 2026-09-01 |
 | OAuth 与外部身份 | GitHub、Discord、OIDC、LinuxDO、WeChat、Telegram 及数据库配置的自定义 OAuth | 已确认：注册器、路由和实现存在；目标环境启用项与端到端登录待定 | `oauth/`、`router/api-router.go`、`model/custom_oauth_provider.go` | 2026-08-31 |
-| 支付 | Stripe、Creem、Waffo、Waffo Pancake、Epay 与余额支付相关路径 | 已确认：支付请求、回调路由和模型存在；Stripe Sandbox 的已验证范围见下行，其他支付商当前环境配置以及 Stripe Live 签名回调、结算与退款状态待定 | `router/api-router.go`、`controller/topup_*.go`、`model/topup.go` | 2026-09-01 |
+| 支付 | Stripe、Creem、Waffo、Waffo Pancake、Epay 与余额支付相关路径 | 已确认：支付请求、回调路由和模型存在；Stripe Sandbox 边界见下行，Live 单笔充值签名回调与入账见下文；其他支付商当前配置及真实退款状态待定 | `router/api-router.go`、`controller/topup_*.go`、`model/topup.go`；下文正式恢复记录 | 2026-09-08 |
 | Stripe Sandbox 交易边界 | 已部署旧版的支付验收快照 | 部分已确认：旧版 CNY 20 充值及 2026-09-01 Standard `CNY 259/月` recurring 首购、invoice、首期权益和账单日期曾完成 E2E；当次 Automatic Tax 税额为 `0`、`product_exempt`。这不证明当前 one-time-only 已发布版本的真实付款、回调、权益或退款流程，旧模型与账单 UI 已从本地实现移除 | `docs/operations/2026-09-01-stripe-subscription-period-test-deployment.md`；当前代码；本次未重新读取旧交易对象 | 2026-09-07 |
-| Stripe Live 配置 | 月度订阅、一次性充值、Webhook 与受限服务端凭据 | 已确认（2026-08-30 快照）：三档月付 Price、一个一次性 Price、Webhook endpoint、restricted key 与 signing secret 已配置并脱敏回读；真实 Live 充值/订阅、签名回调入账、续费、退款和争议仍待定 | `docs/operations/2026-08-26-project-operating-status.md` | 2026-08-30 |
-| Stripe Sandbox / Live 一次性套餐 | 三档套餐每次付款提供一个月内部权益 | 已确认：两环境各有三档 active one-time Price，CNY 259/599/1099，`recurring=null`；Sandbox 公开 Plan `2/3/4` 和 Live 公开 Plan `1/2/3` 已分别绑定这些 Price。正式已升级为 `3186b5c8d`，测试保留 `369141e27`；正式 Standard 新 Checkout 已显示微信但未付款，其他套餐真实付款待定。旧 Product 默认 Price 与 webhook 保持不变 | Stripe API、GreenCloud 与公开套餐 API；`docs/operations/2026-09-07-stripe-one-time-cutover.md`、`docs/operations/2026-09-08-stripe-managed-payments-opt-out-release.md` | 2026-09-08 |
+| Stripe Live 配置 | 一次性充值、套餐、Webhook 与受限服务端凭据 | 已确认：已有配置并已完成单笔 Live 充值真实签名回调及入账；当前套餐目录见下行，真实套餐权益、退款和争议仍待定 | `docs/operations/2026-08-26-project-operating-status.md`；`docs/operations/2026-09-08-stripe-wallet-capacity-release.md` | 2026-09-08 |
+| Stripe Sandbox / Live 一次性套餐 | 三档套餐每次付款提供一个月内部权益 | 已确认：两环境各有三档 active one-time Price，CNY 259/599/1099，`recurring=null`；Sandbox 公开 Plan `2/3/4` 和 Live 公开 Plan `1/2/3` 已分别绑定这些 Price。正式版本见部署事实，测试保留 `369141e27`；正式 Standard 新 Checkout 已显示微信但未付款，其他套餐真实付款待定。旧 Product 默认 Price 与 webhook 保持不变 | Stripe API、GreenCloud 与公开套餐 API；`docs/operations/2026-09-07-stripe-one-time-cutover.md`、`docs/operations/2026-09-08-stripe-managed-payments-opt-out-release.md` | 2026-09-08 |
 | Stripe 订阅 Checkout Payment Method Configuration | 让订阅 Checkout 按环境选择账户本地的动态支付方式配置 | 已确认：`STRIPE_SUBSCRIPTION_PAYMENT_METHOD_CONFIGURATION` 非空时仅随订阅 Checkout 请求传 `payment_method_configuration`；空/未设置时不传该字段，继续由 Stripe 默认动态支付方式选择。GreenCloud 测试运行时该变量不存在，正式运行时已配置非空 Live PMC；PMC 标识未写入仓库或 Facts。此项不证明新 Live Checkout 实际展示微信支付，也不证明付款、Webhook 或权益闭环 | `controller/subscription_payment_stripe.go`、`controller/stripe_checkout_test.go`、GreenCloud 环境变量存在性及容器回读；`docs/operations/2026-09-08-stripe-payment-method-configuration-release.md` | 2026-09-08 |
 | Cloudflare Email Routing | `contract@tryvalo.com` 入站邮件转发 | 已确认（2026-08-27 快照）：路由规则、目标验证状态和公共 DNS 已验证；真实外部邮件到达目标邮箱的 E2E 待定 | `docs/operations/2026-08-27-tryvalo-email-routing.md` | 2026-08-27 |
 | Redis | 配额、渠道与应用缓存 | 已确认：`REDIS_CONN_STRING` 配置和降级代码存在；2026-09-01 GreenCloud 生产 Redis 容器为 `running/healthy`、重启次数 `0`，最近五次容器健康检查均成功。缓存业务正确性和降级切换仍待定 | `common/redis.go`、`model/quota_reserve.go`、`.env.example`；GreenCloud Docker 只读回读 | 2026-09-01 |
@@ -21,6 +21,8 @@
 | Pyroscope / Uptime Kuma / Turnstile / 邮件 | 可选性能观测、状态读取、反滥用和邮件能力 | 已确认：代码与配置入口存在；外部服务配置和实际可用性待定 | `main.go`、`router/api-router.go`、`.env.example` | 2026-08-31 |
 
 ## Checkout 与 GA4 页面上下文契约
+
+已确认（2026-09-08 11:13:05，Asia/Shanghai）：正式 `3abc3c557` 修复累计钱包容量后，原已付款 CNY 20 充值事件重发得到 Stripe Workbench `200 OK / 已送达`，本地事件 `succeeded`、充值单 `success`，净入账 10000000 内部额度且只有一条充值日志、一个付款引用和一个恢复账本。保留验签及事务幂等；未新建付款。完整证据见 [钱包容量与正式入账恢复](../operations/2026-09-08-stripe-wallet-capacity-release.md)。这不确认一次性套餐权益、退款、争议或税务。
 
 已确认（2026-09-08，代码与正式运行）：充值及一次性套餐 Checkout 均显式传 `managed_payments.enabled=false`，继续省略 `payment_method_types` 并保留 WeChat Web 参数。正式新建 CNY 20 充值及 CNY 259 Standard Session 均返回 `card/link/wechat_pay`、账户本地 PMC，页面均显示微信支付，均未付款；测试环境未发布此变更。两笔新 Session 的 `automatic_tax.enabled=false`，退出 Managed Payments 不代表已有独立税务处理能力。代码、运行对象及未验证边界见 [Managed Payments 退出发布记录](../operations/2026-09-08-stripe-managed-payments-opt-out-release.md)。
 
@@ -37,7 +39,7 @@
 
 - 本仓库中的适配器、SDK 依赖、路由或测试只证明代码边界存在，不证明外部账号已配置或生产调用成功。
 - Waffo Pancake 回调路径以 `:env` 区分测试和生产注册槽位；当前目标环境注册结果待定。
-- Stripe 本地测试覆盖一次性 Checkout 参数、recurring 拒绝、签名拒绝、Webhook claim/重试/幂等、订单快照、内部取消、退款和争议处理；invoice/subscription 事件不会发放权益。真实提供商回调和持久化读回只确认过旧版 Sandbox 充值与 recurring 首购，不能替代当前一次性套餐 E2E。
+- Stripe 本地测试覆盖一次性 Checkout 参数、recurring 拒绝、签名拒绝、Webhook claim/重试/幂等、订单快照、内部取消、退款和争议处理；invoice/subscription 事件不会发放权益。真实提供商回调和持久化读回已确认旧版 Sandbox 充值与 recurring 首购，以及上述新版 Live 单笔充值；均不能替代当前一次性套餐 E2E。
 - 不适用：files、fine-tunes、image variations 等路由当前明确挂载到 `RelayNotImplemented`，因此不属于当前已实现的 Relay 能力；不能把路由存在误写为功能可用。
 
 ## 凭据和密钥来源
@@ -75,6 +77,6 @@
 - 待定：各回调 URL 的平台登记、签名 secret 来源、最近成功回执和失败重试状态。
 - 待定：真实 AI 渠道的 StreamOptions、工具调用、图片/音频/视频和 reasoning 能力矩阵。
 - 待定：Stripe Sandbox 一次性套餐切换后的真实付款、异步回调、内部权益发放、退款和争议 E2E，以及一笔产生非零税额的真实计税测试。
-- 待定：Stripe Live 一次性套餐的真实充值、套餐付款、权益入账、退款与争议闭环；自动续费不属于当前本地实现。
+- 待定：Stripe Live 一次性套餐付款、权益入账、退款与争议闭环；单笔充值成功证据见上文。自动续费不属于当前本地实现。
 - 待定：Stripe Live Automatic Tax、有效税务注册和申报准备度。
 - 待定：`contract@tryvalo.com` 从外部发信到目标邮箱的真实投递回读。

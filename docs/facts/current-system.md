@@ -6,6 +6,8 @@
 
 ## 状态
 
+最新钱包修复已确认（2026-09-08 11:10～11:15，Asia/Shanghai）：正式应用升级为 `3abc3c557`，解除充值累计余额误用 int32 单次计费上限的问题；原失败 Live 充值事件重发后 HTTP 200、订单成功且只入账一次。测试未更新，数据库与 Redis 未重建。部署与回滚见 `docs/facts/deployment.md` 和 `docs/operations/2026-09-08-stripe-wallet-capacity-release.md`；套餐付款、退款/争议与税务仍待定。下列历史发布版本不代表当前正式版本。
+
 最新 Stripe 发布已确认（2026-09-08 10:25:42，Asia/Shanghai）：正式应用升级为 `3186b5c8d`，充值及一次性套餐 Checkout 显式退出 Managed Payments。新建 CNY 20 充值及 CNY 259 Standard Checkout 均已由 Stripe API 与页面确认微信支付可用，未进行付款。测试保留上一镜像，Stripe 全局设置及应用环境变量未变。当前部署见 `docs/facts/deployment.md`，支付与税务边界见 `docs/facts/integrations.md`，执行记录见 `docs/operations/2026-09-08-stripe-managed-payments-opt-out-release.md`；下列早期发布记录的同镜像与微信待定结论已由本条更新。
 
 已确认：当前仓库由根 Go API 网关服务、独立 Go 模块 `relaykit/` 和 React 前端 `web/` 三个稳定范围组成。根服务将 `web/dist` 嵌入可执行文件，也可以通过 `FRONTEND_BASE_URL` 将未匹配请求重定向到独立前端。2026-08-31 在以提交 `bdbc07608167` 为基线的当前工作树上完成了根模块与 `relaykit` 测试、静态检查和构建，以及前端类型检查、测试和构建。
@@ -56,7 +58,7 @@
 - 待定：为 GreenCloud 测试环境恢复一个有效且默认禁用的上游测试凭据，再完成普通文本和 audit 文本的 HTTP `200` 生成 E2E；当前渠道 `1` 返回 `401 Invalid API key`。
 - 待定：使用单独授权的可控生产凭据完成普通文本和 audit 文本成功生成 E2E，并复核 NSFW、高风险阻断及策略日志；当前只确认生产运行已验收镜像与内置三层词表，没有发起生产业务请求。
 - 待定：Stripe Sandbox 一次性套餐切换后的真实付款、回调、权益、退款和争议 E2E；已有旧版 recurring 首购证据不能替代。
-- 待定：Stripe Live 一次性套餐的真实充值、套餐付款、签名回调、结算、退款和争议闭环；自动续费不属于当前本地实现。
+- 已确认：一笔 Stripe Live CNY 20 充值的真实签名回调与入账恢复；待定：一次性套餐付款、权益、退款和争议闭环。自动续费不属于当前本地实现。
 - 待定：Stripe Live Automatic Tax、有效税务注册和申报准备度；Sandbox 本轮 invoice 税额为 `0` 且原因为 `product_exempt`，不能据此确认真实计税交易或 Live 税务状态。
 - 待定：2026-09-07 测试和正式发布均保留已校验备份目录，但生产数据库完整恢复演练、Redis/应用数据与日志 volume 备份、监控告警和可执行全栈回滚流程仍未闭合。
 - 待定：用户尚未在生产页主动允许 analytics，因此 GA4/Clarity 的 production transport 尚无证据；GA4 Realtime 当前无数据，Clarity Dashboard/live users 与录制仍未可读回。Bing sitemap 当前为 `Submitted / Processing`，Bing 的抓取和页面收录同样未确认；IndexNow 本次未请求。发布与 sitemap receipt/processing 不替代这些 provider 结果。
@@ -65,6 +67,7 @@
 
 | 刷新范围 | 日期 | 依据 | 结果 |
 | --- | --- | --- | --- |
+| Stripe 钱包容量与正式充值恢复 | 2026-09-08 11:10～11:15（Asia/Shanghai） | `3abc3c557`、全量 Go 测试、正式镜像/数据库、Stripe Workbench HTTP 200 | 已确认：充值钱包边界与单次计费边界分离，原已付款事件成功入账一次；测试及依赖未重建。 |
 | Stripe Managed Payments opt-out 正式发布 | 2026-09-08 10:25～10:31（Asia/Shanghai） | `3186b5c8d`、本地测试/vet/镜像、GreenCloud 容器与配置摘要、两笔新 Live Session API 和页面 | 已确认：仅正式应用升级，充值及 Standard 微信选项出现，两笔均未付款；退出 Managed Payments 后两笔自动税务为关闭，支付与税务闭环不由本次验证证明。 |
 | 全部 Facts 与三个范围文件 | 2026-08-31（Asia/Shanghai） | 当前代码、测试、配置、`makefile`、GitHub Actions、Docker 文件和本次命令输出 | 已确认：建立当前事实索引；未能由仓库和本地运行证明的外部状态保持待定。 |
 | 既有文档可复用事实 | 2026-09-01（Asia/Shanghai） | `docs/authentication.md`、渠道/计费 solutions、运维状态记录，并以当前代码和定向测试交叉复核 | 已确认：纳入稳定实现契约和带日期的远端快照；旧流程、计划、环境实例值及未复核结论未纳入。 |

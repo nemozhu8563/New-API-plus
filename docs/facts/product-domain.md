@@ -21,7 +21,7 @@
 - Relay 路由按入口使用 Token、用户会话或二者之一进行认证，并在发送上游前执行性能检查、模型限流和渠道分发；具体中间件组合以 `router/relay-router.go` 和 `router/video-router.go` 为准。
 - 提示词敏感词策略在检查开关启用时按 `high_risk` 阻断、`nsfw` 阻断、`audit` 仅审计的固定优先级求值；同一词出现在多个管理员列表时，阻断优先于仅审计。`high_risk` 和 `nsfw` 命中返回既有的 HTTP `403 content_policy_violation` 且不重试，`audit` 命中记录类别、动作和命中词后继续请求。当前默认词表把 2,094 个有效来源词互斥划分为 475 个高风险阻断词、548 个 NSFW 阻断词和 1,071 个仅审计词；三个管理员选项可以分别完整覆盖各自列表。实现与测试位于 `setting/sensitive.go`、`service/sensitive.go`、`controller/relay.go` 及对应测试。
 - 用户钱包与 Token 的配额预扣在 Redis 可用时使用 Lua 原子更新；缓存缺失或错误时回退数据库条件更新；持久化失败时尝试补偿缓存。主实现位于 `model/quota_reserve.go`。
-- 充值在付款前检查钱包容量，结算时再次用带上限条件的原子更新限制 int32 额度边界，见 `model/topup.go`。
+- 充值在付款前检查钱包容量，结算时通过条件更新或 Stripe 用户行锁事务再次检查；钱包余额边界独立于单次计费 int32 边界，见 `model/topup.go`。
 - quota 数值转换集中在 `common/quota_math.go`；越界或 NaN 会饱和到 int32 边界并生成可审计的 `QuotaClamp`，严格预扣版本返回错误。
 - 分层计费表达式从配置存储进入预扣、结算和日志展示；实际结算使用捕获的 billing snapshot 与上游实际 usage，见 `pkg/billingexpr/expr.md`。
 - Dashboard Access Token 是 15 分钟 JWT；登录 Session 最长 30 天。Refresh Token 是不透明值，服务端只保存 HMAC 摘要，客户端通过 `HttpOnly`、`SameSite=Strict` Cookie 持有并在刷新时轮换，见 `service/auth_token.go`、`service/auth_session.go` 和 `model/user_session.go`。
@@ -44,7 +44,7 @@
 
 - 负数 quota 不能进入用户或 Token 预扣；余额不足时预扣失败而不是产生负余额。
 - 单次 quota 转换不能因整数溢出把收费变成负向额度；越界必须钳制、报错或留下审计标记。
-- 充值后的钱包额度不能达到或超过 `common.MaxQuota`；付款前检查与回调结算都执行容量约束。
+- 已确认（2026-09-08）：充值后的钱包额度不得超过 `common.MaxWalletQuota`（64 位应用为 `2^53-1`，兼顾 JavaScript/Redis Lua 精确整数）；单次计费仍使用 int32 `common.MaxQuota`。Stripe 付款前与行锁结算均按先抵债后的净入账额度检查容量。正式 `users.quota` 已是 bigint，无需迁移。来源：`common/quota_math.go`、`model/topup.go`、钱包边界/Schema/回调重试测试和正式 schema 回读。兑换码及返现转余额仍保留各自现有上限，本次未统一这些路径。
 - `relaykit` 转换层只表达协议与 DTO，不持有根服务的数据库、运行配置或业务状态。
 - 已识别的旧 Refresh Token 在 30 秒竞态窗口之后再次使用会撤销整个登录会话；未知摘要只拒绝请求，不撤销仍有效的会话。
 
