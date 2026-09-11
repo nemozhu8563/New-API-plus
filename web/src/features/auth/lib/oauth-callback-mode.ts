@@ -101,6 +101,8 @@ export function markOAuthPopup(
   }
 }
 
+export const markOAuthBindPopup = markOAuthPopup
+
 /**
  * Resolve how a callback on `/oauth/:provider` should be handled.
  *
