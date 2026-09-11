@@ -31,6 +31,14 @@ import type {
   UserInfo,
 } from './types'
 
+export async function exportUsageLogsCSV(args: { logCategory: string; isAdmin: boolean; params: Record<string, unknown> }): Promise<{ blob: Blob; filename: string }> {
+  const endpoint = args.logCategory === 'common' ? '/api/log/export' : `/api/${args.logCategory}_log/export`
+  const res = await api.get(endpoint, { params: args.params, responseType: 'blob' })
+  const disposition = String(res.headers?.['content-disposition'] ?? '')
+  const match = disposition.match(/filename="?([^";]+)"?/) 
+  return { blob: res.data, filename: match?.[1] ?? `usage-logs-${args.logCategory}.csv` }
+}
+
 // ============================================================================
 // Generic API Helpers
 // ============================================================================
