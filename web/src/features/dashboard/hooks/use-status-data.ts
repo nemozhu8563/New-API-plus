@@ -52,3 +52,19 @@ export function useDashboardStatus() {
     uptimeKuma: hasStatus && status?.uptime_kuma_enabled !== false,
   }
 }
+
+export function useApiInfo() {
+  const { status, loading } = useStatus()
+  const items = (status?.api_info ?? status?.apiInfo ?? []) as Array<{ url?: string }>
+  return { items, loading }
+}
+
+export function useDashboardContentVisibility() {
+  const { status } = useStatus()
+  return {
+    apiInfo: status?.api_info_enabled !== false,
+    announcements: status?.announcements_enabled !== false,
+    faq: status?.faq_enabled !== false,
+    uptimeKuma: status?.uptime_kuma_enabled !== false,
+  }
+}
