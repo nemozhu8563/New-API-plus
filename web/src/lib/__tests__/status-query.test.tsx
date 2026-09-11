@@ -231,13 +231,13 @@ describe('module guard status freshness', () => {
     stubStatusEndpoint('updated')
     expect(await getModuleAccessForGuard(queryClient, 'pricing')).toEqual({
       enabled: false,
-      requireAuth: false,
+      requireAuth: true,
     })
     expect(statusRequests).toHaveLength(0)
     await queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY })
     expect(await getModuleAccessForGuard(queryClient, 'pricing')).toEqual({
       enabled: true,
-      requireAuth: false,
+      requireAuth: true,
     })
     expect(statusRequests).toHaveLength(1)
   })

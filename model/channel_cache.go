@@ -218,15 +218,14 @@ func GetRandomSatisfiedChannel(
 
 // GetRandomSatisfiedChannelExcluding selects a channel while excluding IDs
 // already attempted by the caller.
-func GetRandomSatisfiedChannelExcluding(group, model, channelType string, retry int, taskModel string, excluded map[int]struct{}) (*Channel, error) {
-	filters := []dto.ChannelFilter{}
-	for i := 0; i <= retry+1; i++ {
-		channel, err := GetRandomSatisfiedChannel(group, model, retry, filters)
-		if err != nil || channel == nil { return channel, err }
-		if _, ok := excluded[channel.Id]; !ok { return channel, nil }
-		excluded[channel.Id] = struct{}{}
-	}
-	return nil, nil
+func GetRandomSatisfiedChannelExcluding(group, model, tag string, retry int, requestPath string, excluded map[int]struct{}, filters ...dto.ChannelFilter) (*Channel, error) {
+	constraints := append([]dto.ChannelFilter(nil), filters...)
+	constraints = append(constraints,
+		dto.ChannelFilter{Kind: dto.FilterRouteTag, RouteTag: tag},
+		dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: excluded},
+		dto.ChannelFilter{Kind: dto.FilterRequestPath, RequestPath: requestPath},
+	)
+	return GetRandomSatisfiedChannel(group, model, retry, constraints)
 }
 
 func CacheGetChannel(id int) (*Channel, error) {
@@ -319,4 +318,48 @@ func CacheUpdateChannel(channel *Channel) {
 	// updatePricingLock while holding channelSyncLock would be an AB-BA deadlock.
 	channelSyncLock.Unlock()
 	InvalidatePricingCache()
+}
+
+// GetEnabledTagsByGroupModel uses the same group/model membership and normalized
+// model fallback as channel selection, in both cache modes.
+func GetEnabledTagsByGroupModel(group, modelName string) []string {
+	seen := make(map[string]bool)
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		defer channelSyncLock.RUnlock()
+		ids := group2model2channels[group][modelName]
+		if len(ids) == 0 {
+			ids = group2model2channels[group][ratio_setting.FormatMatchingModelName(modelName)]
+		}
+		for _, id := range ids {
+			if ch := channelsIDM[id]; ch != nil && ch.Status == common.ChannelStatusEnabled && ch.GetTag() != "" {
+				seen[ch.GetTag()] = true
+			}
+		}
+	} else {
+		var abilities []Ability
+		query := DB.Where(commonGroupCol+" = ? AND model = ? AND enabled = ?", group, modelName, true)
+		if err := query.Find(&abilities).Error; err != nil {
+			common.SysError(err.Error())
+			return nil
+		}
+		normalized := ratio_setting.FormatMatchingModelName(modelName)
+		if len(abilities) == 0 && normalized != modelName {
+			if err := DB.Where(commonGroupCol+" = ? AND model = ? AND enabled = ?", group, normalized, true).Find(&abilities).Error; err != nil {
+				common.SysError(err.Error())
+				return nil
+			}
+		}
+		for _, ability := range abilities {
+			if ability.Tag != nil && *ability.Tag != "" {
+				seen[*ability.Tag] = true
+			}
+		}
+	}
+	tags := make([]string, 0, len(seen))
+	for tag := range seen {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
 }

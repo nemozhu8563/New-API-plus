@@ -973,8 +973,8 @@ func (user *User) ClearBinding(bindingType string) error {
 		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
 			return err
 		}
-		if bindingType == ExternalIdentityProviderTelegram {
-			return ReleaseExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.Id)
+		if provider, claimed := externalIdentityProvidersByColumn[column]; claimed {
+			return ReleaseExternalIdentityWithTx(tx, provider, user.Id)
 		}
 		return nil
 	}); err != nil {

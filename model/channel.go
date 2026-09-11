@@ -298,21 +298,6 @@ func (channel *Channel) GetModels() []string {
 	return strings.Split(strings.Trim(channel.Models, ","), ",")
 }
 
-// GetEnabledTagsByGroupModel returns distinct tags for enabled channels that
-// advertise the requested model in the given group.
-func GetEnabledTagsByGroupModel(group, modelName string) []string {
-	var channels []Channel
-	if DB == nil { return nil }
-	if err := DB.Where("status = ? AND (group = ? OR group = '')", common.ChannelStatusEnabled, group).Find(&channels).Error; err != nil { return nil }
-	seen := map[string]bool{}
-	for _, ch := range channels {
-		matched := false
-		for _, m := range ch.GetModels() { if m == modelName { matched = true; break } }
-		if matched { tag := ch.GetTag(); if tag != "" && !seen[tag] { seen[tag] = true } }
-	}
-	result := make([]string, 0, len(seen)); for tag := range seen { result = append(result, tag) }; return result
-}
-
 func (channel *Channel) GetGroups() []string {
 	if channel.Group == "" {
 		return []string{}

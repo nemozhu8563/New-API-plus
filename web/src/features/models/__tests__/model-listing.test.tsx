@@ -624,8 +624,12 @@ it.each([
         }}
       />
     )
-    expect(button.textContent).toBe(
-      screen.getByRole('group', { name: 'Catalog price' }).textContent
+    const catalogPrice = screen.getByRole('group', { name: 'Catalog price' })
+    // The compact catalog and labeled editor use different layouts, but must
+    // retain the same amounts, token unit and tier count.
+    const numbers = (value: string) => value.match(/\d+(?:\.\d+)?/g)
+    expect(numbers(button.textContent ?? '')).toEqual(
+      numbers(catalogPrice.textContent ?? '')
     )
   }
 )

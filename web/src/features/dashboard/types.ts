@@ -196,6 +196,13 @@ export interface UserChartsFilters {
 // API Status Types
 // ============================================================================
 
+export interface ApiInfoItem {
+  url: string
+  route: string
+  description: string
+  color: string
+}
+
 export interface PingStatus {
   latency: number | null
   testing: boolean

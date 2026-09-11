@@ -2,13 +2,14 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,20 +29,23 @@ func AppendTaskPluginIdentityFilter(c *gin.Context, pluginKey string) {
 	if c == nil {
 		return
 	}
+	channelTypes, pluginKeys := pinnedTaskPluginIdentities(c, pluginKey)
 	GetChannelConstraints(c).AddFilter(dto.ChannelFilter{
 		Kind:                   dto.FilterTaskPluginIdentity,
 		TaskPluginKey:          pluginKey,
-		TaskPluginChannelTypes: pinnedTaskPluginChannelTypes(c, pluginKey),
+		TaskPluginChannelTypes: channelTypes,
+		TaskPluginKeys:         pluginKeys,
 	})
 }
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	Retry        *int
-	resetNextTry bool
+	Ctx                    *gin.Context
+	TokenGroup             string
+	ModelName              string
+	RequestPath            string
+	Retry                  *int
+	resetNextTry           bool
+	selectionRetryOverride *int
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -68,6 +72,54 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func (p *RetryParam) ForceSelectionRetryOnce(retry int) {
+	p.selectionRetryOverride = &retry
+}
+
+func (p *RetryParam) consumeSelectionRetry() int {
+	if p.selectionRetryOverride == nil {
+		return p.GetRetry()
+	}
+	retry := *p.selectionRetryOverride
+	p.selectionRetryOverride = nil
+	return retry
+}
+
+func hasRouteTagCandidate(group string, modelName string, resolution *GroupBillingResolution) bool {
+	return resolution != nil &&
+		resolution.RouteTag != "" &&
+		common.StringsContains(model.GetEnabledTagsByGroupModel(group, modelName), resolution.RouteTag)
+}
+
+func GetRandomSatisfiedChannelByResolution(group string, modelName string, resolution *GroupBillingResolution, retry int, requestPath string) (*model.Channel, error) {
+	return GetRandomSatisfiedChannelByResolutionExcluding(group, modelName, resolution, retry, requestPath, nil)
+}
+
+func GetRandomSatisfiedChannelByResolutionExcluding(group string, modelName string, resolution *GroupBillingResolution, retry int, requestPath string, excluded map[int]struct{}, filters ...dto.ChannelFilter) (*model.Channel, error) {
+	if hasRouteTagCandidate(group, modelName, resolution) {
+		channel, err := model.GetRandomSatisfiedChannelExcluding(group, modelName, resolution.RouteTag, retry, requestPath, excluded, filters...)
+		if err != nil {
+			return nil, err
+		}
+		if channel != nil || resolution.RouteTagStrict {
+			return channel, nil
+		}
+	} else if resolution != nil && resolution.RouteTagStrict {
+		return nil, nil
+	}
+	return model.GetRandomSatisfiedChannelExcluding(group, modelName, "", retry, requestPath, excluded, filters...)
+}
+
+func IsChannelEnabledForResolution(group string, modelName string, resolution *GroupBillingResolution, channelID int) bool {
+	if resolution != nil && resolution.RouteTag != "" {
+		if !hasRouteTagCandidate(group, modelName, resolution) {
+			return false
+		}
+		return model.IsChannelEnabledForGroupModelTag(group, modelName, resolution.RouteTag, channelID)
+	}
+	return model.IsChannelEnabledForGroupModel(group, modelName, channelID)
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
@@ -110,13 +162,20 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
-	filters := GetChannelConstraints(param.Ctx).Filters
+	selectionRetry := param.consumeSelectionRetry()
+	excludedChannels := GetOpenChannelCircuitIDs()
+	if len(excludedChannels) > 0 {
+		MarkChannelCircuitBypass(param.Ctx)
+	}
 
 	if param.TokenGroup == "auto" {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
 		if len(autoGroups) == 0 {
 			return nil, selectGroup, errors.New("auto groups is not enabled")
 		}
+		var lastResolutionErr error
+		lastResolutionGroup := ""
+		resolvedAnyGroup := false
 
 		// startGroupIndex: the group index to start searching from
 		// startGroupIndex: 开始搜索的分组索引
@@ -131,9 +190,17 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 		for i := startGroupIndex; i < len(autoGroups); i++ {
 			autoGroup := autoGroups[i]
+			resolution, resolveErr := ResolveAndApplyGroupBilling(param.Ctx, autoGroup, param.ModelName)
+			if resolveErr != nil {
+				lastResolutionErr = resolveErr
+				lastResolutionGroup = autoGroup
+				logger.LogWarn(param.Ctx, fmt.Sprintf("Skip auto group %s for model %s: %s", autoGroup, param.ModelName, resolveErr.Error()))
+				continue
+			}
+			resolvedAnyGroup = true
 			// Calculate priorityRetry for current group
 			// 计算当前分组的 priorityRetry
-			priorityRetry := param.GetRetry()
+			priorityRetry := selectionRetry
 			// If moved to a new group, reset priorityRetry and update startRetryIndex
 			// 如果切换到新分组，重置 priorityRetry 并更新 startRetryIndex
 			if i > startGroupIndex {
@@ -141,12 +208,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(
-				autoGroup,
-				param.ModelName,
-				priorityRetry,
-				filters,
-			)
+			channel, _ = GetRandomSatisfiedChannelByResolutionExcluding(autoGroup, param.ModelName, resolution, priorityRetry, param.RequestPath, excludedChannels, GetChannelConstraints(param.Ctx).Filters...)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -183,13 +245,15 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			break
 		}
+		if channel == nil && !resolvedAnyGroup && lastResolutionErr != nil {
+			return nil, lastResolutionGroup, lastResolutionErr
+		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(
-			param.TokenGroup,
-			param.ModelName,
-			param.GetRetry(),
-			filters,
-		)
+		resolution, resolveErr := ResolveAndApplyGroupBilling(param.Ctx, param.TokenGroup, param.ModelName)
+		if resolveErr != nil {
+			return nil, param.TokenGroup, resolveErr
+		}
+		channel, err = GetRandomSatisfiedChannelByResolutionExcluding(param.TokenGroup, param.ModelName, resolution, selectionRetry, param.RequestPath, excludedChannels, GetChannelConstraints(param.Ctx).Filters...)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
@@ -197,15 +261,16 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	return channel, selectGroup, nil
 }
 
-func pinnedTaskPluginChannelTypes(c *gin.Context, expected string) []int {
+func pinnedTaskPluginIdentities(c *gin.Context, expected string) ([]int, []string) {
 	if c == nil || expected == "" {
-		return nil
+		return nil, nil
 	}
 	if value, exists := c.Get(jsplugin.ContextKeyPinnedEndpoint); exists {
 		pinned, ok := value.(jsplugin.PinnedEndpoint)
 		if ok && pinned.Generation != nil && len(pinned.Candidates) > 1 {
 			expectedFound := false
 			channelTypes := make([]int, 0, len(pinned.Candidates))
+			pluginKeys := make([]string, 0, len(pinned.Candidates))
 			seen := make(map[int]struct{}, len(pinned.Candidates))
 			for _, candidate := range pinned.Candidates {
 				if candidate.Plugin == nil {
@@ -214,6 +279,7 @@ func pinnedTaskPluginChannelTypes(c *gin.Context, expected string) []int {
 				if candidate.Plugin.Meta.Key == expected {
 					expectedFound = true
 				}
+				pluginKeys = append(pluginKeys, candidate.Plugin.Meta.Key)
 				for _, channelType := range candidate.Plugin.Meta.ChannelTypes {
 					if channelType == 0 || channelType == constant.ChannelTypeTaskPlugin {
 						continue
@@ -228,14 +294,14 @@ func pinnedTaskPluginChannelTypes(c *gin.Context, expected string) []int {
 				}
 			}
 			if expectedFound {
-				return channelTypes
+				return channelTypes, pluginKeys
 			}
 		}
 	}
 	value, exists := c.Get(jsplugin.ContextKeyPinnedPlugin)
 	pinned, ok := value.(jsplugin.PinnedPlugin)
 	if !exists || !ok || pinned.Generation == nil || pinned.Plugin == nil || pinned.Plugin.Meta.Key != expected {
-		return nil
+		return nil, nil
 	}
 	channelTypes := make([]int, 0, len(pinned.Plugin.Meta.ChannelTypes))
 	for _, channelType := range pinned.Plugin.Meta.ChannelTypes {
@@ -244,8 +310,5 @@ func pinnedTaskPluginChannelTypes(c *gin.Context, expected string) []int {
 		}
 		channelTypes = append(channelTypes, channelType)
 	}
-	if len(channelTypes) == 0 {
-		return nil
-	}
-	return channelTypes
+	return channelTypes, []string{expected}
 }

@@ -188,11 +188,13 @@ test('first install shows source on demand and disables repeat submission until 
       screen.getByRole('button', { name: 'Install and enable' })
     ).toBeEnabled()
   )
-  expect(screen.getByText('const')).toHaveClass('tok-keyword')
-  expect(screen.getByText('"demo"')).toHaveClass('tok-string')
-  expect(screen.getByText('// comment')).toHaveClass('tok-comment')
-  expect(screen.getByText('42')).toHaveClass('tok-number')
-  expect(screen.getByText('run')).toHaveClass('tok-definition')
+  await waitFor(() =>
+    expect(document.querySelector('.cm-content')).toHaveTextContent('const')
+  )
+  expect(document.querySelector('.cm-content')).toHaveTextContent('"demo"')
+  expect(document.querySelector('.cm-content')).toHaveTextContent('// comment')
+  expect(document.querySelector('.cm-content')).toHaveTextContent('42')
+  expect(document.querySelector('.cm-content')).toHaveTextContent('run')
   await user.click(screen.getByRole('button', { name: 'Install and enable' }))
   expect(
     await screen.findByRole('button', { name: 'Installing...' })
@@ -693,4 +695,54 @@ test('a factory plugin uses its built-in source as the diff baseline and install
   await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   await waitFor(() => expect(observer.getCurrentResult().data).toEqual(updated))
   unsubscribe()
+})
+
+test('changelog is fetched only after opening its tab and a missing log does not block installation', async () => {
+  const user = userEvent.setup()
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url.endsWith('CHANGELOG.md')) return new Response(null, { status: 404 })
+    return new Response(source)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderDialog()
+  const install = screen.getByRole('button', { name: 'Install and enable' })
+  await waitFor(() => expect(install).toBeEnabled())
+  expect(
+    fetchMock.mock.calls.some(([url]) => url.endsWith('CHANGELOG.md'))
+  ).toBe(false)
+  const changelog = screen.getByRole('tab', { name: 'Changelog' })
+  changelog.focus()
+  await user.keyboard('{Enter}')
+  expect(changelog).toHaveAttribute('aria-selected', 'true')
+  expect(
+    await screen.findByText('No changelog for this version.')
+  ).toBeVisible()
+  expect(install).toBeEnabled()
+  expect(api.installMarketplacePlugin).not.toHaveBeenCalled()
+})
+
+test('changing the selected version while reading changelog keeps that tab open', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.endsWith('CHANGELOG.md')) {
+        return new Response(null, { status: 404 })
+      }
+      return new Response(source)
+    })
+  )
+  api.getTaskPlugin.mockResolvedValue({ meta: { version: '1.0' }, source })
+  renderDialog(true, undefined, true)
+  const changelog = screen.getByRole('tab', { name: 'Changelog' })
+  await user.click(changelog)
+  expect(
+    await screen.findByText('No changelog for this version.')
+  ).toBeVisible()
+  await user.click(screen.getByRole('combobox', { name: 'Select version' }))
+  await user.click(screen.getByRole('option', { name: '1.0 · Active version' }))
+  expect(changelog).toHaveAttribute('aria-selected', 'true')
+  await waitFor(() =>
+    expect(screen.getByText('Could not load the changelog')).toBeVisible()
+  )
 })

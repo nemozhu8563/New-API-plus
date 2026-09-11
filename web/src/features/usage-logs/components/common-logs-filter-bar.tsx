@@ -488,7 +488,12 @@ export function CommonLogsFilterBar<TData>(
       table={props.table}
       compactMobile
       stats={statsBar}
-      actionStart={<>{sensitiveToggle}{props.exportAction}</>}
+      actionStart={
+        <>
+          {sensitiveToggle}
+          {props.exportAction}
+        </>
+      }
       primaryFilters={
         <>
           {dateRangeFilter}

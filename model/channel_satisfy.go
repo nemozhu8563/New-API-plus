@@ -66,3 +66,11 @@ func isChannelEnabledForGroupModelDB(group string, modelName string, channelID i
 func isChannelIDInList(list []int, channelID int) bool {
 	return slices.Contains(list, channelID)
 }
+
+func IsChannelEnabledForGroupModelTag(group, modelName, tag string, channelID int) bool {
+	if !IsChannelEnabledForGroupModel(group, modelName, channelID) {
+		return false
+	}
+	channel, err := CacheGetChannel(channelID)
+	return err == nil && channel != nil && (tag == "" || channel.Tag != nil && *channel.Tag == tag)
+}

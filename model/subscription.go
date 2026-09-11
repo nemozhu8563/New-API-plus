@@ -212,6 +212,9 @@ func migrateSubscriptionPlansToMonthlyBilling() error {
 	if DB == nil {
 		return nil
 	}
+	if err := DB.Model(&SubscriptionPlan{}).Where("public_visible IS NULL").Update("public_visible", gorm.Expr("enabled")).Error; err != nil {
+		return err
+	}
 	return DB.Model(&SubscriptionPlan{}).Where("1 = 1").Updates(map[string]interface{}{
 		"duration_unit":              SubscriptionDurationMonth,
 		"duration_value":             1,

@@ -276,18 +276,18 @@ export function PrefillGroupFormDrawer({
                 name='type'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Group Type</FormLabel>
+                    <FormLabel>{t('Group Type')}</FormLabel>
                     <Select
                       items={PREFILL_GROUP_TYPES.map((type) => ({
                         value: type.value,
                         label: (
                           <div className='flex flex-col text-left'>
-                            <span className='font-medium'>{type.label}</span>
+                            <span className='font-medium'>{t(type.label)}</span>
                             <span
                               data-prefill-description
                               className='text-muted-foreground text-xs'
                             >
-                              {type.description}
+                              {t(type.description)}
                             </span>
                           </div>
                         ),
@@ -309,13 +309,13 @@ export function PrefillGroupFormDrawer({
                             <SelectItem key={type.value} value={type.value}>
                               <div className='flex flex-col text-left'>
                                 <span className='font-medium'>
-                                  {type.label}
+                                  {t(type.label)}
                                 </span>
                                 <span
                                   data-prefill-description
                                   className='text-muted-foreground text-xs'
                                 >
-                                  {type.description}
+                                  {t(type.description)}
                                 </span>
                               </div>
                             </SelectItem>

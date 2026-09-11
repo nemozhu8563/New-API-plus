@@ -637,6 +637,16 @@ func ContainsAudioRatio(name string) bool {
 	return ok
 }
 
+// ResolveCompletionRatio applies enforced and configured completion ratios.
+func ResolveCompletionRatio(name string, configured *float64) CompletionRatioInfo {
+	name = FormatMatchingModelName(name)
+	if configured != nil {
+		return CompletionRatioInfo{Ratio: *configured, Locked: false}
+	}
+	ratio, locked := getHardcodedCompletionModelRatio(name)
+	return CompletionRatioInfo{Ratio: ratio, Locked: locked && !isEditableHardcodedCompletionModel(name)}
+}
+
 func ContainsAudioCompletionRatio(name string) bool {
 	name = FormatMatchingModelName(name)
 	_, ok := audioCompletionRatioMap.Get(name)
@@ -662,10 +672,12 @@ func UpdateImageRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(imageRatioMap, jsonStr)
 }
 
+const DefaultImageRatio = 1.0
+
 func GetImageRatio(name string) (float64, bool) {
 	ratio, ok := imageRatioMap.Get(name)
 	if !ok {
-		return 1, false // Default to 1 if not found
+		return DefaultImageRatio, false // Default to 1 if not found
 	}
 	return ratio, true
 }

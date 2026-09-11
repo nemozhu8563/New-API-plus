@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Window } from 'happy-dom'
 import { afterAll as after, afterEach, describe, test } from 'vitest'
 
@@ -104,23 +105,28 @@ async function renderRowActions() {
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
 
   await act(async () => {
     root.render(
-      <I18nextProvider i18n={i18n}>
-        <TooltipProvider>
-          <ApiKeysProvider>
-            <DataTableRowActions
-              row={
-                {
-                  original: apiKey,
-                } as Parameters<typeof DataTableRowActions>[0]['row']
-              }
-            />
-            <ApiKeyDialogState />
-          </ApiKeysProvider>
-        </TooltipProvider>
-      </I18nextProvider>
+      <QueryClientProvider client={client}>
+        <I18nextProvider i18n={i18n}>
+          <TooltipProvider>
+            <ApiKeysProvider>
+              <DataTableRowActions
+                row={
+                  {
+                    original: apiKey,
+                  } as Parameters<typeof DataTableRowActions>[0]['row']
+                }
+              />
+              <ApiKeyDialogState />
+            </ApiKeysProvider>
+          </TooltipProvider>
+        </I18nextProvider>
+      </QueryClientProvider>
     )
   })
 
@@ -169,9 +175,14 @@ describe('API key row actions', () => {
     activeRender = await renderRowActions()
 
     assert.deepEqual(apiCalls, [])
-    const ccSwitchButton = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Import to CC Switch"]'
+    const menuButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open menu"]'
     )
+    assert.ok(menuButton)
+    await act(async () => menuButton.click())
+    const ccSwitchButton = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find((item) => item.textContent?.includes('CC Switch'))
     assert.ok(ccSwitchButton)
     await act(async () => {
       ccSwitchButton.click()

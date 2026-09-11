@@ -8,6 +8,8 @@ import (
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	dto.FilterExcludedChannels,
+	dto.FilterRouteTag,
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
 }
@@ -88,6 +90,11 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterExcludedChannels:
+		_, excluded := filter.ExcludedChannelIDs[ch.Id]
+		return !excluded
+	case dto.FilterRouteTag:
+		return filter.RouteTag == "" || ch.Tag != nil && *ch.Tag == filter.RouteTag
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
 			return true
@@ -99,7 +106,8 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		return config != nil && config.SupportsPathForModel(filter.RequestPath, modelName)
 	case dto.FilterTaskPluginIdentity:
 		if ch.Type == constant.ChannelTypeTaskPlugin {
-			return filter.TaskPluginKey != "" && ch.GetSetting().TaskPluginKey == filter.TaskPluginKey
+			key := ch.GetSetting().TaskPluginKey
+			return filter.TaskPluginKey != "" && (key == filter.TaskPluginKey || slices.Contains(filter.TaskPluginKeys, key))
 		}
 		return filter.TaskPluginKey == "" || slices.Contains(filter.TaskPluginChannelTypes, ch.Type)
 	default:

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -16,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  render as testingRender,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
@@ -723,3 +730,12 @@ it('confirms both email addresses after identity verification and freezes the su
     expect.objectContaining({ singleUseAuthorization: true })
   )
 })
+
+function render(ui: React.ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return testingRender(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+  )
+}

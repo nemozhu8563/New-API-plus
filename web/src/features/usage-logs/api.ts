@@ -21,6 +21,7 @@ import { api, type ApiRequestConfig } from '@/lib/api'
 import { buildQueryParams } from './lib/query-params'
 import { parseTaskArtifactsResponse } from './lib/task-artifacts'
 import type {
+  LogCategory,
   GetLogsParams,
   GetLogsResponse,
   GetLogStatsParams,
@@ -30,14 +31,6 @@ import type {
   TaskArtifactsResponse,
   UserInfo,
 } from './types'
-
-export async function exportUsageLogsCSV(args: { logCategory: string; isAdmin: boolean; params: Record<string, unknown> }): Promise<{ blob: Blob; filename: string }> {
-  const endpoint = args.logCategory === 'common' ? '/api/log/export' : `/api/${args.logCategory}_log/export`
-  const res = await api.get(endpoint, { params: args.params, responseType: 'blob' })
-  const disposition = String(res.headers?.['content-disposition'] ?? '')
-  const match = disposition.match(/filename="?([^";]+)"?/) 
-  return { blob: res.data, filename: match?.[1] ?? `usage-logs-${args.logCategory}.csv` }
-}
 
 // ============================================================================
 // Generic API Helpers
@@ -132,4 +125,82 @@ export async function getTaskArtifacts(taskId: string) {
     taskArtifactRequestConfig
   )
   return parseTaskArtifactsResponse(response.data)
+}
+
+const exportEndpoints: Record<LogCategory, string> = {
+  common: '/api/log',
+  drawing: '/api/mj',
+  task: '/api/task',
+}
+
+export interface UsageLogsCSVExport {
+  blob: Blob
+  filename: string
+}
+
+function getExportFilename(
+  contentDisposition: string | undefined,
+  logCategory: LogCategory
+): string {
+  const encodedFilename = contentDisposition?.match(
+    /filename\*=UTF-8''([^;]+)/i
+  )
+  if (encodedFilename?.[1]) {
+    return decodeURIComponent(encodedFilename[1])
+  }
+
+  const plainFilename = contentDisposition?.match(
+    /filename=(?:"([^"]+)"|([^;]+))/i
+  )
+  const filename = plainFilename?.[1] || plainFilename?.[2]?.trim()
+  if (filename) return filename
+
+  return `usage-logs-${logCategory}-${new Date().toISOString().slice(0, 10)}.csv`
+}
+
+async function getBlobErrorMessage(error: unknown): Promise<string | null> {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return null
+  }
+
+  const response = error.response as { data?: unknown } | undefined
+  const data = response?.data
+  if (!(data instanceof Blob)) return null
+
+  try {
+    const payload = JSON.parse(await data.text()) as { message?: unknown }
+    return typeof payload.message === 'string' ? payload.message : null
+  } catch {
+    return null
+  }
+}
+
+export async function exportUsageLogsCSV(config: {
+  logCategory: LogCategory
+  isAdmin: boolean
+  params: Record<string, unknown>
+}): Promise<UsageLogsCSVExport> {
+  const basePath = exportEndpoints[config.logCategory]
+  const path = config.isAdmin ? `${basePath}/export` : `${basePath}/self/export`
+
+  try {
+    const response = await api.get<Blob>(path, {
+      params: config.params,
+      responseType: 'blob',
+      disableDuplicate: true,
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    })
+    return {
+      blob: response.data,
+      filename: getExportFilename(
+        response.headers['content-disposition'],
+        config.logCategory
+      ),
+    }
+  } catch (error) {
+    const message = await getBlobErrorMessage(error)
+    if (message) throw new Error(message)
+    throw error
+  }
 }

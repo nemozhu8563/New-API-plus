@@ -53,10 +53,10 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		case "subtract":
 			quota = decimal.NewFromInt(int64(user.Quota)).Sub(quota)
 		}
-		after, err := common.WalletQuotaFromDecimalStrict(quota)
-		if err != nil {
+		if quota.LessThan(decimal.NewFromInt(-int64(common.MaxWalletQuota))) || quota.GreaterThan(decimal.NewFromInt(int64(common.MaxWalletQuota))) {
 			return ErrWalletQuotaLimitExceeded
 		}
+		after := int(quota.IntPart())
 		// An unchanged override is a successful operation, including on MySQL
 		// configurations that count only changed rows in RowsAffected.
 		if after != user.Quota {

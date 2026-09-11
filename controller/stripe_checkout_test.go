@@ -399,7 +399,7 @@ func TestStripeTopUpEndpointsRequirePaymentCompliance(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			response := invokeStripeCheckoutHandler(t, testCase.handler, user.Id, testCase.body)
 			assert.Equal(t, false, response["success"])
-			assert.Equal(t, "payment.compliance_required", response["message"])
+			assert.Equal(t, "payment.compliance_required", response["code"])
 		})
 	}
 
@@ -450,7 +450,7 @@ func TestStripeSubscriptionEndpointRequiresPaymentCompliance(t *testing.T) {
 	response := invokeStripeCheckoutHandler(t, SubscriptionRequestStripePay, 1009, `{"plan_id":1}`)
 
 	assert.Equal(t, false, response["success"])
-	assert.Equal(t, "payment.compliance_required", response["message"])
+	assert.Equal(t, "payment.compliance_required", response["code"])
 	var orders int64
 	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Count(&orders).Error)
 	assert.Zero(t, orders)

@@ -127,7 +127,7 @@ func Distribute() func(c *gin.Context) {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					affinitySatisfied := false
-					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled && !service.IsChannelCircuitOpen(preferredChannelID) {
 						affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelRequest.Model, constraints.Filters)
 					}
 					if affinitySatisfied {
@@ -135,7 +135,8 @@ func Distribute() func(c *gin.Context) {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetRequestAutoGroups(c, userGroup)
 							for _, g := range autoGroups {
-								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+								resolution, resolveErr := service.ResolveAndApplyGroupBilling(c, g, modelRequest.Model)
+								if resolveErr == nil && service.IsChannelEnabledForResolution(g, modelRequest.Model, resolution, preferred.Id) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
@@ -144,7 +145,7 @@ func Distribute() func(c *gin.Context) {
 									break
 								}
 							}
-						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+						} else if resolution, resolveErr := service.ResolveAndApplyGroupBilling(c, usingGroup, modelRequest.Model); resolveErr == nil && service.IsChannelEnabledForResolution(usingGroup, modelRequest.Model, resolution, preferred.Id) {
 							channel = preferred
 							selectGroup = usingGroup
 							affinityUsable = true
@@ -204,16 +205,23 @@ func Distribute() func(c *gin.Context) {
 }
 
 // noAvailableChannelMessage explains a 503 for a task-plugin-claimed model.
-// A model claimed by a plugin is served only by that plugin's channels, so the
-// generic "no channel" text hides the real cause: the claiming plugin has no
-// enabled channel, and the operator must disable or override that plugin for
-// any other plugin or channel to take the model. Non-plugin requests keep the
-// generic message.
+// It identifies all candidate plugins whose channels could serve the request.
 func noAvailableChannelMessage(c *gin.Context, group, modelName string) string {
 	value, exists := c.Get(jsplugin.ContextKeyPinnedPlugin)
 	pinned, ok := value.(jsplugin.PinnedPlugin)
 	if exists && ok && pinned.Plugin != nil {
-		return i18n.T(c, i18n.MsgDistributorNoAvailableChannelTaskPlugin, map[string]any{"Group": group, "Model": modelName, "Plugin": pinned.Plugin.Meta.Key})
+		keys := []string{pinned.Plugin.Meta.Key}
+		if value, exists := c.Get(jsplugin.ContextKeyPinnedEndpoint); exists {
+			if endpoint, ok := value.(jsplugin.PinnedEndpoint); ok && len(endpoint.Candidates) > 0 {
+				keys = nil
+				for _, candidate := range endpoint.Candidates {
+					if candidate.Plugin != nil {
+						keys = append(keys, candidate.Plugin.Meta.Key)
+					}
+				}
+			}
+		}
+		return i18n.T(c, i18n.MsgDistributorNoAvailableChannelTaskPlugin, map[string]any{"Group": group, "Model": modelName, "Plugin": strings.Join(keys, ", ")})
 	}
 	return i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": group, "Model": modelName})
 }
