@@ -185,9 +185,9 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 	return redemptions, total, nil
 }
 
-func BatchDeleteRedemptions(ids []int) error {
-	if len(ids) == 0 { return nil }
-	return DB.Where("id IN ?", ids).Delete(&Redemption{}).Error
+func BatchDeleteRedemptions(ids []int) (int64, error) {
+	if len(ids) == 0 { return 0, nil }
+	r := DB.Where("id IN ?", ids).Delete(&Redemption{}); return r.RowsAffected, r.Error
 }
 
 func SearchRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
