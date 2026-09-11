@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 )
 
 type Pricing struct {
@@ -37,6 +38,7 @@ type Pricing struct {
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
 	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 }
 
 type EffectiveGroupPricing struct {

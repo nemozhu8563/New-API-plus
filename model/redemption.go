@@ -11,6 +11,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	RedemptionBenefitQuota = "quota"
+	RedemptionBenefitSubscription = "subscription"
+)
+
 type Redemption struct {
 	Id           int            `json:"id"`
 	UserId       int            `json:"user_id"`
@@ -18,6 +23,10 @@ type Redemption struct {
 	Status       int            `json:"status" gorm:"default:1"`
 	Name         string         `json:"name" gorm:"index"`
 	Quota        int            `json:"quota" gorm:"default:100"`
+	BenefitType string `json:"benefit_type" gorm:"type:varchar(32);not null;default:'quota';index"`
+	SubscriptionPlanId int `json:"subscription_plan_id" gorm:"index"`
+	SubscriptionPlanSnapshot string `json:"-" gorm:"type:text"`
+	UsedSubscriptionId int `json:"used_subscription_id" gorm:"index"`
 	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
 	RedeemedTime int64          `json:"redeemed_time" gorm:"bigint"`
 	Count        int            `json:"count" gorm:"-:all"` // only for api request

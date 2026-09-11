@@ -162,3 +162,30 @@ func QuotaFromDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
 func QuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
 	return strictQuota(QuotaFromDecimalChecked(d))
 }
+
+// WalletQuotaFromDecimalStrict converts a wallet balance while preserving the
+// larger, JavaScript-safe wallet range (rather than the int32 request quota).
+func WalletQuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
+	rounded := d.Round(0)
+	f, _ := rounded.Float64()
+	if math.IsNaN(f) || f < 0 {
+		clamp := &QuotaClamp{Op: "WalletQuotaFromDecimal", Kind: QuotaClampUnderflow, Original: f, Clamped: 0}
+		if math.IsNaN(f) { clamp.Kind = QuotaClampNaN }
+		SysError(clamp.Error())
+		return 0, clamp
+	}
+	if f > float64(MaxWalletQuota) {
+		clamp := &QuotaClamp{Op: "WalletQuotaFromDecimal", Kind: QuotaClampOverflow, Original: f, Clamped: MaxWalletQuota}
+		SysError(clamp.Error())
+		return 0, clamp
+	}
+	return int(f), nil
+}
+
+// ValidateWalletQuota rejects values outside the wallet's supported range.
+func ValidateWalletQuota(quota int) error {
+	if quota < 0 || int64(quota) > int64(MaxWalletQuota) {
+		return fmt.Errorf("wallet quota out of range: %d", quota)
+	}
+	return nil
+}

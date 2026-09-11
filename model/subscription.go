@@ -197,6 +197,17 @@ type SubscriptionPlan struct {
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
+func migrateSubscriptionPlansToMonthlyBilling() error {
+	if DB == nil { return nil }
+	return DB.Model(&SubscriptionPlan{}).Where("1 = 1").Updates(map[string]interface{}{
+		"duration_unit": SubscriptionDurationMonth,
+		"duration_value": 1,
+		"custom_seconds": 0,
+		"quota_reset_period": SubscriptionResetBillingCycle,
+		"quota_reset_custom_seconds": 0,
+	}).Error
+}
+
 const subscriptionPlanRecommendationLockName = "recommendation"
 
 // SubscriptionPlanLock provides a database-level serialization point for

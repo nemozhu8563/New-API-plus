@@ -145,12 +145,12 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
-func formatUserLogs(logs []*Log, startIdx int, assignDisplayIds bool) {
+func formatUserLogs(logs []*Log, startIdx int, assignDisplay ...bool) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
 	}
-	if assignDisplayIds {
+	if len(assignDisplay) > 0 && assignDisplay[0] {
 		assignDisplayLogIds(logs, startIdx)
 	}
 }

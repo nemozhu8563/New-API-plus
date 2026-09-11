@@ -216,6 +216,19 @@ func GetRandomSatisfiedChannel(
 	return nil, errors.New("channel not found")
 }
 
+// GetRandomSatisfiedChannelExcluding selects a channel while excluding IDs
+// already attempted by the caller.
+func GetRandomSatisfiedChannelExcluding(group, model, channelType string, retry int, taskModel string, excluded map[int]struct{}) (*Channel, error) {
+	filters := []dto.ChannelFilter{}
+	for i := 0; i <= retry+1; i++ {
+		channel, err := GetRandomSatisfiedChannel(group, model, retry, filters)
+		if err != nil || channel == nil { return channel, err }
+		if _, ok := excluded[channel.Id]; !ok { return channel, nil }
+		excluded[channel.Id] = struct{}{}
+	}
+	return nil, nil
+}
+
 func CacheGetChannel(id int) (*Channel, error) {
 	if !common.MemoryCacheEnabled {
 		return GetChannelById(id, true)
