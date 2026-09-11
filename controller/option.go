@@ -156,6 +156,16 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if strings.HasPrefix(option.Key, operation_setting.ChannelCircuitBreakerSettingPrefix) {
+		err = operation_setting.ValidateChannelCircuitBreakerOption(option.Key, option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
@@ -176,11 +186,9 @@ func UpdateOption(c *gin.Context) {
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
-		if option.Value == "true" && common.GitHubClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
-			})
+		if option.Value == "true" && (strings.TrimSpace(common.GitHubClientId) == "" ||
+			strings.TrimSpace(common.GitHubClientSecret) == "") {
+			common.ApiErrorI18n(c, i18n.MsgOAuthGitHubConfigIncomplete)
 			return
 		}
 	case "discord.enabled":
@@ -192,11 +200,13 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
-			})
+		oidcSettings := system_setting.GetOIDCSettings()
+		if option.Value == "true" && (strings.TrimSpace(oidcSettings.ClientId) == "" ||
+			strings.TrimSpace(oidcSettings.ClientSecret) == "" ||
+			strings.TrimSpace(oidcSettings.AuthorizationEndpoint) == "" ||
+			strings.TrimSpace(oidcSettings.TokenEndpoint) == "" ||
+			strings.TrimSpace(oidcSettings.UserInfoEndpoint) == "") {
+			common.ApiErrorI18n(c, i18n.MsgOAuthOIDCConfigIncomplete)
 			return
 		}
 	case "LinuxDOOAuthEnabled":
@@ -258,8 +268,26 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "group_ratio_setting.public_group_tag_ratio":
+		err = ratio_setting.CheckPublicGroupTagRatio(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "gemini.safety_settings":
 		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case "group_ratio_setting.public_group_model_tag":
+		err = ratio_setting.CheckPublicGroupModelTagOverride(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

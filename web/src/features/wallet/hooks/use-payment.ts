@@ -1,26 +1,8 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import i18next from 'i18next'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
-import { handleServerError } from '@/lib/handle-server-error'
+import { amountBucket, trackEvent } from '@/lib/site-telemetry'
 
 import {
   calculateAmount,
@@ -35,6 +17,7 @@ import {
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
+  redirectToHostedCheckout,
   submitPaymentForm,
 } from '../lib'
 import type { AmountRequest, AmountResponse } from '../types'
@@ -127,14 +110,19 @@ export function usePayment() {
             })
 
         if (!isApiSuccess(response)) {
-          handleServerError(response, i18next.t('Payment request failed'))
+          toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
 
         // Handle Stripe payment
         if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+          trackEvent('checkout_created', {
+            checkout_type: 'wallet_topup',
+            provider: 'stripe',
+            amount_bucket: amountBucket(amount),
+          })
           toast.success(i18next.t('Redirecting to payment page...'))
+          redirectToHostedCheckout(response.data.pay_link as string)
           return true
         }
 
@@ -142,6 +130,11 @@ export function usePayment() {
         if (!isStripe && response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
+            trackEvent('checkout_created', {
+              checkout_type: 'wallet_topup',
+              provider: 'online_payment',
+              amount_bucket: amountBucket(amount),
+            })
             submitPaymentForm(url, response.data)
             toast.success(i18next.t('Redirecting to payment page...'))
             return true
@@ -149,8 +142,8 @@ export function usePayment() {
         }
 
         return false
-      } catch (error) {
-        handleServerError(error, i18next.t('Payment request failed'))
+      } catch {
+        toast.error(i18next.t('Payment request failed'))
         return false
       } finally {
         setProcessing(false)

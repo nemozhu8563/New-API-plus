@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
@@ -156,7 +138,7 @@ export function AmountDiscountDialog({
                     placeholder={t('e.g., 100')}
                     {...field}
                     onChange={(e) =>
-                      field.onChange(parseInt(e.target.value) || 0)
+                      field.onChange(Number.parseInt(e.target.value) || 0)
                     }
                     disabled={isEditMode}
                   />
@@ -188,7 +170,7 @@ export function AmountDiscountDialog({
                     placeholder={t('e.g., 0.95')}
                     {...field}
                     onChange={(e) =>
-                      field.onChange(parseFloat(e.target.value) || 0)
+                      field.onChange(Number.parseFloat(e.target.value) || 0)
                     }
                   />
                 </FormControl>

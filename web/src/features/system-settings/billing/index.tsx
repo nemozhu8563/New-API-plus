@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { SettingsPage } from '../components/settings-page'
 import type { BillingSettings } from '../types'
 import {
@@ -59,6 +41,8 @@ const defaultBillingSettings: BillingSettings = {
   MaxTokenAutoGroups: 5,
   DefaultUseAutoGroup: false,
   'group_ratio_setting.group_special_usable_group': '{}',
+  'group_ratio_setting.public_group_tag_ratio': '{}',
+  'group_ratio_setting.public_group_model_tag': '{}',
   PayAddress: '',
   EpayId: '',
   EpayKey: '',
@@ -76,8 +60,6 @@ const defaultBillingSettings: BillingSettings = {
   StripeApiSecret: '',
   StripeWebhookSecret: '',
   StripePriceId: '',
-  StripeUnitPrice: 8.0,
-  StripeMinTopUp: 1,
   StripePromotionCodesEnabled: false,
   CreemApiKey: '',
   CreemWebhookSecret: '',

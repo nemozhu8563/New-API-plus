@@ -11,13 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+const userCacheSchemaVersion = 3
 
 type UserBase struct {
 	Id          int    `json:"id"`
 	Group       string `json:"group"`
 	Email       string `json:"email"`
 	Quota       int    `json:"quota"`
+	BillingDebt int64  `json:"billing_debt"`
 	Status      int    `json:"status"`
 	Role        int    `json:"role"`
 	Username    string `json:"username"`
@@ -65,6 +66,12 @@ func invalidateUserCache(userId int) error {
 		return nil
 	}
 	return common.RedisDelKey(getUserCacheKey(userId))
+}
+
+// InvalidateUserCache is the exported version of invalidateUserCache.
+// 供 controller 等上层包在用户状态变更（如禁用、删除、角色变更）后主动清理缓存。
+func InvalidateUserCache(userId int) error {
+	return invalidateUserCache(userId)
 }
 
 func populateUserCache(user User) error {

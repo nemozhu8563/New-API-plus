@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -50,6 +32,8 @@ const getGroupDefaults = (settings: BillingSettings) => ({
   DefaultUseAutoGroup: settings.DefaultUseAutoGroup,
   GroupSpecialUsableGroup:
     settings['group_ratio_setting.group_special_usable_group'],
+  PublicGroupTagRatio: settings['group_ratio_setting.public_group_tag_ratio'],
+  PublicGroupModelTag: settings['group_ratio_setting.public_group_model_tag'],
 })
 
 const BILLING_SECTIONS = [
@@ -146,8 +130,6 @@ const BILLING_SECTIONS = [
           StripeApiSecret: settings.StripeApiSecret,
           StripeWebhookSecret: settings.StripeWebhookSecret,
           StripePriceId: settings.StripePriceId,
-          StripeUnitPrice: settings.StripeUnitPrice,
-          StripeMinTopUp: settings.StripeMinTopUp,
           StripePromotionCodesEnabled: settings.StripePromotionCodesEnabled,
           CreemApiKey: settings.CreemApiKey,
           CreemWebhookSecret: settings.CreemWebhookSecret,

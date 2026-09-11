@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -46,14 +28,17 @@ const COMPACT_NUMBER = new Intl.NumberFormat(undefined, {
 function RankBadge(props: { rank: number }) {
   const rank = props.rank
   const isPodium = rank <= 3
-  const palette =
-    rank === 1
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-      : rank === 2
-        ? 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
-        : rank === 3
-          ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
-          : 'bg-muted text-muted-foreground'
+  let palette = 'bg-muted text-muted-foreground'
+  if (rank === 1) {
+    palette =
+      'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+  } else if (rank === 2) {
+    palette =
+      'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300'
+  } else if (rank === 3) {
+    palette =
+      'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+  }
   return (
     <span
       className={cn(
@@ -70,12 +55,16 @@ function GrowthChip(props: { value: number }) {
   const value = props.value
   const isUp = value > 0
   const isDown = value < 0
-  const palette = isUp
-    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-    : isDown
-      ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
-      : 'bg-muted text-muted-foreground'
-  const Icon = isUp ? ArrowUpRight : isDown ? ArrowDownRight : null
+  let palette = 'bg-muted text-muted-foreground'
+  let Icon = null
+  if (isUp) {
+    palette =
+      'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+    Icon = ArrowUpRight
+  } else if (isDown) {
+    palette = 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300'
+    Icon = ArrowDownRight
+  }
   const formatted = `${value > 0 ? '+' : ''}${value.toFixed(1)}%`
   return (
     <span

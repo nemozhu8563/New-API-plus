@@ -173,6 +173,7 @@ func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 		ch.SetOtherSettings(dto.ChannelOtherSettings{DisableTaskPollingSleep: true})
 	}
 	require.NoError(t, model.DB.Create(ch).Error)
+	model.InitChannelCache()
 }
 
 func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID string) *model.Task {
@@ -615,6 +616,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 		Status:  common.ChannelStatusEnabled,
 		BaseURL: &baseURL,
 	}).Error)
+	model.InitChannelCache()
 
 	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceWallet, 0)
 	task.TaskID = publicTaskID

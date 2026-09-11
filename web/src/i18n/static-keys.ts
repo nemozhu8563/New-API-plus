@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
@@ -207,6 +189,7 @@ export const STATIC_I18N_KEYS = [
   'Expired time cannot be earlier than current time',
   'Quota must be a positive number',
   'Successfully created {{count}} redemption codes',
+  'Export selected codes',
 
   // Home page (constants-driven labels)
   'Cost Tracking',
@@ -239,6 +222,39 @@ export const STATIC_I18N_KEYS = [
   'Multi-user management with flexible permission allocation',
   'Technical Support',
   'Professional team providing 24/7 technical support',
+
+  // Tryvalo landing page (constants-driven labels)
+  'Plans',
+  'Product',
+  'Company',
+  'Contact us',
+  'One endpoint',
+  'Use a familiar API format and keep your client integration focused.',
+  'Model choice',
+  'Choose from available models while keeping one consistent integration.',
+  'Clear usage controls',
+  'Track your remaining monthly quota and billing period from the dashboard.',
+  'Create an account',
+  'Create an API key',
+  'Send your first request',
+  'OpenAI-compatible',
+  'Monthly Quota',
+  'Monthly billing',
+  'Standard Plan',
+  'Premium Plan',
+  'Professional Plan',
+  'Premium',
+  'Professional',
+  'For focused individual development',
+  'The first choice for professional developers',
+  'For intensive development and teams',
+  'For students and lightweight developers',
+  'Preferred by professional developers',
+  'For top developers and power users',
+  'Custom weekly quota and concurrency',
+  'Dedicated API access and usage management',
+  'Priority support and incident handling',
+  'Contracts, invoices, and company billing',
 
   // User management (interpolated keys)
   'Remaining Quota ({{currency}})',
@@ -368,10 +384,6 @@ export const STATIC_I18N_KEYS = [
   'Limit Reached',
   'No plans available',
   'Select payment method',
-  'Wallet First',
-  'Wallet Only',
-  'Subscription First',
-  'Subscription Only',
   'No Active',
   'No Reset',
   'Remaining',

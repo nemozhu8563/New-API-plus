@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
-	"maps"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -13,16 +13,25 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	Id                    int     `json:"id"`
+	UserId                int     `json:"user_id" gorm:"index"`
+	Amount                int64   `json:"amount"`
+	Money                 float64 `json:"money"`
+	CreditedQuota         int64   `json:"credited_quota" gorm:"type:bigint;not null;default:0"`
+	ExpectedAmountMinor   int64   `json:"expected_amount_minor" gorm:"type:bigint;not null;default:0"`
+	ExpectedCurrency      string  `json:"expected_currency" gorm:"type:varchar(8);default:''"`
+	TradeNo               string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod         string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider       string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	ProviderOrderId       string  `json:"provider_order_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderProductId     string  `json:"provider_product_id" gorm:"type:varchar(255);default:''"`
+	ProviderCustomerId    string  `json:"provider_customer_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderPaymentIntent string  `json:"provider_payment_intent" gorm:"type:varchar(255);default:'';index"`
+	ProviderChargeId      string  `json:"provider_charge_id" gorm:"type:varchar(255);default:'';index"`
+	ProviderLivemode      bool    `json:"provider_livemode"`
+	CreateTime            int64   `json:"create_time"`
+	CompleteTime          int64   `json:"complete_time"`
+	Status                string  `json:"status"`
 }
 
 const (
@@ -43,12 +52,13 @@ const (
 )
 
 var (
-	ErrPaymentMethodMismatch    = errors.New("payment method mismatch")
-	ErrTopUpNotFound            = errors.New("topup not found")
-	ErrTopUpStatusInvalid       = errors.New("topup status invalid")
-	ErrInvalidTopUpQuota        = errors.New("invalid top-up quota")
-	ErrTopUpQuotaLimitExceeded  = errors.New("top-up quota limit exceeded")
-	ErrWalletQuotaLimitExceeded = errors.New("wallet quota limit exceeded")
+	ErrPaymentMethodMismatch   = errors.New("payment method mismatch")
+	ErrTopUpNotFound           = errors.New("topup not found")
+	ErrTopUpStatusInvalid      = errors.New("topup status invalid")
+	ErrInvalidTopUpQuota       = errors.New("invalid top-up quota")
+	ErrTopUpQuotaLimitExceeded = errors.New("top-up quota limit exceeded")
+	ErrStripeCheckoutUnbound   = errors.New("stripe checkout is not bound")
+	ErrStripeSnapshotMismatch  = errors.New("stripe payment does not match the immutable order snapshot")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -58,7 +68,7 @@ func (topUp *TopUp) Insert() error {
 }
 
 func topUpQuotaMaxCurrent(creditedQuota int) (int, error) {
-	if creditedQuota <= 0 || creditedQuota > common.MaxWalletQuota {
+	if creditedQuota <= 0 || creditedQuota >= common.MaxQuota {
 		return 0, ErrInvalidTopUpQuota
 	}
 	return common.MaxWalletQuota - creditedQuota, nil
@@ -83,17 +93,19 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 	return nil
 }
 
-// creditTopUpQuota atomically enforces the wallet ceiling while adding quota.
-// Keeping the predicate and increment in one UPDATE prevents two
+// creditTopUpQuota atomically enforces the wallet ceiling while adding
+// quota. Keeping the predicate and increment in one UPDATE prevents two
 // concurrent callbacks from both passing a separate read/check.
-func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]any) error {
+func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]interface{}) error {
 	maxCurrentQuota, err := topUpQuotaMaxCurrent(creditedQuota)
 	if err != nil {
 		return err
 	}
 
-	updateFields := make(map[string]any, len(updates)+1)
-	maps.Copy(updateFields, updates)
+	updateFields := make(map[string]interface{}, len(updates)+1)
+	for key, value := range updates {
+		updateFields[key] = value
+	}
 	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
 
 	result := tx.Model(&User{}).
@@ -116,10 +128,77 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 	return ErrTopUpQuotaLimitExceeded
 }
 
+// ValidateStripeTopUpQuotaCapacity uses the same debt-first capacity check
+// before Checkout creation and again under the settlement transaction's lock.
+func ValidateStripeTopUpQuotaCapacity(user *User, creditedQuota int64) error {
+	if creditedQuota <= 0 || creditedQuota > int64(common.MaxQuota) || user.BillingDebt < 0 {
+		return ErrInvalidTopUpQuota
+	}
+	walletCredit := creditedQuota - min(creditedQuota, user.BillingDebt)
+	if !common.CanAddWalletQuota(user.Quota, walletCredit) {
+		return ErrTopUpQuotaLimitExceeded
+	}
+	return nil
+}
+
 func (topUp *TopUp) Update() error {
 	var err error
 	err = DB.Save(topUp).Error
 	return err
+}
+
+type StripeCheckoutBinding struct {
+	OrderId     string
+	ProductId   string
+	CustomerId  string
+	AmountMinor int64
+	Currency    string
+	Livemode    bool
+}
+
+func (topUp *TopUp) BindStripeCheckout(binding StripeCheckoutBinding) error {
+	if topUp == nil || topUp.Id == 0 || strings.TrimSpace(binding.OrderId) == "" ||
+		strings.TrimSpace(binding.ProductId) == "" || binding.AmountMinor <= 0 ||
+		strings.TrimSpace(binding.Currency) == "" {
+		return errors.New("invalid Stripe Checkout binding")
+	}
+	if topUp.PaymentProvider != PaymentProviderStripe || topUp.PaymentMethod != PaymentMethodStripe {
+		return ErrPaymentMethodMismatch
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var stored TopUp
+		if err := lockForUpdate(tx).Where("id = ?", topUp.Id).First(&stored).Error; err != nil {
+			return err
+		}
+		if stored.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		if stored.ProviderOrderId != "" && stored.ProviderOrderId != binding.OrderId {
+			return fmt.Errorf("%w: Checkout Session already bound", ErrStripeSnapshotMismatch)
+		}
+		if stored.ProviderProductId != "" && stored.ProviderProductId != binding.ProductId {
+			return fmt.Errorf("%w: Price already bound", ErrStripeSnapshotMismatch)
+		}
+		if stored.ExpectedAmountMinor > 0 && stored.ExpectedAmountMinor != binding.AmountMinor {
+			return fmt.Errorf("%w: Checkout amount changed", ErrStripeSnapshotMismatch)
+		}
+		if stored.ExpectedCurrency != "" && !strings.EqualFold(stored.ExpectedCurrency, binding.Currency) {
+			return fmt.Errorf("%w: Checkout currency changed", ErrStripeSnapshotMismatch)
+		}
+
+		stored.ProviderOrderId = binding.OrderId
+		stored.ProviderProductId = binding.ProductId
+		stored.ProviderCustomerId = binding.CustomerId
+		stored.ExpectedAmountMinor = binding.AmountMinor
+		stored.ExpectedCurrency = strings.ToUpper(binding.Currency)
+		stored.ProviderLivemode = binding.Livemode
+		if err := tx.Save(&stored).Error; err != nil {
+			return err
+		}
+		*topUp = stored
+		return nil
+	})
 }
 
 func GetTopUpById(id int) *TopUp {
@@ -161,12 +240,21 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status != common.TopUpStatusPending {
-			return ErrTopUpStatusInvalid
+			return nil
 		}
 
 		topUp.Status = targetStatus
 		return tx.Save(topUp).Error
 	})
+}
+
+type StripeTopUpSettlement struct {
+	CustomerId      string
+	PaymentIntentId string
+	ChargeId        string
+	AmountMinor     int64
+	Currency        string
+	Livemode        bool
 }
 
 // RechargeEpay 原子完成易支付订单：订单行锁、状态校验、成功更新与用户额度增加
@@ -203,7 +291,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 			topUp.PaymentMethod = actualPaymentMethod
 		}
 		var quotaErr error
-		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
+		quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if quotaErr != nil || quotaToAdd <= 0 {
@@ -232,12 +320,16 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	return false, nil
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+func Recharge(referenceId string, settlement StripeTopUpSettlement, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
+	if settlement.PaymentIntentId == "" || settlement.AmountMinor <= 0 || strings.TrimSpace(settlement.Currency) == "" {
+		return fmt.Errorf("%w: Stripe 充值结算数据不完整", ErrStripeSnapshotMismatch)
+	}
 
 	var quota int
+	var credited bool
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -255,35 +347,100 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return ErrPaymentMethodMismatch
 		}
 
-		if topUp.Status != common.TopUpStatusPending {
-			return errors.New("充值订单状态错误")
+		if topUp.ProviderOrderId == "" || topUp.ProviderProductId == "" ||
+			topUp.ExpectedAmountMinor <= 0 || topUp.ExpectedCurrency == "" {
+			return fmt.Errorf("%w: Stripe 充值订单缺少不可变支付快照", ErrStripeCheckoutUnbound)
+		}
+		if settlement.AmountMinor != topUp.ExpectedAmountMinor ||
+			!strings.EqualFold(settlement.Currency, topUp.ExpectedCurrency) ||
+			settlement.Livemode != topUp.ProviderLivemode {
+			return fmt.Errorf("%w: Stripe 充值结算金额、币种或模式不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderCustomerId != "" && settlement.CustomerId != topUp.ProviderCustomerId {
+			return fmt.Errorf("%w: Stripe Customer 与订单快照不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderPaymentIntent != "" && settlement.PaymentIntentId != "" && settlement.PaymentIntentId != topUp.ProviderPaymentIntent {
+			return fmt.Errorf("%w: Stripe PaymentIntent 与订单不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.ProviderChargeId != "" && settlement.ChargeId != "" && settlement.ChargeId != topUp.ProviderChargeId {
+			return fmt.Errorf("%w: Stripe Charge 与订单不匹配", ErrStripeSnapshotMismatch)
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			if settlement.PaymentIntentId != topUp.ProviderPaymentIntent ||
+				settlement.ChargeId != topUp.ProviderChargeId {
+				return fmt.Errorf("%w: completed Stripe settlement changed", ErrStripeSnapshotMismatch)
+			}
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
+			return ErrTopUpStatusInvalid
+		}
+
+		if topUp.CreditedQuota <= 0 || topUp.CreditedQuota > int64(common.MaxQuota) {
+			return errors.New("无效的充值额度")
+		}
+		quota = int(topUp.CreditedQuota)
+
+		var user User
+		if err := lockForUpdate(tx).Where("id = ?", topUp.UserId).First(&user).Error; err != nil {
+			return errors.New("用户不存在")
+		}
+		if err := ValidateStripeTopUpQuotaCapacity(&user, topUp.CreditedQuota); err != nil {
+			return err
+		}
+		debtPayment := topUp.CreditedQuota
+		if debtPayment > user.BillingDebt {
+			debtPayment = user.BillingDebt
+		}
+		walletCredit := topUp.CreditedQuota - debtPayment
+		if debtPayment > 0 {
+			if _, err := applyStripeBillingDebtPaymentTx(tx, topUp.UserId, debtPayment); err != nil {
+				return err
+			}
+		}
+		user.StripeCustomer = settlement.CustomerId
+		user.Quota += int(walletCredit)
+		user.BillingDebt -= debtPayment
+		if user.BillingDebt < 0 {
+			return errors.New("用户支付欠款不能为负数")
+		}
+		if err := tx.Model(&user).Updates(map[string]interface{}{
+			"stripe_customer": user.StripeCustomer,
+			"quota":           user.Quota,
+			"billing_debt":    user.BillingDebt,
+		}).Error; err != nil {
+			return err
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
+		topUp.ProviderCustomerId = settlement.CustomerId
+		topUp.ProviderPaymentIntent = settlement.PaymentIntentId
+		topUp.ProviderChargeId = settlement.ChargeId
+		topUp.ProviderLivemode = settlement.Livemode
+		if err := registerStripeTopUpPaymentTx(tx, topUp, settlement); err != nil {
+			return err
+		}
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
 		}
+		credited = true
 
-		quota, err = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
-		)
-		if err != nil || quota <= 0 {
-			return ErrInvalidTopUpQuota
-		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]any{
-			"stripe_customer": customerId,
-		})
+		return nil
 	})
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
+		return err
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quota, "stripe topup")
 
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	if credited {
+		if err := InvalidateUserCache(topUp.UserId); err != nil {
+			common.SysError("failed to invalidate user cache after Stripe topup: " + err.Error())
+		}
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	}
 
 	return nil
 }
@@ -482,11 +639,11 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		var quotaErr error
 		if topUp.PaymentProvider == PaymentProviderStripe {
-			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
+			quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
 				decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
 		} else {
-			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
+			quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
 				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
 		}
@@ -556,13 +713,13 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		}
 
 		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota, err = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
+		quota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
 
 		// 构建更新字段，优先使用邮箱，如果邮箱为空则使用用户名
-		updateFields := map[string]any{}
+		updateFields := map[string]interface{}{}
 
 		// 如果有客户邮箱，尝试更新用户邮箱（仅当用户邮箱为空时）
 		if customerEmail != "" {
@@ -624,7 +781,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
+		quotaToAdd, err = common.QuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if err != nil || quotaToAdd <= 0 {
@@ -684,7 +841,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
+		quotaToAdd, err = common.QuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if err != nil || quotaToAdd <= 0 {

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -36,7 +18,7 @@ export function sleep(ms: number = 1000) {
 export function sanitizeCssVariableName(name: string): string {
   // 将点号、空格、斜杠替换为连字符
   // 移除其他不允许在 CSS 变量名中的特殊字符
-  return name.replace(/[.\s/]/g, '-').replace(/[^\w-]/g, '')
+  return name.replaceAll(/[.\s/]/g, '-').replaceAll(/[^\w-]/g, '')
 }
 
 /**
@@ -83,7 +65,7 @@ export function getPageNumbers(currentPage: number, totalPages: number) {
  */
 export function truncateText(text: string, maxLength: number): string {
   if (!text || text.length <= maxLength) return text
-  return text.slice(0, maxLength) + '...'
+  return `${text.slice(0, maxLength)}...`
 }
 
 /**

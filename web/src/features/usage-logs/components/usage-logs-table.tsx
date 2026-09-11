@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -42,6 +24,7 @@ import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
+import { UsageLogsExportButton } from './usage-logs-export-button'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
 import { useLogsViewScope, type LogsViewAccess } from './usage-logs-provider'
 
@@ -186,6 +169,14 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const isCommon = logCategory === 'common'
+  const exportAction = (
+    <UsageLogsExportButton
+      logCategory={logCategory}
+      isAdmin={isAdmin}
+      searchParams={searchParams}
+      columnFilters={columnFilters}
+    />
+  )
 
   return (
     <DataTablePage
@@ -212,9 +203,13 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       }
       toolbar={
         isCommon ? (
-          <CommonLogsFilterBar table={table} />
+          <CommonLogsFilterBar table={table} exportAction={exportAction} />
         ) : (
-          <TaskLogsFilterBar table={table} logCategory={logCategory} />
+          <TaskLogsFilterBar
+            table={table}
+            logCategory={logCategory}
+            exportAction={exportAction}
+          />
         )
       }
       renderRow={(row) => {

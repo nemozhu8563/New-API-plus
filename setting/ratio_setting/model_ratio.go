@@ -436,17 +436,13 @@ func UpdateCompletionRatioByJSONString(jsonStr string) error {
 func GetCompletionRatio(name string) float64 {
 	name = FormatMatchingModelName(name)
 
-	if strings.Contains(name, "/") {
-		if ratio, ok := completionRatioMap.Get(name); ok {
-			return ratio
-		}
+	if ratio, ok := completionRatioMap.Get(name); ok {
+		return ratio
 	}
+
 	hardCodedRatio, contain := getHardcodedCompletionModelRatio(name)
 	if contain {
 		return hardCodedRatio
-	}
-	if ratio, ok := completionRatioMap.Get(name); ok {
-		return ratio
 	}
 	return hardCodedRatio
 }
@@ -459,12 +455,10 @@ type CompletionRatioInfo struct {
 func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 	name = FormatMatchingModelName(name)
 
-	if strings.Contains(name, "/") {
-		if ratio, ok := completionRatioMap.Get(name); ok {
-			return CompletionRatioInfo{
-				Ratio:  ratio,
-				Locked: false,
-			}
+	if ratio, ok := completionRatioMap.Get(name); ok {
+		return CompletionRatioInfo{
+			Ratio:  ratio,
+			Locked: false,
 		}
 	}
 
@@ -472,7 +466,7 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 	if locked {
 		return CompletionRatioInfo{
 			Ratio:  hardCodedRatio,
-			Locked: true,
+			Locked: !isEditableHardcodedCompletionModel(name),
 		}
 	}
 
@@ -487,6 +481,10 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 		Ratio:  hardCodedRatio,
 		Locked: false,
 	}
+}
+
+func isEditableHardcodedCompletionModel(name string) bool {
+	return strings.HasPrefix(name, "gpt-") || name == "chatgpt-4o-latest"
 }
 
 func getHardcodedCompletionModelRatio(name string) (float64, bool) {

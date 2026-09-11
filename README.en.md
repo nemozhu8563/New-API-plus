@@ -7,16 +7,13 @@
 🍥 **Next-Generation Large Model Gateway and AI Asset Management System**
 
 <p align="center">
-  <a href="./README.md">中文</a> | 
-  <strong>English</strong> | 
-  <a href="./README.fr.md">Français</a> | 
+  <a href="./README.md">中文</a> |
+  <strong>English</strong> |
+  <a href="./README.fr.md">Français</a> |
   <a href="./README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
-  </a>
   <a href="https://github.com/Calcium-Ion/new-api/releases/latest">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a>
@@ -56,10 +53,11 @@
 
 ## 📝 Project Description
 
-> [!NOTE]  
+> [!NOTE]
 > This is an open-source project developed based on [One API](https://github.com/songquanpeng/one-api)
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
+> - This project is for personal learning purposes only, with no guarantee of stability or technical support.
 > - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private deployment scenarios.
 > - Users must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and must comply with upstream terms of service and applicable laws and regulations.
 > - Users should ensure their use complies with upstream terms of service and applicable laws and regulations.
@@ -383,7 +381,7 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
-> **💡 Path explanation:** 
+> **💡 Path explanation:**
 > - `./data:/data` - Relative path, data saved in the data folder of the current directory
 > - You can also use absolute path, e.g.: `/your/custom/path:/data`
 
@@ -485,7 +483,5 @@ Welcome all forms of contribution!
 If this project is helpful to you, welcome to give us a ⭐️ Star！
 
 **[Official Documentation](https://docs.newapi.pro/en/docs)** • **[Issue Feedback](https://github.com/Calcium-Ion/new-api/issues)** • **[Latest Release](https://github.com/Calcium-Ion/new-api/releases)**
-
-<sub>Built with ❤️ by QuantumNous</sub>
 
 </div>

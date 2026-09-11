@@ -1,22 +1,4 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,7 +8,11 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatQuota } from '@/lib/format'
 
-import { formatDuration, formatResetPeriod } from '../lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatSubscriptionPrice,
+} from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -52,7 +38,23 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const plan = row.original.plan
           return (
             <div className='max-w-full min-w-0'>
-              <div className='truncate font-medium'>{plan.title}</div>
+              <div className='flex items-center gap-1.5'>
+                <span className='truncate font-medium'>{plan.title}</span>
+                {plan.recommended && (
+                  <StatusBadge
+                    label={t('Recommended')}
+                    variant='info'
+                    copyable={false}
+                  />
+                )}
+                {!plan.public_visible && (
+                  <StatusBadge
+                    label={t('Hidden')}
+                    variant='neutral'
+                    copyable={false}
+                  />
+                )}
+              </div>
               {plan.subtitle && (
                 <div className='text-muted-foreground truncate text-xs'>
                   {plan.subtitle}
@@ -69,7 +71,10 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Price'),
         cell: ({ row }) => (
           <span className='font-semibold text-emerald-600'>
-            ${Number(row.original.plan.price_amount || 0).toFixed(2)}
+            {formatSubscriptionPrice(
+              Number(row.original.plan.price_amount || 0),
+              row.original.plan.currency
+            )}
           </span>
         ),
         size: 100,

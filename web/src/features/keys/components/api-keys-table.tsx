@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { flexRender, type Table as TanstackTable } from '@tanstack/react-table'
@@ -31,8 +13,10 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -108,6 +92,7 @@ function ApiKeysMobileList({
   now: number
 }) {
   const { t } = useTranslation()
+  const { setOpen } = useApiKeys()
   const rows = table.getRowModel().rows
 
   if (isLoading) return <ApiKeysMobileSkeleton />
@@ -127,6 +112,11 @@ function ApiKeysMobileList({
               )}
             </EmptyDescription>
           </EmptyHeader>
+          <EmptyContent>
+            <Button size='sm' onClick={() => setOpen('create')}>
+              {t('Create API Key')}
+            </Button>
+          </EmptyContent>
         </Empty>
       </div>
     )
@@ -217,7 +207,7 @@ function ApiKeysMobileList({
 
 export function ApiKeysTable() {
   const { t } = useTranslation()
-  const { refreshTrigger } = useApiKeys()
+  const { refreshTrigger, setOpen } = useApiKeys()
   const [now, setNow] = useState(() => Date.now())
   const columns = useApiKeysColumns(now)
 
@@ -348,6 +338,11 @@ export function ApiKeysTable() {
       emptyDescription={t(
         'No API keys available. Create your first API key to get started.'
       )}
+      emptyAction={
+        <Button size='sm' onClick={() => setOpen('create')}>
+          {t('Create API Key')}
+        </Button>
+      }
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
       toolbarProps={{

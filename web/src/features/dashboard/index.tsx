@@ -1,23 +1,5 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { Eye, EyeOff } from 'lucide-react'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { CreditCard, Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -323,7 +305,26 @@ export function Dashboard() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {activeSection === 'overview' ? (
+          <span className='flex flex-col gap-0.5'>
+            <span>{t(meta.titleKey)}</span>
+            <span className='text-muted-foreground text-xs font-normal'>
+              {t('Monitor balance, usage, and request volume')}
+            </span>
+          </span>
+        ) : (
+          t(meta.titleKey)
+        )}
+      </SectionPageLayout.Title>
+      {activeSection === 'overview' && (
+        <SectionPageLayout.Actions>
+          <Button size='sm' render={<Link to='/wallet' />}>
+            <CreditCard />
+            {t('Recharge')}
+          </Button>
+        </SectionPageLayout.Actions>
+      )}
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
           <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>

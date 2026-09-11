@@ -1,26 +1,44 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import type { TFunction } from 'i18next'
 
 import dayjs from '@/lib/dayjs'
 
 import type { SubscriptionPlan } from '../types'
+
+export function formatSubscriptionPrice(
+  amount: number,
+  currency = 'CNY'
+): string {
+  const normalizedAmount = Number.isFinite(amount) ? amount : 0
+  return Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: currency.trim().toUpperCase() || 'CNY',
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: Number.isInteger(normalizedAmount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(normalizedAmount)
+}
+
+const planAllowanceSubtitlePattern =
+  /^Includes\s+(?:\$\s*)?[\d,.]+(?:\s+(?:USD|Credits?))?\s+per billing cycle$/i
+
+export function formatSubscriptionPlanSubtitle(
+  plan: Pick<SubscriptionPlan, 'subtitle' | 'total_amount'>,
+  quotaPerUnit: number,
+  t: TFunction
+): string {
+  const subtitle = plan.subtitle?.trim() || ''
+  if (!planAllowanceSubtitlePattern.test(subtitle)) return subtitle
+
+  const totalAmount = Number(plan.total_amount || 0)
+  const monthlyAllowance = totalAmount / quotaPerUnit
+  if (!Number.isFinite(monthlyAllowance) || monthlyAllowance <= 0) {
+    return subtitle
+  }
+
+  return t('Includes {{amount}} per billing cycle', {
+    amount: formatSubscriptionPrice(monthlyAllowance, 'USD'),
+  })
+}
 
 export function formatDuration(
   plan: Partial<SubscriptionPlan>,
@@ -52,6 +70,7 @@ export function formatResetPeriod(
   if (period === 'daily') return t('Daily')
   if (period === 'weekly') return t('Weekly')
   if (period === 'monthly') return t('Monthly')
+  if (period === 'billing_cycle') return t('Each billing cycle')
   if (period === 'custom') {
     const seconds = Number(plan?.quota_reset_custom_seconds || 0)
     if (seconds >= 86400) return `${Math.floor(seconds / 86400)} ${t('days')}`

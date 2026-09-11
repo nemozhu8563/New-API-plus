@@ -139,6 +139,9 @@ func GetAndValidateResponsesRequest(c *gin.Context) (*dto.OpenAIResponsesRequest
 	if request.Model == "" {
 		return nil, errors.New("model is required")
 	}
+	if common.IsImageGenerationModel(request.Model) {
+		return nil, fmt.Errorf("image generation model %q must use /v1/images/generations", request.Model)
+	}
 	if request.Input == nil {
 		return nil, errors.New("input is required")
 	}
@@ -328,6 +331,9 @@ func GetAndValidateTextRequest(c *gin.Context, relayMode int) (*dto.GeneralOpenA
 	}
 	if textRequest.Model == "" {
 		return nil, errors.New("model is required")
+	}
+	if relayMode == relayconstant.RelayModeChatCompletions && common.IsImageGenerationModel(textRequest.Model) {
+		return nil, fmt.Errorf("image generation model %q must use /v1/images/generations", textRequest.Model)
 	}
 	if textRequest.WebSearchOptions != nil {
 		if textRequest.WebSearchOptions.SearchContextSize != "" {

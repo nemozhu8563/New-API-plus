@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
 import { Loader2, MessageCircleWarning } from 'lucide-react'
 import { useMemo } from 'react'
@@ -153,6 +135,7 @@ function ChatRouteComponent() {
     )
   }
 
+  /* eslint-disable react/iframe-missing-sandbox -- This admin-configured third-party chat must preserve cookies, storage, OAuth, and window messaging. */
   return (
     <iframe
       src={iframeSrc}
@@ -162,4 +145,5 @@ function ChatRouteComponent() {
       title={`Chat preset: ${preset.name}`}
     />
   )
+  /* eslint-enable react/iframe-missing-sandbox */
 }

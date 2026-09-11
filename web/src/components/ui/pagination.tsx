@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -23,15 +5,18 @@ import {
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 function Pagination({ className, ...props }: React.ComponentProps<'nav'>) {
+  const { t } = useTranslation()
+
   return (
     <nav
       role='navigation'
-      aria-label='pagination'
+      aria-label={t('Pagination')}
       data-slot='pagination'
       className={cn('mx-auto flex w-full justify-center', className)}
       {...props}
@@ -87,12 +72,14 @@ function PaginationLink({
 
 function PaginationPrevious({
   className,
-  text = 'Previous',
+  text,
   ...props
 }: React.ComponentProps<typeof PaginationLink> & { text?: string }) {
+  const { t } = useTranslation()
+
   return (
     <PaginationLink
-      aria-label='Go to previous page'
+      aria-label={t('Go to previous page')}
       size='default'
       className={cn('pl-1.5!', className)}
       {...props}
@@ -102,24 +89,26 @@ function PaginationPrevious({
         strokeWidth={2}
         data-icon='inline-start'
       />
-      <span className='hidden sm:block'>{text}</span>
+      <span className='hidden sm:block'>{text ?? t('Previous')}</span>
     </PaginationLink>
   )
 }
 
 function PaginationNext({
   className,
-  text = 'Next',
+  text,
   ...props
 }: React.ComponentProps<typeof PaginationLink> & { text?: string }) {
+  const { t } = useTranslation()
+
   return (
     <PaginationLink
-      aria-label='Go to next page'
+      aria-label={t('Go to next page')}
       size='default'
       className={cn('pr-1.5!', className)}
       {...props}
     >
-      <span className='hidden sm:block'>{text}</span>
+      <span className='hidden sm:block'>{text ?? t('Next')}</span>
       <HugeiconsIcon
         icon={ArrowRight01Icon}
         strokeWidth={2}
@@ -133,6 +122,8 @@ function PaginationEllipsis({
   className,
   ...props
 }: React.ComponentProps<'span'>) {
+  const { t } = useTranslation()
+
   return (
     <span
       aria-hidden
@@ -144,7 +135,7 @@ function PaginationEllipsis({
       {...props}
     >
       <HugeiconsIcon icon={MoreHorizontalCircle01Icon} strokeWidth={2} />
-      <span className='sr-only'>More pages</span>
+      <span className='sr-only'>{t('More pages')}</span>
     </span>
   )
 }

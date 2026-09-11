@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { z } from 'zod'
 
 // ============================================================================
@@ -27,15 +9,23 @@ export const subscriptionPlanSchema = z.object({
   title: z.string(),
   subtitle: z.string().optional(),
   price_amount: z.number(),
-  currency: z.string().default('USD'),
+  currency: z.string().default('CNY'),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
   duration_value: z.number(),
   custom_seconds: z.number().optional(),
-  quota_reset_period: z.enum(['never', 'daily', 'weekly', 'monthly', 'custom']),
+  quota_reset_period: z.enum([
+    'never',
+    'daily',
+    'weekly',
+    'monthly',
+    'custom',
+    'billing_cycle',
+  ]),
   quota_reset_custom_seconds: z.number().optional(),
   enabled: z.boolean(),
+  public_visible: z.boolean(),
+  recommended: z.boolean(),
   sort_order: z.number(),
-  allow_balance_pay: z.boolean().optional().default(true),
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
@@ -50,6 +40,37 @@ export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
   plan: SubscriptionPlan
+}
+
+export const publicSubscriptionPlanSchema = subscriptionPlanSchema
+  .pick({
+    id: true,
+    title: true,
+    subtitle: true,
+    recommended: true,
+    price_amount: true,
+    currency: true,
+    duration_unit: true,
+    duration_value: true,
+    custom_seconds: true,
+    quota_reset_period: true,
+    quota_reset_custom_seconds: true,
+    max_purchase_per_user: true,
+    total_amount: true,
+    upgrade_group: true,
+  })
+  .extend({
+    stripe_checkout_available: z.boolean(),
+    creem_checkout_available: z.boolean(),
+    waffo_checkout_available: z.boolean(),
+  })
+
+export type PublicSubscriptionPlan = z.infer<
+  typeof publicSubscriptionPlanSchema
+>
+
+export interface PublicPlanRecord {
+  plan: PublicSubscriptionPlan
 }
 
 // ============================================================================
@@ -142,6 +163,8 @@ export interface SelfSubscriptionData {
   billing_preference: string
   subscriptions: UserSubscriptionRecord[]
   all_subscriptions: UserSubscriptionRecord[]
+
+  billing_debt: number
 }
 
 // ============================================================================

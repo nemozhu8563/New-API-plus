@@ -1,30 +1,22 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
-import { type TopNavLink } from '../types'
+import type { TopNavLink } from '../types'
 
 /**
  * Default top navigation links
  *
  * In practice, navigation links are dynamically fetched from backend.
- * Priority: Backend dynamic links > Provided navLinks > defaultTopNavLinks
+ * Explicit links let a public page preserve required navigation such as legal
+ * documents. Otherwise, backend navigation remains the normal source.
  *
  * This is intentionally empty to encourage backend configuration.
  * If you need fallback links, add them here.
  */
 export const defaultTopNavLinks: TopNavLink[] = []
+
+export function resolveTopNavLinks(
+  providedLinks: TopNavLink[] | undefined,
+  dynamicLinks: TopNavLink[]
+): TopNavLink[] {
+  if (providedLinks) return providedLinks
+  if (dynamicLinks.length > 0) return dynamicLinks
+  return defaultTopNavLinks
+}

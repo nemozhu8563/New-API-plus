@@ -76,6 +76,10 @@ function redemption(id: number, quota = 500001): Redemption {
     key: `key-${id}`,
     status: 1,
     quota,
+    benefit_type: 'quota',
+    subscription_plan_id: 0,
+    subscription_plan_title: '',
+    used_subscription_id: 0,
     created_time: 1,
     redeemed_time: 0,
     expired_time: 0,
@@ -187,6 +191,26 @@ afterEach(() => {
 })
 
 describe('redemption drawer', () => {
+  test('blocks update submission until the current code finishes loading', async () => {
+    const original = redemption(1)
+    const request = deferred<{ data: unknown }>()
+    const updates: unknown[] = []
+    apiClient.get = () => request.promise
+    apiClient.put = async (_url, data) => {
+      updates.push(data)
+      return { data: { success: true } }
+    }
+
+    await renderDrawer(original)
+
+    expect(screen.getByRole('button', { name: 'Loading...' })).toBeDisabled()
+    submitForm()
+    expect(updates).toEqual([])
+
+    request.resolve({ data: { success: true, data: original } })
+    await waitForLoadedForm()
+  })
+
   test('shows the reported CNY quota without floating-point noise', async () => {
     const original = redemption(1, 13888889)
     apiClient.get = async () => ({ data: { success: true, data: original } })

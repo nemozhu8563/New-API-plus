@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Code2, Eye, HelpCircle } from 'lucide-react'
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
@@ -63,6 +45,7 @@ import { safeJsonParse } from '../utils/json-parser'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
+import { PublicGroupBillingRulesEditor } from './public-group-billing-rules-editor'
 
 type GroupFormValues = {
   GroupRatio: string
@@ -73,6 +56,8 @@ type GroupFormValues = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   GroupSpecialUsableGroup: string
+  PublicGroupTagRatio: string
+  PublicGroupModelTag: string
 }
 
 type GroupRatioFormProps = {
@@ -211,6 +196,18 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               groupOptions={groupNames}
               onChange={(value) =>
                 handleFieldChange('GroupSpecialUsableGroup', value)
+              }
+            />
+
+            <PublicGroupBillingRulesEditor
+              tagRatioValue={form.watch('PublicGroupTagRatio')}
+              modelTagValue={form.watch('PublicGroupModelTag')}
+              groupNames={groupNames}
+              onTagRatioChange={(value) =>
+                handleFieldChange('PublicGroupTagRatio', value)
+              }
+              onModelTagChange={(value) =>
+                handleFieldChange('PublicGroupModelTag', value)
               }
             />
 
@@ -413,6 +410,58 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormDescription>
                     {t(
                       'Nested JSON defining per-group rules for adding (+:), removing (-:), or appending usable groups.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PublicGroupTagRatio'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Public group tag ratio settings')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Keys are public-group names and values are tag-to-ratio maps. Inner keys are channel tags and values are the ratios used when that tag is matched.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='PublicGroupModelTag'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Public group model tag override settings')}
+                  </FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Keys are public-group names and values are model-to-channel-tag maps. Inner keys are model names and values are forced channel tags.'
                     )}
                   </FormDescription>
                   <FormMessage />

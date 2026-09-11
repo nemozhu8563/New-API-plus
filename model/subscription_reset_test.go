@@ -26,6 +26,53 @@ func getSubscriptionResetSub(t *testing.T, id int) UserSubscription {
 	return sub
 }
 
+func TestBillingCycleQuotaDoesNotResetBeforeRenewal(t *testing.T) {
+	truncateTables(t)
+
+	now := GetDBTimestamp()
+	plan := &SubscriptionPlan{
+		Id:               9701,
+		Title:            "Monthly",
+		PriceAmount:      39,
+		Currency:         SubscriptionCurrencyCNY,
+		DurationUnit:     SubscriptionDurationMonth,
+		DurationValue:    1,
+		TotalAmount:      1000,
+		QuotaResetPeriod: SubscriptionResetBillingCycle,
+		Enabled:          true,
+	}
+	seedSubscriptionResetPlan(t, plan)
+	seedSubscriptionResetSub(t, &UserSubscription{
+		Id:                      9702,
+		UserId:                  501,
+		PlanId:                  plan.Id,
+		PlanTitle:               plan.Title,
+		AmountTotal:             plan.TotalAmount,
+		AmountUsed:              400,
+		StartTime:               now - 7*24*3600,
+		EndTime:                 now + 21*24*3600,
+		Status:                  "active",
+		LastResetTime:           now - 7*24*3600,
+		NextResetTime:           now - 1,
+		QuotaResetPeriod:        SubscriptionResetBillingCycle,
+		QuotaResetCustomSeconds: 0,
+	})
+
+	result, err := PreConsumeUserSubscription("billing-cycle-no-reset", 501, "test-model", 0, 100)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.EqualValues(t, 400, result.AmountUsedBefore)
+	assert.EqualValues(t, 500, result.AmountUsedAfter)
+
+	stored := getSubscriptionResetSub(t, 9702)
+	assert.EqualValues(t, 500, stored.AmountUsed)
+	assert.Equal(t, now-7*24*3600, stored.LastResetTime)
+	assert.Equal(t, now-1, stored.NextResetTime)
+	resetCount, err := ResetDueSubscriptions(10)
+	require.NoError(t, err)
+	assert.Zero(t, resetCount)
+}
+
 func TestAdminResetUserSubscriptionsByPlanResetsAllActiveMatchesAndAdvancesTime(t *testing.T) {
 	truncateTables(t)
 

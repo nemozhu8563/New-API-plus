@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -41,8 +23,8 @@ export function CreemProductsSection({
   if (loading) {
     return (
       <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className='h-24 rounded-lg' />
+        {['first', 'second', 'third'].map((key) => (
+          <Skeleton key={key} className='h-24 rounded-lg' />
         ))}
       </div>
     )

@@ -22,6 +22,38 @@ import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import { afterEach, beforeAll } from 'vitest'
 
+function createStorage(): Storage {
+  const entries = new Map<string, string>()
+
+  return {
+    get length() {
+      return entries.size
+    },
+    clear: () => entries.clear(),
+    getItem: (key) => entries.get(key) ?? null,
+    key: (index) => [...entries.keys()][index] ?? null,
+    removeItem: (key) => {
+      entries.delete(key)
+    },
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+  }
+}
+
+const storageDescriptors = {
+  localStorage: {
+    configurable: true,
+    value: createStorage(),
+  },
+  sessionStorage: {
+    configurable: true,
+    value: createStorage(),
+  },
+}
+Object.defineProperties(globalThis, storageDescriptors)
+Object.defineProperties(window, storageDescriptors)
+
 beforeAll(async () => {
   await i18next.use(initReactI18next).init({
     lng: 'en',

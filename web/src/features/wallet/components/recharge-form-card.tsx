@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -42,6 +24,7 @@ import {
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
+  isStripeOnlyTopUp,
   calculatePresetPricing,
 } from '../lib'
 import type {
@@ -52,6 +35,7 @@ import type {
   WaffoPayMethod,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+import { StripeTopupSection } from './stripe-topup-section'
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -62,6 +46,8 @@ interface RechargeFormCardProps {
   onTopupAmountChange: (amount: number) => void
   paymentAmount: number
   calculating: boolean
+  stripeProcessing?: boolean
+  onStripeCheckout?: () => void | Promise<void>
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
   redemptionCode: string
@@ -92,6 +78,8 @@ export function RechargeFormCard({
   onTopupAmountChange,
   paymentAmount,
   calculating,
+  stripeProcessing,
+  onStripeCheckout,
   onPaymentMethodSelect,
   paymentLoading,
   redemptionCode,
@@ -142,6 +130,7 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const stripeOnly = isStripeOnlyTopUp(topupInfo)
 
   if (loading) {
     return (
@@ -197,7 +186,11 @@ export function RechargeFormCard({
   return (
     <TitledCard
       title={t('Add Funds')}
-      description={t('Choose an amount and payment method')}
+      description={
+        stripeOnly
+          ? t('Choose a USD top-up package')
+          : t('Choose an amount and payment method')
+      }
       icon={<WalletCards className='h-4 w-4' />}
       iconTone='success'
       disableHoverEffect
@@ -219,7 +212,17 @@ export function RechargeFormCard({
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>
-          {hasConfigurableTopup && (
+          {stripeOnly && onStripeCheckout && (
+            <StripeTopupSection
+              topupAmount={topupAmount}
+              unit={topupInfo?.stripe_topup_unit}
+              maxAmount={topupInfo?.stripe_max_topup}
+              processing={!!stripeProcessing}
+              onAmountChange={onTopupAmountChange}
+              onCheckout={onStripeCheckout}
+            />
+          )}
+          {!stripeOnly && hasConfigurableTopup && (
             <>
               {presetAmounts.length > 0 && (
                 <div className='space-y-2.5 sm:space-y-3'>

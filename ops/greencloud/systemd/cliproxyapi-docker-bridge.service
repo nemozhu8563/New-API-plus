@@ -1,0 +1,21 @@
+[Unit]
+Description=Private Docker bridge to CLIProxyAPI
+After=network-online.target docker.service cliproxyapi.service
+Wants=network-online.target
+Requires=cliproxyapi.service
+
+[Service]
+Type=simple
+User=cliproxy
+Group=cliproxy
+ExecStart=/usr/bin/socat TCP-LISTEN:8317,bind=172.17.0.1,reuseaddr,fork TCP:127.0.0.1:8317
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

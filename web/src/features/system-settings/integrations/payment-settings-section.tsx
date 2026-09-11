@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Code2, Eye, ShieldAlert } from 'lucide-react'
@@ -145,8 +127,6 @@ const paymentSchema = z.object({
   StripeApiSecret: z.string(),
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
-  StripeUnitPrice: z.coerce.number().min(0),
-  StripeMinTopUp: z.coerce.number().min(0),
   StripePromotionCodesEnabled: z.boolean(),
   CreemApiKey: z.string(),
   CreemWebhookSecret: z.string(),
@@ -431,8 +411,6 @@ export function PaymentSettingsSection({
       StripeApiSecret: values.StripeApiSecret.trim(),
       StripeWebhookSecret: values.StripeWebhookSecret.trim(),
       StripePriceId: values.StripePriceId.trim(),
-      StripeUnitPrice: values.StripeUnitPrice,
-      StripeMinTopUp: values.StripeMinTopUp,
       StripePromotionCodesEnabled: values.StripePromotionCodesEnabled,
       CreemApiKey: values.CreemApiKey.trim(),
       CreemWebhookSecret: values.CreemWebhookSecret.trim(),
@@ -475,8 +453,6 @@ export function PaymentSettingsSection({
       StripeApiSecret: initialRef.current.StripeApiSecret.trim(),
       StripeWebhookSecret: initialRef.current.StripeWebhookSecret.trim(),
       StripePriceId: initialRef.current.StripePriceId.trim(),
-      StripeUnitPrice: initialRef.current.StripeUnitPrice,
-      StripeMinTopUp: initialRef.current.StripeMinTopUp,
       StripePromotionCodesEnabled:
         initialRef.current.StripePromotionCodesEnabled,
       CreemApiKey: initialRef.current.CreemApiKey.trim(),
@@ -582,14 +558,6 @@ export function PaymentSettingsSection({
 
     if (sanitized.StripePriceId !== initial.StripePriceId) {
       updates.push({ key: 'StripePriceId', value: sanitized.StripePriceId })
-    }
-
-    if (sanitized.StripeUnitPrice !== initial.StripeUnitPrice) {
-      updates.push({ key: 'StripeUnitPrice', value: sanitized.StripeUnitPrice })
-    }
-
-    if (sanitized.StripeMinTopUp !== initial.StripeMinTopUp) {
-      updates.push({ key: 'StripeMinTopUp', value: sanitized.StripeMinTopUp })
     }
 
     if (
@@ -1368,7 +1336,9 @@ export function PaymentSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Stripe product price ID')}
+                          {t(
+                            'Use a one-time CNY Price with a unit amount of ¥20. Each unit credits $20 USD.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1376,53 +1346,7 @@ export function PaymentSettingsSection({
                   />
                 </div>
 
-                <div className='grid gap-6 md:grid-cols-3'>
-                  <FormField
-                    control={form.control}
-                    name='StripeUnitPrice'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {t('Unit price (local currency / USD)')}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            min={0}
-                            {...safeNumberFieldProps(field)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('e.g., 8 means 8 local currency per USD')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name='StripeMinTopUp'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Minimum top-up (USD)')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            min={0}
-                            {...safeNumberFieldProps(field)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Minimum recharge amount in USD')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
+                <div className='grid gap-6'>
                   <FormField
                     control={form.control}
                     name='StripePromotionCodesEnabled'

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 // ============================================================================
 // Wallet Type Definitions
 // ============================================================================
@@ -33,7 +15,21 @@ export interface ApiResponse<T = unknown> {
  * Standard API response types
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
-export type RedemptionResponse = ApiResponse<number>
+export type LegacyRedemptionResponse = ApiResponse<number>
+export type RedemptionResult =
+  | {
+      type: 'quota'
+      quota: number
+    }
+  | {
+      type: 'subscription'
+      subscription_id: number
+      plan_id: number
+      plan_title: string
+      start_time: number
+      end_time: number
+    }
+export type RedemptionResponse = ApiResponse<RedemptionResult>
 export type AmountResponse = ApiResponse<string>
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
@@ -124,12 +120,20 @@ export interface TopupInfo {
   enable_online_topup: boolean
   /** Whether Stripe topup is enabled */
   enable_stripe_topup: boolean
+  /** Whether Stripe subscription checkout is enabled */
+  enable_stripe_subscription?: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
   /** Minimum topup amount for online topup */
   min_topup: number
   /** Minimum topup amount for Stripe */
   stripe_min_topup: number
+  /** Credits and CNY charged by one fixed Stripe package */
+  stripe_topup_unit?: number
+  /** Currency charged by Stripe topups */
+  stripe_topup_currency?: string
+  /** Maximum credits allowed in one Stripe checkout */
+  stripe_max_topup?: number
   /** Preset amount options */
   amount_options: number[]
   /** Discount rates by amount */

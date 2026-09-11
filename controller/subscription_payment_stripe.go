@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -11,10 +13,17 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
-	"github.com/stripe/stripe-go/v81"
-	"github.com/stripe/stripe-go/v81/checkout/session"
+	"github.com/shopspring/decimal"
+	"github.com/stripe/stripe-go/v86"
 	"github.com/thanhpk/randstr"
 )
+
+const stripeSubscriptionPaymentMethodConfigurationEnv = "STRIPE_SUBSCRIPTION_PAYMENT_METHOD_CONFIGURATION"
+
+var retrieveStripePrice = func(ctx context.Context, priceId string) (*stripe.Price, error) {
+	client := stripe.NewClient(setting.StripeApiSecret)
+	return client.V1Prices.Retrieve(ctx, priceId, &stripe.PriceRetrieveParams{})
+}
 
 type SubscriptionStripePayRequest struct {
 	PlanId int `json:"plan_id"`
@@ -40,8 +49,8 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if plan.StripePriceId == "" {
-		common.ApiErrorMsg(c, "该套餐未配置 StripePriceId")
+	if !isStripeSubscriptionPlanPurchasable(plan) {
+		common.ApiErrorMsg(c, "该套餐当前不可通过 Stripe 购买")
 		return
 	}
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
@@ -52,8 +61,28 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "Stripe Webhook 未配置")
 		return
 	}
-
 	userId := c.GetInt("id")
+	if !requireNoActiveSubscription(c, userId) {
+		return
+	}
+	expectedAmountMinor, err := stripeSubscriptionAmountMinor(plan.PriceAmount)
+	expectedCurrency := strings.ToUpper(strings.TrimSpace(plan.Currency))
+	if err != nil || expectedCurrency == "" {
+		common.ApiErrorMsg(c, "套餐价格配置无效")
+		return
+	}
+	stripePrice, err := retrieveStripePrice(c.Request.Context(), plan.StripePriceId)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 获取订阅 Price 失败 plan_id=%d price_id=%s error=%q", plan.Id, plan.StripePriceId, err.Error()))
+		common.ApiErrorMsg(c, "Stripe 套餐价格校验失败")
+		return
+	}
+	if err := validateStripeSubscriptionPrice(plan, stripePrice, expectedAmountMinor, expectedCurrency, stripeLivemodeForSecret(setting.StripeApiSecret)); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅 Price 与本地套餐不匹配 plan_id=%d price_id=%s error=%q", plan.Id, plan.StripePriceId, err.Error()))
+		common.ApiErrorMsg(c, "Stripe 套餐价格配置与本地套餐不匹配")
+		return
+	}
+
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)
@@ -78,25 +107,62 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 	reference := fmt.Sprintf("sub-stripe-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
+	allowWalletOverflow := true
+	if plan.AllowWalletOverflow != nil {
+		allowWalletOverflow = *plan.AllowWalletOverflow
+	}
 
-	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
+	order := &model.SubscriptionOrder{
+		UserId:                  userId,
+		PlanId:                  plan.Id,
+		Money:                   plan.PriceAmount,
+		TradeNo:                 referenceId,
+		PaymentMethod:           model.PaymentMethodStripe,
+		PaymentProvider:         model.PaymentProviderStripe,
+		ProviderProductId:       plan.StripePriceId,
+		ExpectedAmountMinor:     expectedAmountMinor,
+		ExpectedCurrency:        expectedCurrency,
+		PlanTitle:               plan.Title,
+		PlanDurationUnit:        plan.DurationUnit,
+		PlanDurationValue:       plan.DurationValue,
+		PlanCustomSeconds:       plan.CustomSeconds,
+		PlanTotalAmount:         plan.TotalAmount,
+		PlanResetPeriod:         model.NormalizeResetPeriod(plan.QuotaResetPeriod),
+		PlanResetCustomSeconds:  plan.QuotaResetCustomSeconds,
+		PlanUpgradeGroup:        strings.TrimSpace(plan.UpgradeGroup),
+		PlanDowngradeGroup:      strings.TrimSpace(plan.DowngradeGroup),
+		PlanAllowWalletOverflow: allowWalletOverflow,
+		CreateTime:              time.Now().Unix(),
+		Status:                  common.TopUpStatusPending,
+	}
+	if err := order.Insert(); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+		return
+	}
+
+	checkoutSession, err := genStripeSubscriptionLink(c.Request.Context(), referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
 	if err != nil {
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe)
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
-
-	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         referenceId,
-		PaymentMethod:   model.PaymentMethodStripe,
-		PaymentProvider: model.PaymentProviderStripe,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+	if checkoutSession.AmountTotal != expectedAmountMinor ||
+		!strings.EqualFold(string(checkoutSession.Currency), order.ExpectedCurrency) ||
+		checkoutSession.Livemode != stripeLivemodeForSecret(setting.StripeApiSecret) {
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe)
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe Checkout Session 响应与订阅订单不匹配 trade_no=%s plan_id=%d session_id=%s", referenceId, plan.Id, checkoutSession.ID))
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+		return
 	}
-	if err := order.Insert(); err != nil {
+	if err := order.BindStripeCheckout(model.StripeSubscriptionCheckoutBinding{
+		CheckoutSessionId: checkoutSession.ID,
+		PriceId:           plan.StripePriceId,
+		AmountMinor:       checkoutSession.AmountTotal,
+		Currency:          string(checkoutSession.Currency),
+		Livemode:          checkoutSession.Livemode,
+	}); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 保存订阅 Checkout Session 失败 trade_no=%s plan_id=%d session_id=%s error=%q", referenceId, plan.Id, checkoutSession.ID, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
@@ -104,39 +170,109 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
-			"pay_link": payLink,
+			"pay_link": checkoutSession.URL,
 		},
 	})
 }
 
-func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
-	stripe.Key = setting.StripeApiSecret
+func stripeSubscriptionAmountMinor(amount float64) (int64, error) {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+		return 0, fmt.Errorf("invalid Stripe subscription amount")
+	}
+	minor := decimal.NewFromFloat(amount).Mul(decimal.NewFromInt(100)).Round(0)
+	if !minor.IsPositive() || minor.GreaterThan(decimal.NewFromInt(math.MaxInt64)) {
+		return 0, fmt.Errorf("Stripe subscription amount is out of range")
+	}
+	return minor.IntPart(), nil
+}
 
-	params := &stripe.CheckoutSessionParams{
+func validateStripeSubscriptionPrice(plan *model.SubscriptionPlan, stripePrice *stripe.Price, expectedAmountMinor int64, expectedCurrency string, expectedLivemode bool) error {
+	if plan == nil || stripePrice == nil || stripePrice.ID == "" || stripePrice.Deleted {
+		return fmt.Errorf("Stripe Price is missing or deleted")
+	}
+	if stripePrice.ID != strings.TrimSpace(plan.StripePriceId) {
+		return fmt.Errorf("Stripe Price ID does not match the plan")
+	}
+	if !stripePrice.Active {
+		return fmt.Errorf("Stripe Price must be active")
+	}
+	if stripePrice.Type != stripe.PriceTypeOneTime || stripePrice.Recurring != nil {
+		return fmt.Errorf("Stripe Price must be one-time without recurring settings")
+	}
+	if stripePrice.BillingScheme != stripe.PriceBillingSchemePerUnit ||
+		stripePrice.CustomUnitAmount != nil || stripePrice.TransformQuantity != nil {
+		return fmt.Errorf("Stripe Price must use fixed per-unit billing")
+	}
+	if stripePrice.UnitAmount != expectedAmountMinor ||
+		!strings.EqualFold(string(stripePrice.Currency), expectedCurrency) ||
+		stripePrice.Livemode != expectedLivemode {
+		return fmt.Errorf("Stripe Price amount, currency, or livemode does not match the plan")
+	}
+
+	// A successful one-time payment grants one month of application entitlement.
+	if plan.DurationUnit != model.SubscriptionDurationMonth || plan.DurationValue != 1 ||
+		model.NormalizeResetPeriod(plan.QuotaResetPeriod) != model.SubscriptionResetBillingCycle ||
+		plan.QuotaResetCustomSeconds != 0 {
+		return fmt.Errorf("Stripe plan must grant one monthly period")
+	}
+	return nil
+}
+
+func genStripeSubscriptionLink(ctx context.Context, referenceId string, customerId string, email string, priceId string) (*stripe.CheckoutSession, error) {
+	params := &stripe.CheckoutSessionCreateParams{
+		Params:            stripe.Params{Context: ctx},
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
-		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
+		IntegrationIdentifier: stripe.String(
+			"tryvalo_subscription_" + randstr.String(8, "abcdefghijklmnopqrstuvwxyz"),
+		),
+		SuccessURL: stripe.String(paymentReturnPath("/wallet")),
+		CancelURL:  stripe.String(paymentReturnPath("/wallet")),
+		LineItems: []*stripe.CheckoutSessionCreateLineItemParams{
 			{
 				Price:    stripe.String(priceId),
 				Quantity: stripe.Int64(1),
 			},
 		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		Metadata: map[string]string{
+			"trade_no":   referenceId,
+			"order_kind": "subscription",
+			"price_id":   priceId,
+		},
 	}
+	params.Mode = stripe.String(string(stripe.CheckoutSessionModePayment))
+	params.ManagedPayments = &stripe.CheckoutSessionCreateManagedPaymentsParams{
+		Enabled: stripe.Bool(false),
+	}
+	params.Expand = []*string{stripe.String("payment_intent.latest_charge")}
+	params.PaymentMethodOptions = &stripe.CheckoutSessionCreatePaymentMethodOptionsParams{
+		WeChatPay: &stripe.CheckoutSessionCreatePaymentMethodOptionsWeChatPayParams{
+			Client: stripe.String(string(stripe.CheckoutSessionPaymentMethodOptionsWeChatPayClientWeb)),
+		},
+	}
+	params.PaymentIntentData = &stripe.CheckoutSessionCreatePaymentIntentDataParams{
+		Metadata: params.Metadata,
+	}
+	if paymentMethodConfiguration := strings.TrimSpace(
+		common.GetEnvOrDefaultString(stripeSubscriptionPaymentMethodConfigurationEnv, ""),
+	); paymentMethodConfiguration != "" {
+		params.PaymentMethodConfiguration = stripe.String(paymentMethodConfiguration)
+	}
+	params.SetIdempotencyKey("checkout-" + referenceId)
 
 	if "" == customerId {
 		if "" != email {
 			params.CustomerEmail = stripe.String(email)
 		}
-		params.CustomerCreation = stripe.String(string(stripe.CheckoutSessionCustomerCreationAlways))
 	} else {
 		params.Customer = stripe.String(customerId)
 	}
 
-	result, err := session.New(params)
+	result, err := createStripeCheckoutSession(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return result.URL, nil
+	if result == nil || result.ID == "" || result.URL == "" {
+		return nil, fmt.Errorf("Stripe Checkout Session 响应不完整")
+	}
+	return result, nil
 }

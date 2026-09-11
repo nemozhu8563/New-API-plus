@@ -1,30 +1,4 @@
-new-api Notices
-
-new-api
-Copyright (c) QuantumNous and contributors.
-
-This project is licensed under the GNU Affero General Public License v3.0.
-See LICENSE for the full project license terms.
-
-==== Additional Terms under AGPLv3 Section 7 ====
-
-Pursuant to Section 7(b) of the GNU Affero General Public License version 3,
-the following reasonable legal notice and author attribution must be preserved
-by modified versions in the Appropriate Legal Notices and in any prominent
-about, legal, footer, or attribution location presented by the user interface:
-
-"Frontend design and development by New API contributors."
-
-Modified versions that present a user interface must also preserve a visible
-link to the original project in a prominent about, legal, footer, or
-attribution location:
-
-https://github.com/QuantumNous/new-api
-
-Modified versions must not misrepresent the origin of the software and must
-mark their changes in accordance with AGPLv3 Section 7(c).
-
-==== Third-Party Notices ====
+Third-Party Notices
 
 This product includes third-party open source software. Copyright notices and
 license terms for direct third-party dependencies are listed in
@@ -48,6 +22,20 @@ Copyright (c) 2014, Paul Querna
 
 This product includes software developed by
 Paul Querna (http://paul.querna.org/).
+
+fwwdn/sensitive-stop-words
+https://github.com/fwwdn/sensitive-stop-words
+Embedded dictionary data is derived from revision
+a7d06bb1c321e669943b6841570d9da6dad8ce2b and is licensed under Apache-2.0.
+
+==== MIT Embedded Data Notices ====
+
+coffee-and-fun/google-profanity-words
+https://github.com/coffee-and-fun/google-profanity-words
+Copyright (c) Robert James Gabriel / Coffee & Fun LLC
+Embedded English dictionary data is sourced from revision
+0ae3460863120bc671361b9403cc65d5f2075b89 and is licensed under MIT.
+The full license text is reproduced in THIRD-PARTY-LICENSES.md.
 
 ==== Electron / Chromium Notices ====
 

@@ -92,11 +92,9 @@ func InitOptionMap() {
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
-	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
 	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
 	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
 	common.OptionMap["StripePriceId"] = setting.StripePriceId
-	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(setting.StripeUnitPrice, 'f', -1, 64)
 	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(setting.StripePromotionCodesEnabled)
 	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
 	common.OptionMap["CreemProducts"] = setting.CreemProducts
@@ -155,6 +153,8 @@ func InitOptionMap() {
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
 	common.OptionMap["GroupGroupRatio"] = ratio_setting.GroupGroupRatio2JSONString()
+	common.OptionMap["group_ratio_setting.public_group_tag_ratio"] = ratio_setting.PublicGroupTagRatio2JSONString()
+	common.OptionMap["group_ratio_setting.public_group_model_tag"] = ratio_setting.PublicGroupModelTagOverride2JSONString()
 	common.OptionMap["UserUsableGroups"] = setting.UserUsableGroups2JSONString()
 	common.OptionMap["CompletionRatio"] = ratio_setting.CompletionRatio2JSONString()
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
@@ -180,6 +180,8 @@ func InitOptionMap() {
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
+	common.OptionMap["SensitiveWordsHighRisk"] = setting.SensitiveWordsHighRiskToString()
+	common.OptionMap["SensitiveWordsAudit"] = setting.SensitiveWordsAuditToString()
 	common.OptionMap["StreamCacheQueueLength"] = strconv.Itoa(setting.StreamCacheQueueLength)
 	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
@@ -286,7 +288,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if key == retiredThemeOptionKey {
+	if key == retiredThemeOptionKey || key == "StripeUnitPrice" || key == "StripeMinTopUp" {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
@@ -458,10 +460,6 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.StripeWebhookSecret = value
 	case "StripePriceId":
 		setting.StripePriceId = value
-	case "StripeUnitPrice":
-		setting.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
-	case "StripeMinTopUp":
-		setting.StripeMinTopUp, _ = strconv.Atoi(value)
 	case "StripePromotionCodesEnabled":
 		setting.StripePromotionCodesEnabled = value == "true"
 	case "CreemApiKey":
@@ -606,6 +604,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "SensitiveWords":
 		setting.SensitiveWordsFromString(value)
+	case "SensitiveWordsHighRisk":
+		setting.SensitiveWordsHighRiskFromString(value)
+	case "SensitiveWordsAudit":
+		setting.SensitiveWordsAuditFromString(value)
 	case "AutomaticDisableKeywords":
 		operation_setting.AutomaticDisableKeywordsFromString(value)
 	case "AutomaticDisableStatusCodes":
@@ -657,6 +659,9 @@ func handleConfigUpdate(key, value string) bool {
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
+	}
+	if configName == "group_ratio_setting" && (configKey == "public_group_tag_ratio" || configKey == "public_group_model_tag") {
+		RefreshPricing()
 	}
 
 	return true // 已处理

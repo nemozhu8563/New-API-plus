@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { z } from 'zod'
 
 // ============================================================================
@@ -29,6 +11,10 @@ export const redemptionSchema = z.object({
   key: z.string(),
   status: z.number(), // 1: enabled, 2: disabled, 3: used
   quota: z.number(),
+  benefit_type: z.enum(['quota', 'subscription']).default('quota'),
+  subscription_plan_id: z.number().default(0),
+  subscription_plan_title: z.string().default(''),
+  used_subscription_id: z.number().default(0),
   created_time: z.number(),
   redeemed_time: z.number(),
   expired_time: z.number(), // 0 for never expires
@@ -36,6 +22,7 @@ export const redemptionSchema = z.object({
 })
 
 export type Redemption = z.infer<typeof redemptionSchema>
+export type RedemptionBenefitType = Redemption['benefit_type']
 
 // ============================================================================
 // API Request/Response Types
@@ -74,6 +61,8 @@ export interface RedemptionFormData {
   id?: number
   name: string
   quota: number
+  benefit_type: RedemptionBenefitType
+  subscription_plan_id?: number
   expired_time: number
   count?: number // Only for create
   status?: number // Only for status update

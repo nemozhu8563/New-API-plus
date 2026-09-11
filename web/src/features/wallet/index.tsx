@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +7,8 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { AffiliateDetailsDialog } from './components/dialogs/affiliate-details-dialog'
+import { AffiliateWithdrawalDialog } from './components/dialogs/affiliate-withdrawal-dialog'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
@@ -42,9 +26,11 @@ import {
   useWaffoPayment,
   useWaffoPancakePayment,
 } from './hooks'
+import { walletLayoutClasses } from './layout'
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
+  isStripeOnlyTopUp,
   dispatchSelectedPayment,
 } from './lib'
 import type {
@@ -73,12 +59,16 @@ export function Wallet(props: WalletProps) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [cashbackConvertDialogOpen, setCashbackConvertDialogOpen] =
+    useState(false)
+  const [affiliateDetailsOpen, setAffiliateDetailsOpen] = useState(false)
+  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
+  const [subscriptionRefreshKey, setSubscriptionRefreshKey] = useState(0)
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
   const [selectedCreemProduct, setSelectedCreemProduct] =
     useState<CreemProduct | null>(null)
-  const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -97,11 +87,17 @@ export function Wallet(props: WalletProps) {
     calculatePaymentAmount,
     processPayment,
   } = usePayment()
+  const stripeOnlyTopUp = isStripeOnlyTopUp(topupInfo)
   const {
     affiliateLink,
+    summary: affiliateSummary,
     loading: affiliateLoading,
     transferQuota,
     transferring,
+    convertCashback,
+    requestWithdrawal,
+    converting,
+    withdrawing,
   } = useAffiliate()
   const { redeeming, redeemCode } = useRedemption()
   const { processing: creemProcessing, processCreemPayment } = useCreemPayment()
@@ -211,6 +207,10 @@ export function Wallet(props: WalletProps) {
     }
   }
 
+  const handleStripeCheckout = async () => {
+    await processPayment(topupAmount, PAYMENT_TYPES.STRIPE)
+  }
+
   // Handle redemption
   const handleRedeem = async () => {
     if (!redemptionCode) return
@@ -218,6 +218,7 @@ export function Wallet(props: WalletProps) {
     const success = await redeemCode(redemptionCode)
     if (success) {
       setRedemptionCode('')
+      setSubscriptionRefreshKey((current) => current + 1)
       await fetchUser()
     }
   }
@@ -225,6 +226,14 @@ export function Wallet(props: WalletProps) {
   // Handle transfer
   const handleTransfer = async (amount: number) => {
     const success = await transferQuota(amount)
+    if (success) {
+      await fetchUser()
+    }
+    return success
+  }
+
+  const handleCashbackConversion = async (amount: number) => {
+    const success = await convertCashback(amount)
     if (success) {
       await fetchUser()
     }
@@ -275,28 +284,15 @@ export function Wallet(props: WalletProps) {
     return topupInfo?.discount?.[topupAmount] || DEFAULT_DISCOUNT_RATE
   }, [topupInfo, topupAmount])
 
-  const handleSubscriptionAvailabilityChange = useCallback(
-    (available: boolean) => {
-      setShowSubscriptionPanel(available)
-    },
-    []
-  )
-
   return (
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
+          <div className={walletLayoutClasses.content}>
             <WalletStatsCard user={user} loading={userLoading} />
 
-            <div
-              className={
-                showSubscriptionPanel
-                  ? 'grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] xl:items-start'
-                  : 'grid gap-4'
-              }
-            >
+            <div className={walletLayoutClasses.primarySections}>
               <div id='wallet-add-funds' className='scroll-mt-4'>
                 <RechargeFormCard
                   topupInfo={topupInfo}
@@ -307,6 +303,8 @@ export function Wallet(props: WalletProps) {
                   onTopupAmountChange={handleTopupAmountChange}
                   paymentAmount={paymentAmount}
                   calculating={calculating}
+                  stripeProcessing={processing}
+                  onStripeCheckout={handleStripeCheckout}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
                   redemptionCode={redemptionCode}
@@ -332,17 +330,19 @@ export function Wallet(props: WalletProps) {
               </div>
 
               <SubscriptionPlansCard
+                key={subscriptionRefreshKey}
                 topupInfo={topupInfo}
-                onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                userQuota={user?.quota}
-                onPurchaseSuccess={fetchUser}
               />
             </div>
 
             <AffiliateRewardsCard
               user={user}
+              summary={affiliateSummary}
               affiliateLink={affiliateLink}
-              onTransfer={() => setTransferDialogOpen(true)}
+              onViewDetails={() => setAffiliateDetailsOpen(true)}
+              onConvertCashback={() => setCashbackConvertDialogOpen(true)}
+              onRequestWithdrawal={() => setWithdrawalDialogOpen(true)}
+              onTransferLegacyRewards={() => setTransferDialogOpen(true)}
               complianceConfirmed={
                 topupInfo?.payment_compliance_confirmed !== false
               }
@@ -352,18 +352,20 @@ export function Wallet(props: WalletProps) {
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      <PaymentConfirmDialog
-        open={confirmDialogOpen}
-        onOpenChange={setConfirmDialogOpen}
-        onConfirm={handlePaymentConfirm}
-        topupAmount={topupAmount}
-        paymentAmount={paymentAmount}
-        paymentMethod={selectedPaymentMethod}
-        calculating={calculating}
-        processing={processing || waffoProcessing || pancakeProcessing}
-        discountRate={getDiscountRate()}
-        usdExchangeRate={effectiveUsdExchangeRate}
-      />
+      {!stripeOnlyTopUp && (
+        <PaymentConfirmDialog
+          open={confirmDialogOpen}
+          onOpenChange={setConfirmDialogOpen}
+          onConfirm={handlePaymentConfirm}
+          topupAmount={topupAmount}
+          paymentAmount={paymentAmount}
+          paymentMethod={selectedPaymentMethod}
+          calculating={calculating}
+          processing={processing || waffoProcessing || pancakeProcessing}
+          discountRate={getDiscountRate()}
+          usdExchangeRate={effectiveUsdExchangeRate}
+        />
+      )}
 
       <TransferDialog
         open={transferDialogOpen}
@@ -371,6 +373,29 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleTransfer}
         availableQuota={user?.aff_quota ?? 0}
         transferring={transferring}
+      />
+
+      <TransferDialog
+        open={cashbackConvertDialogOpen}
+        onOpenChange={setCashbackConvertDialogOpen}
+        onConfirm={handleCashbackConversion}
+        availableQuota={affiliateSummary?.available_quota ?? 0}
+        transferring={converting}
+        minimumQuota={1}
+      />
+
+      <AffiliateWithdrawalDialog
+        open={withdrawalDialogOpen}
+        onOpenChange={setWithdrawalDialogOpen}
+        onConfirm={requestWithdrawal}
+        availableQuota={affiliateSummary?.available_quota ?? 0}
+        submitting={withdrawing}
+      />
+
+      <AffiliateDetailsDialog
+        open={affiliateDetailsOpen}
+        onOpenChange={setAffiliateDetailsOpen}
+        summary={affiliateSummary}
       />
 
       <BillingHistoryDialog

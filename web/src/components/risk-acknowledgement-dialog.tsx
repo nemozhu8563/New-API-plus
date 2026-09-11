@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -41,6 +23,7 @@ type RequiredTextPart = {
 }
 
 type NormalizedRequiredTextPart = RequiredTextPart & {
+  key: string
   inputIndex?: number
 }
 
@@ -65,7 +48,7 @@ type RiskAcknowledgementDialogProps = {
 }
 
 function getRequiredTextRows(text: string) {
-  return Math.max(1, Math.ceil(Array.from(text).length / 42))
+  return Math.max(1, Math.ceil([...text].length / 42))
 }
 
 export function RiskAcknowledgementDialog({
@@ -95,16 +78,27 @@ export function RiskAcknowledgementDialog({
   const normalizedRequiredTextParts = useMemo<
     NormalizedRequiredTextPart[]
   >(() => {
+    const keyOccurrences = new Map<string, number>()
     return requiredTextParts.reduce<{
       parts: NormalizedRequiredTextPart[]
       inputIndex: number
     }>(
       (acc, part) => {
+        const baseKey = `${part.type}-${part.text}-${part.placeholder ?? ''}`
+        const occurrence = keyOccurrences.get(baseKey) ?? 0
+        keyOccurrences.set(baseKey, occurrence + 1)
+        const normalizedPart = {
+          ...part,
+          key: `${baseKey}-${occurrence}`,
+        }
         if (part.type !== 'input') {
-          return { ...acc, parts: [...acc.parts, part] }
+          return { ...acc, parts: [...acc.parts, normalizedPart] }
         }
         return {
-          parts: [...acc.parts, { ...part, inputIndex: acc.inputIndex }],
+          parts: [
+            ...acc.parts,
+            { ...normalizedPart, inputIndex: acc.inputIndex },
+          ],
           inputIndex: acc.inputIndex + 1,
         }
       },
@@ -244,17 +238,17 @@ export function RiskAcknowledgementDialog({
               </div>
               {hasSegmentedRequiredText ? (
                 <div className='flex flex-col gap-2'>
-                  {normalizedRequiredTextParts.map((part, index) =>
+                  {normalizedRequiredTextParts.map((part) =>
                     part.type === 'static' ? (
                       <span
-                        key={`static-${index}`}
+                        key={part.key}
                         className='text-muted-foreground bg-background/70 border-border w-fit rounded-md border px-2 py-1.5 font-mono text-sm select-none'
                       >
                         {part.text}
                       </span>
                     ) : (
                       <Textarea
-                        key={`input-${index}`}
+                        key={part.key}
                         value={typedTextParts[part.inputIndex ?? 0] ?? ''}
                         onChange={(event) =>
                           handleTextPartChange(

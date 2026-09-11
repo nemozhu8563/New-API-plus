@@ -1,12 +1,15 @@
 .github
 .git
 *.md
+!THIRD-PARTY-LICENSES.md
 .vscode
 .gitignore
 Makefile
 docs
 .eslintcache
 .gocache
+/dist
+/.worktrees
 /web/node_modules
 /web/dist
 !THIRD-PARTY-LICENSES.md

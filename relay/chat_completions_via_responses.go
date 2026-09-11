@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -164,26 +163,14 @@ func relayResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
 	httpResp = resp.(*http.Response)
-	clientStream := info.IsStream
-	upstreamStream := isResponsesEventStreamContentType(httpResp.Header.Get("Content-Type"))
-	info.IsStream = clientStream || upstreamStream
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 		return nil, newApiErr
 	}
 
-	if upstreamStream && clientStream {
-		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
-		if newApiErr != nil {
-			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
-			return nil, newApiErr
-		}
-		return usage, nil
-	}
-	if upstreamStream {
-		info.IsStream = false
-		usage, newApiErr := openaichannel.OaiResponsesToChatBufferedStreamHandler(c, info, httpResp)
+	if openaichannel.IsEventStreamResponse(httpResp) {
+		usage, newApiErr := openaichannel.OaiResponsesToChatStreamBufferedHandler(c, info, httpResp)
 		if newApiErr != nil {
 			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 			return nil, newApiErr
@@ -197,8 +184,4 @@ func relayResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, adaptor 
 		return nil, newApiErr
 	}
 	return usage, nil
-}
-
-func isResponsesEventStreamContentType(contentType string) bool {
-	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
 }

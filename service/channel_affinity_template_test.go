@@ -263,6 +263,36 @@ func TestClearCurrentChannelAffinityCache(t *testing.T) {
 	require.False(t, ShouldSkipRetryAfterChannelAffinityFailure(ctx))
 }
 
+func TestCircuitFailoverDoesNotOverwriteChannelAffinity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	setting := operation_setting.GetChannelAffinitySetting()
+	originalEnabled := setting.Enabled
+	setting.Enabled = true
+	t.Cleanup(func() { setting.Enabled = originalEnabled })
+
+	cacheKeySuffix := fmt.Sprintf("codex cli trace:default:circuit-failover-%d", time.Now().UnixNano())
+	cacheKeyFull := channelAffinityCacheNamespace + ":" + cacheKeySuffix
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 18, time.Minute))
+	t.Cleanup(func() {
+		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
+	})
+
+	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
+		CacheKey:   cacheKeyFull,
+		TTLSeconds: 60,
+		RuleName:   "codex cli trace",
+	})
+	MarkChannelCircuitBypass(ctx)
+	RecordChannelAffinity(ctx, 28)
+
+	channelID, found, err := cache.Get(cacheKeySuffix)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, 18, channelID)
+}
+
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

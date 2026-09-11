@@ -1,0 +1,51 @@
+{
+  "url": "https://test.tryvalo.com",
+  "timestamp": "2026-07-31T00:58:14Z",
+  "branch": "main",
+  "commit": "974d5576cf85",
+  "worktree_dirty": true,
+  "mode": "quick",
+  "status": "HEALTHY",
+  "alerts": 0,
+  "pages": {
+    "/": {
+      "status": "HEALTHY",
+      "final_url": "https://test.tryvalo.com/",
+      "console_errors": 1,
+      "expected_console_errors": [
+        "POST /api/user/auth/refresh returned 401 for an anonymous visitor"
+      ],
+      "load_time_ms": 253,
+      "screenshot": "screenshots/pre-home.png"
+    },
+    "/wallet": {
+      "status": "HEALTHY",
+      "final_url": "https://test.tryvalo.com/sign-in?redirect=%2Fwallet",
+      "console_errors": 1,
+      "expected_console_errors": [
+        "POST /api/user/auth/refresh returned 401 for an anonymous visitor"
+      ],
+      "load_time_ms": 272,
+      "transient_load_time_ms": 6509,
+      "screenshot": "screenshots/pre-wallet-annotated.png"
+    },
+    "/affiliates": {
+      "status": "HEALTHY",
+      "final_url": "https://test.tryvalo.com/sign-in?redirect=%2Faffiliates",
+      "console_errors": 1,
+      "expected_console_errors": [
+        "POST /api/user/auth/refresh returned 401 for an anonymous visitor"
+      ],
+      "load_time_ms": 251,
+      "screenshot": "screenshots/pre-affiliates-annotated.png"
+    }
+  },
+  "runtime": {
+    "test_container_health": "healthy",
+    "test_container_restarts": 0,
+    "production_container_health": "healthy",
+    "test_recent_error_lines": 0,
+    "test_recent_scheduler_lines": 0
+  },
+  "verdict": "DEPLOY IS HEALTHY"
+}

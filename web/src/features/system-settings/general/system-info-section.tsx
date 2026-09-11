@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -38,7 +20,6 @@ import { FormNavigationGuard } from '../components/form-navigation-guard'
 import {
   SettingsForm,
   SettingsFormGrid,
-  SettingsFormGridItem,
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
@@ -53,7 +34,6 @@ const _systemInfoSchema = z.object({
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
   About: z.string().optional(),
-  HomePageContent: z.string().optional(),
   legal: z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
@@ -82,7 +62,6 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
-    HomePageContent: normalizeValue(defaultValues.HomePageContent),
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
@@ -103,7 +82,6 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Logo: z.string().url().optional().or(z.literal('')),
     Footer: z.string().optional(),
     About: z.string().optional(),
-    HomePageContent: z.string().optional(),
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
@@ -273,37 +251,12 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 )}
               />
 
-              <SettingsFormGridItem span='full'>
-                <FormField
-                  control={form.control}
-                  name='HomePageContent'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Home Page Content')}</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder={t('Welcome to our New API...')}
-                          rows={6}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Content displayed on the home page (supports Markdown)'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </SettingsFormGridItem>
-
               <FormField
                 control={form.control}
                 name='legal.user_agreement'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('User Agreement')}</FormLabel>
+                    <FormLabel>{t('Terms of Service')}</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder={t(

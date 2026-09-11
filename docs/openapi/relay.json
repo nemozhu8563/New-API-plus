@@ -3650,7 +3650,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "example": "dall-e-3"
+            "example": "gpt-image-2"
           },
           "prompt": {
             "type": "string",
@@ -3664,22 +3664,21 @@
           },
           "size": {
             "type": "string",
-            "enum": [
-              "256x256",
-              "512x512",
-              "1024x1024",
-              "1792x1024",
-              "1024x1792"
-            ],
-            "default": "1024x1024"
+            "description": "图片尺寸。OpenAI GPT Image 常用值包括 auto、1024x1024、1536x1024、1024x1536；部分兼容渠道也支持 2k、4k 等扩展值。",
+            "default": "auto",
+            "example": "4k"
           },
           "quality": {
             "type": "string",
             "enum": [
+              "auto",
+              "low",
+              "medium",
+              "high",
               "standard",
               "hd"
             ],
-            "default": "standard"
+            "default": "auto"
           },
           "style": {
             "type": "string",
@@ -3696,6 +3695,43 @@
               "b64_json"
             ],
             "default": "url"
+          },
+          "background": {
+            "type": "string",
+            "enum": [
+              "transparent",
+              "opaque",
+              "auto"
+            ],
+            "description": "GPT Image 背景设置。部分模型或渠道支持。"
+          },
+          "moderation": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "low"
+            ],
+            "description": "GPT Image 内容审核严格度。部分模型或渠道支持。"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "webp",
+              "jpeg"
+            ],
+            "description": "GPT Image 输出图片格式。"
+          },
+          "output_compression": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "输出为 webp 或 jpeg 时的压缩质量。"
+          },
+          "partial_images": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "流式图片生成时请求的中间图片数量。"
           },
           "user": {
             "type": "string"

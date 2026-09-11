@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -34,12 +16,19 @@ import {
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -49,7 +38,6 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   getAdminPlans,
@@ -59,7 +47,7 @@ import {
   deleteUserSubscription,
   resetUserSubscriptionsByPlan,
 } from '../../api'
-import { formatTimestamp } from '../../lib'
+import { formatSubscriptionPrice, formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 
 interface Props {
@@ -138,18 +126,10 @@ export function UserSubscriptionsDialog(props: Props) {
         getAdminPlans(),
         getUserSubscriptions(props.user.id),
       ])
-      if (plansRes.success) {
-        setPlans(plansRes.data || [])
-      } else {
-        handleServerError(plansRes)
-      }
-      if (subsRes.success) {
-        setSubs(subsRes.data || [])
-      } else {
-        handleServerError(subsRes)
-      }
-    } catch (error) {
-      handleServerError(error, t('Loading failed'))
+      if (plansRes.success) setPlans(plansRes.data || [])
+      if (subsRes.success) setSubs(subsRes.data || [])
+    } catch {
+      toast.error(t('Loading failed'))
     } finally {
       setLoading(false)
     }
@@ -177,11 +157,9 @@ export function UserSubscriptionsDialog(props: Props) {
         setSelectedPlanId('')
         await loadData()
         props.onSuccess?.()
-      } else {
-        handleServerError(res)
       }
-    } catch (error) {
-      handleServerError(error, t('Request failed'))
+    } catch {
+      toast.error(t('Request failed'))
     } finally {
       setCreating(false)
     }
@@ -196,8 +174,6 @@ export function UserSubscriptionsDialog(props: Props) {
           toast.success(res.data?.message || t('Has been invalidated'))
           await loadData()
           props.onSuccess?.()
-        } else {
-          handleServerError(res)
         }
       } else {
         const res = await deleteUserSubscription(confirmAction.subId)
@@ -205,12 +181,10 @@ export function UserSubscriptionsDialog(props: Props) {
           toast.success(t('Deleted'))
           await loadData()
           props.onSuccess?.()
-        } else {
-          handleServerError(res)
         }
       }
-    } catch (error) {
-      handleServerError(error, t('Operation failed'))
+    } catch {
+      toast.error(t('Operation failed'))
     } finally {
       setConfirmAction(null)
     }
@@ -232,11 +206,9 @@ export function UserSubscriptionsDialog(props: Props) {
         )
         await loadData()
         props.onSuccess?.()
-      } else {
-        handleServerError(res)
       }
-    } catch (error) {
-      handleServerError(error, t('Operation failed'))
+    } catch {
+      toast.error(t('Operation failed'))
     } finally {
       setResetting(false)
       setResetAction(null)
@@ -256,16 +228,41 @@ export function UserSubscriptionsDialog(props: Props) {
 
           <div className={sideDrawerFormClassName()}>
             <div className='flex gap-2'>
-              <Combobox
-                options={plans.map((p) => ({
+              <Select
+                items={plans.map((p) => ({
                   value: String(p.plan.id),
-                  label: `${p.plan.title} ($${Number(p.plan.price_amount || 0).toFixed(2)})`,
+                  label: (
+                    <>
+                      {p.plan.title} (
+                      {formatSubscriptionPrice(
+                        Number(p.plan.price_amount || 0),
+                        p.plan.currency
+                      )}
+                      )
+                    </>
+                  ),
                 }))}
                 value={selectedPlanId}
                 onValueChange={(v) => v !== null && setSelectedPlanId(v)}
-                className='flex-1'
-                placeholder={t('Select subscription plan')}
-              />
+              >
+                <SelectTrigger className='flex-1'>
+                  <SelectValue placeholder={t('Select subscription plan')} />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {plans.map((p) => (
+                      <SelectItem key={p.plan.id} value={String(p.plan.id)}>
+                        {p.plan.title} (
+                        {formatSubscriptionPrice(
+                          Number(p.plan.price_amount || 0),
+                          p.plan.currency
+                        )}
+                        )
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
               <Button
                 onClick={handleCreate}
                 disabled={creating || !selectedPlanId}
@@ -383,7 +380,7 @@ export function UserSubscriptionsDialog(props: Props) {
                             })
                           }
                         >
-                          {t('Invalidate')}
+                          {t('Cancel subscription')}
                           <DropdownMenuShortcut>
                             <Ban size={16} />
                           </DropdownMenuShortcut>
@@ -419,7 +416,7 @@ export function UserSubscriptionsDialog(props: Props) {
           onOpenChange={(v) => !v && setConfirmAction(null)}
           title={
             confirmAction.type === 'invalidate'
-              ? t('Confirm invalidate')
+              ? t('Cancel subscription')
               : t('Confirm delete')
           }
           desc={

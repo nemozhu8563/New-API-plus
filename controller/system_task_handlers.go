@@ -22,6 +22,7 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(errorMonitorHandler{})
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and
@@ -149,6 +150,25 @@ func (asyncTaskPollHandler) NewPayload() any { return nil }
 
 func (asyncTaskPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	summary := service.RunTaskPollingOnce(ctx, service.NewSystemTaskProgressReporter(task, runnerID))
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+type errorMonitorHandler struct{}
+
+func (errorMonitorHandler) Type() string { return model.SystemTaskTypeErrorMonitor }
+
+func (errorMonitorHandler) Enabled() bool { return service.IsErrorMonitorEnabled() }
+
+func (errorMonitorHandler) Interval() time.Duration { return service.ErrorMonitorInterval() }
+
+func (errorMonitorHandler) NewPayload() any { return nil }
+
+func (errorMonitorHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := service.RunErrorMonitorOnce(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
+		return
+	}
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 

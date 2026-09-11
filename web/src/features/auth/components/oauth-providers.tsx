@@ -1,27 +1,11 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
+import GoogleIcon from '@lobehub/icons/es/Google/components/Color'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
   IconDiscord,
   IconGithub,
+  IconGitlab,
   IconLinuxDo,
   IconTelegram,
   IconWeChat,
@@ -47,6 +31,28 @@ type ProviderButton = {
   onClick: () => void
   icon?: ReactNode
   disabled?: boolean
+}
+
+function OAuthProviderIcon(props: { name: string }) {
+  const iconName = props.name.trim()
+
+  switch (iconName.toLowerCase()) {
+    case 'google':
+      return <GoogleIcon aria-hidden='true' className='h-4 w-4' />
+    case 'github':
+      return <IconGithub aria-hidden='true' className='h-4 w-4' />
+    case 'gitlab':
+      return <IconGitlab aria-hidden='true' className='h-4 w-4' />
+    default:
+      return iconName ? (
+        <span
+          aria-hidden='true'
+          className='bg-muted text-muted-foreground flex size-4 items-center justify-center rounded-full text-[10px] font-semibold uppercase'
+        >
+          {iconName.charAt(0)}
+        </span>
+      ) : null
+  }
 }
 
 export function OAuthProviders({
@@ -109,6 +115,10 @@ export function OAuthProviders({
         name: oidcDisplayName,
       }),
       onClick: handleOIDCLogin,
+      icon:
+        oidcDisplayName.toLowerCase() === 'google' ? (
+          <OAuthProviderIcon name={oidcDisplayName} />
+        ) : undefined,
     })
   }
 
@@ -138,6 +148,9 @@ export function OAuthProviders({
         key: `custom-${provider.slug}`,
         label: t('Continue with {{name}}', { name: provider.name }),
         onClick: () => handleCustomOAuthLogin(provider),
+        icon: provider.icon ? (
+          <OAuthProviderIcon name={provider.icon} />
+        ) : undefined,
       })
     }
   }

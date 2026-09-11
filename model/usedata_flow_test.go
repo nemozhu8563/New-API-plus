@@ -16,6 +16,7 @@ func seedFlowLookupData(t *testing.T) {
 	t.Helper()
 	require.NoError(t, DB.Create(&Channel{Id: 1, Name: "east"}).Error)
 	require.NoError(t, DB.Create(&Channel{Id: 2, Name: "west"}).Error)
+	InitChannelCache()
 	require.NoError(t, DB.Create(&Token{Id: 11, UserId: 1, Key: "sk-primary", Name: "primary"}).Error)
 	require.NoError(t, DB.Create(&Token{Id: 22, UserId: 2, Key: "sk-backup", Name: "backup"}).Error)
 	require.NoError(t, DB.Delete(&Token{Id: 11}).Error)

@@ -1,26 +1,9 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { api } from '@/lib/api'
 
 import type {
   ApiResponse,
   PlanRecord,
+  PublicPlanRecord,
   PlanPayload,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
@@ -155,13 +138,6 @@ export async function paySubscriptionWaffoPancake(
   return res.data
 }
 
-export async function paySubscriptionBalance(
-  data: SubscriptionPayRequest
-): Promise<SubscriptionPayResponse> {
-  const res = await api.post('/api/subscription/balance/pay', data)
-  return res.data
-}
-
 // Mints a Pancake OnetimeProduct (see controller for the OnetimeProduct vs
 // SubscriptionProduct rationale) using persisted creds + StoreID.
 export async function createWaffoPancakeSubscriptionProduct(data: {
@@ -219,7 +195,9 @@ export async function getSelfSubscriptionFull(): Promise<
   return res.data
 }
 
-export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
+export async function getPublicPlans(): Promise<
+  ApiResponse<PublicPlanRecord[]>
+> {
   const res = await api.get('/api/subscription/plans')
   return res.data
 }

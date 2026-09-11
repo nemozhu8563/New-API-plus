@@ -462,6 +462,9 @@ func TokenAuth() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
 			return
 		}
+		if abortRelayForBillingDebt(c, userCache) {
+			return
+		}
 
 		userCache.WriteContext(c)
 
@@ -490,6 +493,14 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		c.Next()
 	}
+}
+
+func abortRelayForBillingDebt(c *gin.Context, user *model.UserBase) bool {
+	if user == nil || user.BillingDebt <= 0 {
+		return false
+	}
+	abortWithOpenAiMessage(c, http.StatusPaymentRequired, "账户存在待处理的支付退款或争议欠款，请前往钱包处理后再调用 API", types.ErrorCodeAccessDenied)
+	return true
 }
 
 func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) error {

@@ -178,3 +178,17 @@ func TestRetiredThemeOptionIsPersistedButNotPublished(t *testing.T) {
 	_, published := common.OptionMap[retiredThemeOptionKey]
 	assert.False(t, published)
 }
+
+func TestRetiredStripeTopUpOptionsArePersistedButNotPublished(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	previousMap := common.OptionMap
+	t.Cleanup(func() { common.OptionMap = previousMap })
+	common.OptionMap = map[string]string{}
+
+	for _, key := range []string{"StripeUnitPrice", "StripeMinTopUp"} {
+		require.NoError(t, UpdateOption(key, "1"))
+		assert.Equal(t, "1", requireOptionValue(t, db, key))
+		_, published := common.OptionMap[key]
+		assert.False(t, published)
+	}
+}

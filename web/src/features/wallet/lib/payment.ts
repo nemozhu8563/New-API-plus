@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import {
   PAYMENT_TYPES,
   DEFAULT_PRESET_MULTIPLIERS,
@@ -73,6 +55,15 @@ export function submitPaymentForm(
  */
 export function isStripePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.STRIPE
+}
+
+/**
+ * Navigate to a hosted checkout in the current tab. Checkout URLs are returned
+ * asynchronously, so opening a new window after the request can be blocked as
+ * a popup by the browser.
+ */
+export function redirectToHostedCheckout(url: string): void {
+  window.location.assign(url)
 }
 
 /**
@@ -145,6 +136,22 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
   }
 
   return DEFAULT_PAYMENT_TYPE
+}
+
+export function isStripeSubscriptionEnabled(
+  topupInfo: TopupInfo | null
+): boolean {
+  return !!topupInfo?.enable_stripe_subscription
+}
+
+export function isStripeOnlyTopUp(topupInfo: TopupInfo | null): boolean {
+  return !!(
+    topupInfo?.enable_stripe_topup &&
+    !topupInfo.enable_online_topup &&
+    !topupInfo.enable_creem_topup &&
+    !topupInfo.enable_waffo_topup &&
+    !topupInfo.enable_waffo_pancake_topup
+  )
 }
 
 /**

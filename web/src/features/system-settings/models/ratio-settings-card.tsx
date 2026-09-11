@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -144,6 +126,8 @@ const createGroupSchema = (t: Translate) =>
     MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
     DefaultUseAutoGroup: z.boolean(),
     GroupSpecialUsableGroup: createJsonStringField(t),
+    PublicGroupTagRatio: createJsonStringField(t),
+    PublicGroupModelTag: createJsonStringField(t),
   })
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
@@ -248,6 +232,8 @@ export function RatioSettingsCard({
     GroupSpecialUsableGroup: normalizeJsonString(
       groupDefaults.GroupSpecialUsableGroup
     ),
+    PublicGroupTagRatio: normalizeJsonString(groupDefaults.PublicGroupTagRatio),
+    PublicGroupModelTag: normalizeJsonString(groupDefaults.PublicGroupModelTag),
   })
   const modelSchema = useMemo(() => createModelSchema(t), [t])
   const groupSchema = useMemo(() => createGroupSchema(t), [t])
@@ -284,6 +270,12 @@ export function RatioSettingsCard({
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
+      ),
+      PublicGroupTagRatio: formatJsonForTextarea(
+        groupDefaults.PublicGroupTagRatio
+      ),
+      PublicGroupModelTag: formatJsonForTextarea(
+        groupDefaults.PublicGroupModelTag
       ),
     },
   })
@@ -335,6 +327,12 @@ export function RatioSettingsCard({
       GroupSpecialUsableGroup: normalizeJsonString(
         groupDefaults.GroupSpecialUsableGroup
       ),
+      PublicGroupTagRatio: normalizeJsonString(
+        groupDefaults.PublicGroupTagRatio
+      ),
+      PublicGroupModelTag: normalizeJsonString(
+        groupDefaults.PublicGroupModelTag
+      ),
     }
 
     groupForm.reset({
@@ -346,6 +344,12 @@ export function RatioSettingsCard({
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
+      ),
+      PublicGroupTagRatio: formatJsonForTextarea(
+        groupDefaults.PublicGroupTagRatio
+      ),
+      PublicGroupModelTag: formatJsonForTextarea(
+        groupDefaults.PublicGroupModelTag
       ),
     })
   }, [groupDefaults, groupForm])
@@ -412,12 +416,16 @@ export function RatioSettingsCard({
         GroupSpecialUsableGroup: normalizeJsonString(
           values.GroupSpecialUsableGroup
         ),
+        PublicGroupTagRatio: normalizeJsonString(values.PublicGroupTagRatio),
+        PublicGroupModelTag: normalizeJsonString(values.PublicGroupModelTag),
       }
 
-      // Map form field names to API keys (most are 1:1, except GroupSpecialUsableGroup)
+      // Map form field names to API keys for grouped settings stored under dotted option names.
       const apiKeyMap: Record<string, string> = {
         GroupSpecialUsableGroup:
           'group_ratio_setting.group_special_usable_group',
+        PublicGroupTagRatio: 'group_ratio_setting.public_group_tag_ratio',
+        PublicGroupModelTag: 'group_ratio_setting.public_group_model_tag',
       }
 
       const updates = (
@@ -438,7 +446,7 @@ export function RatioSettingsCard({
 
   const handleResetRatios = useCallback(() => {
     setConfirmOpen(true)
-  }, [])
+  }, [setConfirmOpen])
 
   const { mutate: resetMutate } = resetMutation
   const handleConfirmReset = useCallback(() => {

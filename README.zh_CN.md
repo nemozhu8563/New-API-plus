@@ -15,10 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
-  </a><!--
-  --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
+  <a href="https://github.com/Calcium-Ion/new-api/releases/latest">
     <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
   </a><!--
   --><a href="https://hub.docker.com/r/CalciumIon/new-api">
@@ -469,16 +466,6 @@ Token、Origin 校验和 PAT 契约见[用户鉴权与登录会话](./docs/authe
 
 ---
 
-## 📜 许可证
-
-本项目采用 [GNU Affero 通用公共许可证 v3.0 (AGPLv3)](./LICENSE) 授权。
-
-本项目为开源项目，在 [One API](https://github.com/songquanpeng/one-api)（MIT 许可证）的基础上进行二次开发。
-
-如果您所在的组织政策不允许使用 AGPLv3 许可的软件，或您希望规避 AGPLv3 的开源义务，请发送邮件至：[support@quantumnous.com](mailto:support@quantumnous.com)
-
----
-
 ## 🌟 Star History
 
 <div align="center">
@@ -496,7 +483,5 @@ Token、Origin 校验和 PAT 契约见[用户鉴权与登录会话](./docs/authe
 如果这个项目对你有帮助，欢迎给我们一个 ⭐️ Star！
 
 **[官方文档](https://docs.newapi.pro/zh/docs)** • **[问题反馈](https://github.com/Calcium-Ion/new-api/issues)** • **[最新发布](https://github.com/Calcium-Ion/new-api/releases)**
-
-<sub>Built with ❤️ by QuantumNous</sub>
 
 </div>

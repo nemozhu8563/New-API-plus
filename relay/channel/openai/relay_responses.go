@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,9 +29,22 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
-	err = common.Unmarshal(responseBody, &responsesResponse)
-	if err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	if isResponsesSSEBody(resp, responseBody) {
+		streamResponse, err := parseResponsesSSEFinalResponse(responseBody)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		responsesResponse = *streamResponse
+		responseBody, err = common.Marshal(responsesResponse)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+		resp.Header.Set("Content-Type", "application/json")
+	} else {
+		err = common.Unmarshal(responseBody, &responsesResponse)
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
 	}
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -62,6 +77,67 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	imageCounter.Commit(info)
 
 	return usage, nil
+}
+
+func isResponsesSSEBody(resp *http.Response, body []byte) bool {
+	if resp != nil && strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return true
+	}
+	trimmed := bytes.TrimLeft(body, " \t\r\n")
+	return bytes.HasPrefix(trimmed, []byte("event:")) || bytes.HasPrefix(trimmed, []byte("data:"))
+}
+
+func parseResponsesSSEFinalResponse(body []byte) (*dto.OpenAIResponsesResponse, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, helper.InitialScannerBufferSize), helper.DefaultMaxScannerBufferSize)
+
+	var (
+		finalResponse *dto.OpenAIResponsesResponse
+		dataLines     []string
+	)
+
+	flushEvent := func() error {
+		if len(dataLines) == 0 {
+			return nil
+		}
+		data := strings.TrimSpace(strings.Join(dataLines, "\n"))
+		dataLines = nil
+		if data == "" || data == "[DONE]" {
+			return nil
+		}
+
+		var streamResponse dto.ResponsesStreamResponse
+		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
+			return err
+		}
+		if streamResponse.Type == "response.completed" && streamResponse.Response != nil {
+			finalResponse = streamResponse.Response
+		}
+		return nil
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if err := flushEvent(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			dataLines = append(dataLines, strings.TrimSpace(line[5:]))
+		}
+	}
+	if err := flushEvent(); err != nil {
+		return nil, err
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if finalResponse == nil {
+		return nil, fmt.Errorf("stream response missing response.completed event")
+	}
+	return finalResponse, nil
 }
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {

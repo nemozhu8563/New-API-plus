@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Plus, X } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -55,7 +37,7 @@ export function AmountOptionsVisualEditor({
   }, [value, t])
 
   const handleAdd = () => {
-    const amount = parseFloat(newAmount)
+    const amount = Number.parseFloat(newAmount)
     if (isNaN(amount) || amount <= 0) {
       return
     }
@@ -156,7 +138,7 @@ export function AmountOptionsVisualEditor({
             e.stopPropagation()
             handleAdd()
           }}
-          disabled={!newAmount || parseFloat(newAmount) <= 0}
+          disabled={!newAmount || Number.parseFloat(newAmount) <= 0}
           className='w-full sm:w-auto'
         >
           <Plus className='h-4 w-4 sm:mr-2' />

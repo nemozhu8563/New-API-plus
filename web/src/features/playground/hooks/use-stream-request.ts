@@ -1,25 +1,8 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SSE } from 'sse.js'
 
 import { getFreshAuthHeaders } from '@/lib/api'
+import { trackEvent } from '@/lib/site-telemetry'
 
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
 import {
@@ -54,6 +37,10 @@ interface StreamRequestControllerRuntime {
     headers: Record<string, string>
   ) => StreamEventSource
   setStreaming: (streaming: boolean) => void
+  track?: (
+    eventName: 'model_request_started' | 'model_request_succeeded',
+    parameters: { model: string; stream: boolean; latency_ms?: number }
+  ) => void
 }
 
 export function createStreamRequestController(
@@ -98,6 +85,11 @@ export function createStreamRequestController(
     const nextSource = runtime.createSource(payload, headers)
     source = nextSource
     runtime.setStreaming(true)
+    const startedAt = performance.now()
+    runtime.track?.('model_request_started', {
+      model: payload.model,
+      stream: true,
+    })
     let completed = false
 
     const isCurrent = () =>
@@ -116,6 +108,11 @@ export function createStreamRequestController(
       if (isStreamDoneMessage(data)) {
         completed = true
         closeActiveSource(nextSource)
+        runtime.track?.('model_request_succeeded', {
+          model: payload.model,
+          stream: true,
+          latency_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+        })
         callbacks.onComplete()
         return
       }
@@ -198,6 +195,7 @@ export function useStreamRequest() {
           payload: JSON.stringify(payload),
         }) as StreamEventSource,
       setStreaming: setIsStreaming,
+      track: trackEvent,
     })
   }
 

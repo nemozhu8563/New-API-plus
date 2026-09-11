@@ -51,14 +51,26 @@ func TestMain(m *testing.M) {
 		&QuotaData{},
 		&Ability{},
 		&TopUp{},
+		&StripeWebhookEvent{},
+		&StripePaymentReference{},
+		&StripePaymentRecovery{},
+		&StripePaymentAdjustment{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&SubscriptionPlanLock{},
+		&SubscriptionPreConsumeRecord{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&Redemption{},
+		&AffiliateAgent{},
+		&AffiliateFirstRewardClaim{},
+		&AffiliateCommission{},
+		&AffiliateConversion{},
+		&AffiliateWithdrawal{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -84,9 +96,15 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM quota_data")
 		DB.Exec("DELETE FROM abilities")
 		DB.Exec("DELETE FROM top_ups")
+		DB.Exec("DELETE FROM stripe_webhook_events")
+		DB.Exec("DELETE FROM stripe_payment_adjustments")
+		DB.Exec("DELETE FROM stripe_payment_references")
+		DB.Exec("DELETE FROM stripe_payment_recoveries")
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")
+		DB.Exec("DELETE FROM subscription_plan_locks")
+		DB.Exec("DELETE FROM subscription_pre_consume_records")
 		DB.Exec("DELETE FROM perf_metrics")
 		DB.Exec("DELETE FROM system_instances")
 		DB.Exec("DELETE FROM system_task_locks")

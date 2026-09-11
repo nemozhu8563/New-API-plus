@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 export type SystemOption = {
   key: string
   value: string
@@ -229,6 +211,8 @@ export type ModelSettings = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
+  'group_ratio_setting.public_group_tag_ratio': string
+  'group_ratio_setting.public_group_model_tag': string
   RetryTimes: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -243,6 +227,13 @@ export type ModelSettings = {
     | 'scheduled_all'
     | 'auto_ban_only'
     | 'passive_recovery'
+  'channel_circuit_breaker_setting.enabled': boolean
+  'channel_circuit_breaker_setting.channel_ids': string
+  'channel_circuit_breaker_setting.failure_status_codes': string
+  'channel_circuit_breaker_setting.failure_threshold': number
+  'channel_circuit_breaker_setting.window_seconds': number
+  'channel_circuit_breaker_setting.open_seconds': number
+  'channel_circuit_breaker_setting.emergency_failover': boolean
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean
@@ -288,6 +279,8 @@ export type BillingSettings = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
+  'group_ratio_setting.public_group_tag_ratio': string
+  'group_ratio_setting.public_group_model_tag': string
   PayAddress: string
   EpayId: string
   EpayKey: string
@@ -305,8 +298,6 @@ export type BillingSettings = {
   StripeApiSecret: string
   StripeWebhookSecret: string
   StripePriceId: string
-  StripeUnitPrice: number
-  StripeMinTopUp: number
   StripePromotionCodesEnabled: boolean
   CreemApiKey: string
   CreemWebhookSecret: string
@@ -379,6 +370,8 @@ export type SecuritySettings = {
   ModelRequestRateLimitGroup: string
   CheckSensitiveEnabled: boolean
   CheckSensitiveOnPromptEnabled: boolean
+  SensitiveWordsHighRisk: string
+  SensitiveWordsAudit: string
   SensitiveWords: string
   'fetch_setting.enable_ssrf_protection': boolean
   'fetch_setting.allow_private_ip': boolean

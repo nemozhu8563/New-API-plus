@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Activity, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -156,30 +138,21 @@ export function UptimeStatusRow(props: {
     return 'major'
   }, [summary.uptime_pct])
 
-  const StatusIcon =
-    status === 'operational'
-      ? CheckCircle2
-      : status === 'minor'
-        ? Activity
-        : AlertCircle
-
-  const statusColour =
-    status === 'operational'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : status === 'minor'
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : status === 'degraded'
-          ? 'text-amber-600 dark:text-amber-400'
-          : 'text-rose-600 dark:text-rose-400'
-
-  const statusLabel =
-    status === 'operational'
-      ? t('All systems operational')
-      : status === 'minor'
-        ? t('Minor blips in the last 30 days')
-        : status === 'degraded'
-          ? t('Degraded performance recently')
-          : t('Significant outages detected')
+  let StatusIcon = AlertCircle
+  let statusColour = 'text-rose-600 dark:text-rose-400'
+  let statusLabel = t('Significant outages detected')
+  if (status === 'operational') {
+    StatusIcon = CheckCircle2
+    statusColour = 'text-emerald-600 dark:text-emerald-400'
+    statusLabel = t('All systems operational')
+  } else if (status === 'minor') {
+    StatusIcon = Activity
+    statusColour = 'text-emerald-600 dark:text-emerald-400'
+    statusLabel = t('Minor blips in the last 30 days')
+  } else if (status === 'degraded') {
+    statusColour = 'text-amber-600 dark:text-amber-400'
+    statusLabel = t('Degraded performance recently')
+  }
 
   return (
     <div

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -204,4 +205,46 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 	require.Equal(t, "Codex CLI", upstreamReq.Header.Get("Originator"))
 	require.Equal(t, "sess-123", upstreamReq.Header.Get("Session_id"))
 	require.Empty(t, upstreamReq.Header.Get("X-Codex-Beta-Features"))
+}
+
+func TestSetupApiRequestHeaderResponsesNonStreamForcesJsonAccept(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Request.Header.Set("Accept", "text/event-stream")
+
+	info := &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+		IsStream:  false,
+	}
+
+	headers := http.Header{}
+	SetupApiRequestHeader(info, ctx, &headers)
+
+	require.Equal(t, "application/json", headers.Get("Accept"))
+}
+
+func TestSetupApiRequestHeaderResponsesStreamForcesEventStreamAccept(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Request.Header.Set("Accept", "application/json")
+
+	info := &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeResponses,
+		IsStream:  true,
+	}
+
+	headers := http.Header{}
+	SetupApiRequestHeader(info, ctx, &headers)
+
+	require.Equal(t, "text/event-stream", headers.Get("Accept"))
 }
