@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -154,4 +155,16 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	return nil
+}
+
+func buildClaudeRequestBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.ClaudeRequest) (io.Reader, io.Closer, *types.NewAPIError) {
+	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+		storage, err := common.GetBodyStorage(c); if err != nil { return nil,nil,types.NewErrorWithStatusCode(err,types.ErrorCodeReadRequestBodyFailed,http.StatusBadRequest,types.ErrOptionWithSkipRetry()) }
+		return common.NewReplayableBodyReader(storage), storage, nil
+	}
+	if applyClaudeAssistantPrefillCompatibility(request, info) { tokens, err := service.EstimateRequestToken(c, request.GetTokenCountMeta(), info); if err != nil { return nil,nil,types.NewError(err,types.ErrorCodeCountTokenFailed,types.ErrOptionWithSkipRetry()) }; info.SetEstimatePromptTokens(tokens) }
+	converted, err := adaptor.ConvertClaudeRequest(c, info, request); if err != nil { return nil,nil,types.NewError(err,types.ErrorCodeConvertRequestFailed,types.ErrOptionWithSkipRetry()) }
+	data, err := common.Marshal(converted); if err != nil { return nil,nil,types.NewError(err,types.ErrorCodeConvertRequestFailed,types.ErrOptionWithSkipRetry()) }
+	data, err = relaycommon.RemoveDisabledFields(data, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled); if err != nil { return nil,nil,types.NewError(err,types.ErrorCodeConvertRequestFailed,types.ErrOptionWithSkipRetry()) }
+	body, closer, err := relaycommon.NewOutboundJSONBody(data); if err != nil { return nil,nil,types.NewError(err,types.ErrorCodeConvertRequestFailed,types.ErrOptionWithSkipRetry()) }; return body, closer, nil
 }
