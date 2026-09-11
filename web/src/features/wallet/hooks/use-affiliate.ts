@@ -10,6 +10,8 @@ import {
 } from '@/features/affiliates'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getSelf } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getAffiliateCode, transferAffiliateQuota } from '../api'
 import { generateAffiliateLink } from '../lib'
@@ -69,7 +71,7 @@ export function useAffiliate() {
         return true
       }
 
-      toast.error(response.message || i18next.t('Transfer failed'))
+      handleServerError(response, i18next.t('Transfer failed'))
       return false
     } catch {
       toast.error(i18next.t('Transfer failed'))

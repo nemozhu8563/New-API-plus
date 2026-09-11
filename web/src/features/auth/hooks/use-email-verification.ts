@@ -3,6 +3,9 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { useCountdown } from '@/hooks/use-countdown'
+import { handleServerError } from '@/lib/handle-server-error'
+import { AuthOperationError } from '@/lib/secure-verification'
+import { createServerError } from '@/lib/server-error-message'
 
 import { sendEmailVerification } from '../api'
 import { EMAIL_VERIFICATION_COUNTDOWN } from '../constants'
@@ -45,8 +48,8 @@ export function useEmailVerification(options?: UseEmailVerificationOptions) {
         toast.success(i18next.t('Verification email sent'))
         return true
       }
-      toast.error(
-        res?.message || i18next.t('Failed to send verification email')
+      handleServerError(
+        createServerError(res, i18next.t('Failed to send verification email'))
       )
       return false
     } catch {

@@ -23,6 +23,7 @@ const SITE_SECTIONS = [
           Footer: settings.Footer,
           About: settings.About,
           ServerAddress: settings.ServerAddress,
+          TaskPublicAddress: settings.TaskPublicAddress,
           legal: {
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],

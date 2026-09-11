@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import i18n from 'i18next'
+import { useCallback, useEffect, useRef } from 'react'
 
 import {
   getSavedLanguage,
@@ -20,6 +21,14 @@ type AuthenticationTelemetry = {
  */
 export function useAuthRedirect() {
   const navigate = useNavigate()
+  const sessionID = useAuthStore((state) => state.auth.session?.sid)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   /**
    * Handle successful login
@@ -47,29 +56,56 @@ export function useAuthRedirect() {
   }
 
   /**
-   * Redirect to 2FA page
+   * Every primary login transport returns the same bundle-or-challenge contract.
    */
-  const redirectTo2FA = () => {
-    navigate({ to: '/otp', replace: true })
-  }
+  const handleLoginResult = useCallback(
+    async (result: unknown, redirectTo?: string): Promise<boolean> => {
+      if (
+        !mounted.current ||
+        useAuthStore.getState().auth.session?.sid !== sessionID
+      ) {
+        return false
+      }
+      if (isAuthBundle(result)) {
+        await handleLoginSuccess(result, redirectTo)
+        return true
+      }
+      if (!isLoginChallenge(result)) {
+        throw new AuthOperationError('Login failed')
+      }
+      if (result.expires_at * 1000 <= Date.now()) {
+        throw new AuthOperationError(
+          'Login flow expired. Please sign in again.'
+        )
+      }
+      useAuthStore.getState().auth.setPendingLoginVerification({
+        challenge: result,
+        redirectTo:
+          sanitizeAuthRedirect(redirectTo, window.location.origin) ?? undefined,
+      })
+      await navigate({ to: '/otp', replace: true })
+      return false
+    },
+    [handleLoginSuccess, navigate, sessionID]
+  )
 
   /**
    * Redirect to login page
    */
-  const redirectToLogin = () => {
-    navigate({ to: '/sign-in', replace: true })
-  }
+  const redirectToLogin = useCallback(() => {
+    void navigate({ to: '/sign-in', replace: true })
+  }, [navigate])
 
   /**
    * Redirect to register page
    */
-  const redirectToRegister = () => {
-    navigate({ to: '/sign-up', replace: true })
-  }
+  const redirectToRegister = useCallback(() => {
+    void navigate({ to: '/sign-up', replace: true })
+  }, [navigate])
 
   return {
     handleLoginSuccess,
-    redirectTo2FA,
+    handleLoginResult,
     redirectToLogin,
     redirectToRegister,
   }

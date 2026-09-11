@@ -41,14 +41,7 @@ import {
 } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+
 import {
   Sheet,
   SheetContent,
@@ -219,25 +212,14 @@ function GroupNameSelect(props: GroupNameSelectProps) {
   }, [props.options, props.value])
 
   return (
-    <Select
-      value={props.value === '' ? null : props.value}
-      onValueChange={(v) => {
-        if (typeof v === 'string' && v !== '') props.onValueChange(v)
-      }}
-    >
-      <SelectTrigger className={props.className ?? 'w-48'}>
-        <SelectValue placeholder={props.placeholder} />
-      </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false}>
-        <SelectGroup>
-          {options.map((name) => (
-            <SelectItem key={name} value={name}>
-              {name}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+    <Combobox
+  options={options.map((name) => ({ value: name, label: name }))}
+  value={props.value}
+  onValueChange={(value) => { if (value) props.onValueChange(value) }}
+  className={props.className ?? 'w-48'}
+  placeholder={props.placeholder}
+  aria-label={props.placeholder}
+/>
   )
 }
 

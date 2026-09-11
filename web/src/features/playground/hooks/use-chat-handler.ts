@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
@@ -207,7 +208,7 @@ export function useChatHandler({
       flushStreamUpdates(generation)
       setIsRequesting(false)
       const displayError = getDisplayError(error)
-      toast.error(displayError)
+      handleServerError(new Error(displayError))
       const errorTitle = t(ERROR_MESSAGES.API_REQUEST_ERROR)
       onMessageUpdate((prev) => {
         if (generation !== requestGenerationRef.current) return prev
