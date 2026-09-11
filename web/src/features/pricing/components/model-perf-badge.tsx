@@ -8,7 +8,8 @@ export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
-  recent_success_rates?: number[]
+	recent_success_rates?: number[]
+	recent_success_series?: number[]
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -44,7 +45,7 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   const { avg_latency_ms, avg_tps, success_rate } = props.perf
 
   const recentRates =
-    props.perf.recent_success_rates?.filter((rate) => Number.isFinite(rate)) ??
+    (props.perf.recent_success_rates ?? props.perf.recent_success_series)?.filter((rate) => Number.isFinite(rate)) ??
     []
   const statusRates =
     recentRates.length > 0 ? recentRates.slice(-3) : [success_rate]
