@@ -18,7 +18,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { SettingsSwitchField } from '../../components/settings-form-layout'
 import { SettingsPageActionsPortal } from '../../components/settings-page-context'
@@ -178,13 +177,9 @@ export function ChannelAffinitySection(props: Props) {
     setCacheLoading(true)
     try {
       const res = await getCacheStats()
-      if (res.success) {
-        setCacheStats(res.data || null)
-      } else {
-        handleServerError(res)
-      }
-    } catch (error) {
-      handleServerError(error, t('Failed to refresh cache stats'))
+      if (res.success) setCacheStats(res.data || null)
+    } catch {
+      toast.error(t('Failed to refresh cache stats'))
     } finally {
       setCacheLoading(false)
     }
@@ -310,8 +305,8 @@ export function ChannelAffinitySection(props: Props) {
         await updateOption.mutateAsync(u)
       }
       toast.success(t('Saved successfully'))
-    } catch (error) {
-      handleServerError(error, t('Failed to save'))
+    } catch {
+      toast.error(t('Failed to save'))
     } finally {
       setSaving(false)
     }
@@ -340,34 +335,22 @@ export function ChannelAffinitySection(props: Props) {
   }
 
   const handleClearAll = async () => {
-    try {
-      const res = await clearAllCache()
-      if (res.success) {
-        toast.success(t('Cleared'))
-        refreshCache()
-      } else {
-        handleServerError(res)
-      }
-      setClearAllDialogOpen(false)
-    } catch (error) {
-      handleServerError(error)
+    const res = await clearAllCache()
+    if (res.success) {
+      toast.success(t('Cleared'))
+      refreshCache()
     }
+    setClearAllDialogOpen(false)
   }
 
   const handleClearRule = async () => {
     if (!clearRuleName) return
-    try {
-      const res = await clearRuleCache(clearRuleName)
-      if (res.success) {
-        toast.success(t('Cleared'))
-        refreshCache()
-      } else {
-        handleServerError(res)
-      }
-      setClearRuleName(null)
-    } catch (error) {
-      handleServerError(error)
+    const res = await clearRuleCache(clearRuleName)
+    if (res.success) {
+      toast.success(t('Cleared'))
+      refreshCache()
     }
+    setClearRuleName(null)
   }
 
   const switchToJsonMode = () => {

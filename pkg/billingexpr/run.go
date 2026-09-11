@@ -50,12 +50,11 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 
 func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenParams, request RequestInput) (float64, TraceResult, error) {
 	trace := TraceResult{
-		BillingUnit:  BillingUnitToken,
 		RequestRules: append([]RequestRuleTrace(nil), requestRules...),
 	}
 	headers := normalizeHeaders(request.Headers)
 
-	env := map[string]any{
+	env := map[string]interface{}{
 		"p":     params.P,
 		"c":     params.C,
 		"len":   params.Len,
@@ -70,11 +69,6 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 			trace.MatchedTier = name
 			trace.Cost = value
 			return value
-		},
-		"fixed": func(amount float64) float64 {
-			trace.BillingUnit = BillingUnitRequest
-			trace.FixedPrice = &amount
-			return amount * 1_000_000
 		},
 		requestRuleTraceFunction: func(ruleIndex int, matched bool, multiplier float64) float64 {
 			if matched && ruleIndex >= 0 && ruleIndex < len(trace.RequestRules) {
@@ -97,7 +91,7 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 		"header": func(key string) string {
 			return headers[strings.ToLower(strings.TrimSpace(key))]
 		},
-		"param": func(path string) any {
+		"param": func(path string) interface{} {
 			path = strings.TrimSpace(path)
 			if path == "" || len(request.Body) == 0 {
 				return nil
@@ -108,13 +102,7 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenP
 			}
 			return result.Value()
 		},
-		"u": func(name string) any {
-			if request.Usage == nil {
-				return nil
-			}
-			return request.Usage[strings.TrimSpace(name)]
-		},
-		"has": func(source any, substr string) bool {
+		"has": func(source interface{}, substr string) bool {
 			if source == nil || substr == "" {
 				return false
 			}

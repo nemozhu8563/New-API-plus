@@ -98,7 +98,7 @@ export function ApiKeysMutateDrawer({
   // Fetch models
   const { data: modelsData } = useQuery({
     queryKey: ['user-models'],
-    queryFn: async () => requireServerSuccess(await getUserModels()),
+    queryFn: getUserModels,
     enabled: open,
     staleTime: 0,
   })
@@ -110,7 +110,7 @@ export function ApiKeysMutateDrawer({
     isFetching: groupsFetching,
   } = useQuery({
     queryKey: ['user-groups'],
-    queryFn: async () => requireServerSuccess(await getUserGroups()),
+    queryFn: getUserGroups,
     enabled: open,
     staleTime: 0,
   })
@@ -121,8 +121,7 @@ export function ApiKeysMutateDrawer({
     isFetching: apiKeyFetching,
   } = useQuery({
     queryKey: ['api-key', currentRowId],
-    queryFn: async () =>
-      requireServerSuccess(await getApiKey(currentRowId ?? 0)),
+    queryFn: () => getApiKey(currentRowId ?? 0),
     enabled: open && isUpdate && currentRowId !== undefined,
     staleTime: 0,
   })
@@ -133,7 +132,7 @@ export function ApiKeysMutateDrawer({
     isFetching: autoGroupsFetching,
   } = useQuery({
     queryKey: ['token-auto-groups'],
-    queryFn: async () => requireServerSuccess(await getTokenAutoGroups()),
+    queryFn: getTokenAutoGroups,
     enabled: open,
     staleTime: 0,
   })
@@ -276,7 +275,7 @@ export function ApiKeysMutateDrawer({
           onOpenChange(false)
           triggerRefresh()
         } else {
-          handleServerError(result, t(ERROR_MESSAGES.UPDATE_FAILED))
+          toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
         }
       } else {
         // Create mode - handle batch creation
@@ -294,7 +293,7 @@ export function ApiKeysMutateDrawer({
           if (result.success) {
             successCount++
           } else {
-            handleServerError(result, t(ERROR_MESSAGES.CREATE_FAILED))
+            toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
             break
           }
         }
@@ -310,8 +309,8 @@ export function ApiKeysMutateDrawer({
           triggerRefresh()
         }
       }
-    } catch (error) {
-      handleServerError(error, t(ERROR_MESSAGES.UNEXPECTED))
+    } catch {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
     }

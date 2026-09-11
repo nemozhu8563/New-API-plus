@@ -83,7 +83,7 @@ func (a *gormAdapter) RemoveFilteredPolicy(_ string, ptype string, fieldIndex in
 
 func (a *gormAdapter) ruleQuery(query *gorm.DB, ptype string, rule []string) *gorm.DB {
 	query = query.Where("ptype = ?", ptype)
-	for idx := range 6 {
+	for idx := 0; idx < 6; idx++ {
 		value := ""
 		if idx < len(rule) {
 			value = rule[idx]

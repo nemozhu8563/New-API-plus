@@ -4,7 +4,6 @@ import { toast } from 'sonner'
 
 import { useIsAdmin } from '@/hooks/use-admin'
 import { useDebounce } from '@/hooks/use-debounce'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   getUserBillingHistory,
@@ -56,13 +55,18 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
         setRecords(response.data.items || [])
         setTotal(response.data.total || 0)
       } else {
-        handleServerError(response, i18next.t('Failed to load billing history'))
+        toast.error(
+          response.message || i18next.t('Failed to load billing history')
+        )
         setRecords([])
         setTotal(0)
       }
     } catch (error) {
       if (requestId !== requestIdRef.current) return
-      handleServerError(error, i18next.t('Failed to load billing history'))
+
+      // eslint-disable-next-line no-console
+      console.error('Failed to fetch billing history:', error)
+      toast.error(i18next.t('Failed to load billing history'))
       setRecords([])
       setTotal(0)
     } finally {
@@ -91,11 +95,13 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
           await fetchBillingHistory()
           return true
         } else {
-          handleServerError(response, i18next.t('Failed to complete order'))
+          toast.error(response.message || i18next.t('Failed to complete order'))
           return false
         }
       } catch (error) {
-        handleServerError(error, i18next.t('Failed to complete order'))
+        // eslint-disable-next-line no-console
+        console.error('Failed to complete order:', error)
+        toast.error(i18next.t('Failed to complete order'))
         return false
       } finally {
         setCompleting(false)

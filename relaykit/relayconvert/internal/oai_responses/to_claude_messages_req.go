@@ -1,16 +1,15 @@
 package oairesponses
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
+	"context"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedclaude "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/claude"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 )
 
 func convertOpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Meta, request any) (any, error) {
@@ -41,6 +40,13 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
 		claudeRequest.MaxTokens = kitutil.GetPointer(*req.MaxOutputTokens)
 	}
+	if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens == 0 {
+		if defaultMaxTokens, configured := convmeta.OptionsOf(info).Claude.DefaultMaxTokensFor(req.Model); configured {
+			value := uint(defaultMaxTokens)
+			claudeRequest.MaxTokens = &value
+		}
+	}
+
 	functions, err := RequestFunctionDeclarations(req.Tools)
 	if err != nil {
 		return nil, err
@@ -56,19 +62,7 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if toolChoice != nil || RawJSONPresent(req.ParallelToolCalls) {
 		claudeRequest.ToolChoice = sharedclaude.MapOpenAIToolChoice(toolChoice, ParallelToolCalls(req.ParallelToolCalls))
 	}
-	sourceReasoning, err := reasoning.FromOpenAIResponses(req)
-	if err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
-	if err := sharedclaude.ApplyReasoning(c, claudeRequest, info, sourceReasoning, true); err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
-	if claudeRequest.MaxTokens == nil {
-		if defaultMaxTokens, configured := convmeta.OptionsOf(info).Claude.DefaultMaxTokensFor(claudeRequest.Model); configured {
-			value := uint(defaultMaxTokens)
-			claudeRequest.MaxTokens = &value
-		}
-	}
+	applyResponsesReasoningToClaude(req, claudeRequest)
 
 	systemMessages := make([]dto.ClaudeMediaMessage, 0)
 	if RawJSONPresent(req.Instructions) {
@@ -98,21 +92,13 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 		case ResponsesInputTypeFunctionCallOutput, ResponsesInputTypeCustomToolOutput:
 			claudeRequest.Messages = appendClaudeToolResult(claudeRequest.Messages, responsesFunctionOutputItemToClaudeToolResult(item))
 		default:
-			sourceRole := strings.TrimSpace(kitutil.Interface2String(item["role"]))
-			role := responsesClaudeRole(sourceRole)
+			role := responsesClaudeRole(item)
 			parts, err := responsesInputContentToClaudeMediaMessages(c, item["content"])
 			if err != nil {
 				return nil, err
 			}
-			if sourceRole == "" && len(parts) == 0 {
-				continue
-			}
 			if role == "system" {
-				for _, part := range parts {
-					if part.Type == "text" {
-						systemMessages = append(systemMessages, part)
-					}
-				}
+				systemMessages = append(systemMessages, parts...)
 				continue
 			}
 			if len(parts) == 0 {
@@ -133,9 +119,7 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if len(systemMessages) > 0 {
 		claudeRequest.System = systemMessages
 	}
-	if len(claudeRequest.Messages) > 0 || len(systemMessages) > 0 {
-		claudeRequest.Messages = ensureClaudeMessagesStartWithUser(claudeRequest.Messages)
-	}
+	claudeRequest.Messages = ensureClaudeMessagesStartWithUser(claudeRequest.Messages)
 	// Checked last so every injection path has had its chance to satisfy the
 	// required field.
 	if claudeRequest.MaxTokens == nil {
@@ -154,6 +138,27 @@ func responsesFunctionDeclarationsToClaudeTools(functions []dto.FunctionRequest)
 		})
 	}
 	return tools
+}
+
+func applyResponsesReasoningToClaude(req *dto.OpenAIResponsesRequest, claudeRequest *dto.ClaudeRequest) {
+	effort := ReasoningEffort(req)
+	switch effort {
+	case "low":
+		claudeRequest.Thinking = &dto.Thinking{
+			Type:         "enabled",
+			BudgetTokens: kitutil.GetPointer(1280),
+		}
+	case "medium":
+		claudeRequest.Thinking = &dto.Thinking{
+			Type:         "enabled",
+			BudgetTokens: kitutil.GetPointer(2048),
+		}
+	case "high":
+		claudeRequest.Thinking = &dto.Thinking{
+			Type:         "enabled",
+			BudgetTokens: kitutil.GetPointer(4096),
+		}
+	}
 }
 
 func responsesInputContentToClaudeMediaMessages(c context.Context, content any) ([]dto.ClaudeMediaMessage, error) {
@@ -275,8 +280,8 @@ func claudeMessageContentParts(content any) []dto.ClaudeMediaMessage {
 	}
 }
 
-func responsesClaudeRole(role string) string {
-	switch role {
+func responsesClaudeRole(item map[string]any) string {
+	switch strings.TrimSpace(kitutil.Interface2String(item["role"])) {
 	case "assistant":
 		return "assistant"
 	case "system", "developer":
@@ -287,7 +292,7 @@ func responsesClaudeRole(role string) string {
 }
 
 func ensureClaudeMessagesStartWithUser(messages []dto.ClaudeMessage) []dto.ClaudeMessage {
-	if len(messages) > 0 && messages[0].Role == "user" {
+	if len(messages) == 0 || messages[0].Role == "user" {
 		return messages
 	}
 	return append([]dto.ClaudeMessage{

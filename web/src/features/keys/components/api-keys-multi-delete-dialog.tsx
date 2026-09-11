@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { batchDeleteApiKeys } from '../api'
 import { ERROR_MESSAGES } from '../constants'
@@ -40,7 +39,7 @@ export function ApiKeysMultiDeleteDialog<TData>({
         triggerRefresh()
         onOpenChange(false)
       } else {
-        handleServerError(result, t(ERROR_MESSAGES.BATCH_DELETE_FAILED))
+        toast.error(result.message || t(ERROR_MESSAGES.BATCH_DELETE_FAILED))
       }
     } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))

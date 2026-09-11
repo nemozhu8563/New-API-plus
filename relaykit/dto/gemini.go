@@ -13,7 +13,7 @@ type GeminiChatRequest struct {
 	Requests           []GeminiChatRequest        `json:"requests,omitempty"` // For batch requests
 	Contents           []GeminiChatContent        `json:"contents"`
 	SafetySettings     []GeminiChatSafetySettings `json:"safetySettings,omitempty"`
-	GenerationConfig   GeminiChatGenerationConfig `json:"generationConfig"`
+	GenerationConfig   GeminiChatGenerationConfig `json:"generationConfig,omitempty"`
 	Tools              json.RawMessage            `json:"tools,omitempty"`
 	ToolConfig         *ToolConfig                `json:"toolConfig,omitempty"`
 	SystemInstructions *GeminiChatContent         `json:"systemInstruction,omitempty"`
@@ -48,9 +48,8 @@ type ToolConfig struct {
 }
 
 type FunctionCallingConfig struct {
-	Mode                        FunctionCallingConfigMode `json:"mode,omitempty"`
-	AllowedFunctionNames        []string                  `json:"allowedFunctionNames,omitempty"`
-	StreamFunctionCallArguments *bool                     `json:"streamFunctionCallArguments,omitempty"`
+	Mode                 FunctionCallingConfigMode `json:"mode,omitempty"`
+	AllowedFunctionNames []string                  `json:"allowedFunctionNames,omitempty"`
 }
 type FunctionCallingConfigMode string
 
@@ -162,8 +161,8 @@ func (r *GeminiChatRequest) SetTools(tools []GeminiChatTool) {
 }
 
 type GeminiThinkingConfig struct {
-	IncludeThoughts *bool `json:"includeThoughts,omitempty"`
-	ThinkingBudget  *int  `json:"thinkingBudget,omitempty"`
+	IncludeThoughts bool `json:"includeThoughts,omitempty"`
+	ThinkingBudget  *int `json:"thinkingBudget,omitempty"`
 	// TODO Conflict with thinkingbudget.
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 }
@@ -185,7 +184,7 @@ func (c *GeminiThinkingConfig) UnmarshalJSON(data []byte) error {
 	*c = GeminiThinkingConfig(aux.Alias)
 
 	if aux.IncludeThoughtsSnake != nil {
-		c.IncludeThoughts = aux.IncludeThoughtsSnake
+		c.IncludeThoughts = *aux.IncludeThoughtsSnake
 	}
 
 	if aux.ThinkingBudgetSnake != nil {
@@ -240,30 +239,17 @@ func (g *GeminiInlineData) UnmarshalJSON(data []byte) error {
 }
 
 type FunctionCall struct {
-	// ID is optional in the Gemini protocol and identifies the matching function response.
-	ID           string             `json:"id,omitempty"`
-	FunctionName string             `json:"name"`
-	Arguments    any                `json:"args"`
-	PartialArgs  []GeminiPartialArg `json:"partialArgs,omitempty"`
-	WillContinue *bool              `json:"willContinue,omitempty"`
-}
-
-type GeminiPartialArg struct {
-	JSONPath     string          `json:"jsonPath"`
-	NumberValue  *float64        `json:"numberValue,omitempty"`
-	StringValue  *string         `json:"stringValue,omitempty"`
-	BoolValue    *bool           `json:"boolValue,omitempty"`
-	NullValue    json.RawMessage `json:"nullValue,omitempty"`
-	WillContinue *bool           `json:"willContinue,omitempty"`
+	FunctionName string `json:"name"`
+	Arguments    any    `json:"args"`
 }
 
 type GeminiFunctionResponse struct {
-	Name         string          `json:"name"`
-	Response     map[string]any  `json:"response"`
-	WillContinue json.RawMessage `json:"willContinue,omitempty"`
-	Scheduling   json.RawMessage `json:"scheduling,omitempty"`
-	Parts        json.RawMessage `json:"parts,omitempty"`
-	ID           json.RawMessage `json:"id,omitempty"`
+	Name         string                 `json:"name"`
+	Response     map[string]interface{} `json:"response"`
+	WillContinue json.RawMessage        `json:"willContinue,omitempty"`
+	Scheduling   json.RawMessage        `json:"scheduling,omitempty"`
+	Parts        json.RawMessage        `json:"parts,omitempty"`
+	ID           json.RawMessage        `json:"id,omitempty"`
 }
 
 type GeminiPartExecutableCode struct {
@@ -334,16 +320,11 @@ type GeminiChatSafetySettings struct {
 }
 
 type GeminiChatTool struct {
-	GoogleSearch          any             `json:"googleSearch,omitempty"`
-	GoogleSearchRetrieval any             `json:"googleSearchRetrieval,omitempty"`
-	GoogleMaps            json.RawMessage `json:"googleMaps,omitempty"`
-	EnterpriseWebSearch   json.RawMessage `json:"enterpriseWebSearch,omitempty"`
-	CodeExecution         any             `json:"codeExecution,omitempty"`
-	FunctionDeclarations  any             `json:"functionDeclarations,omitempty"`
-	URLContext            any             `json:"urlContext,omitempty"`
-	FileSearch            json.RawMessage `json:"fileSearch,omitempty"`
-	ComputerUse           json.RawMessage `json:"computerUse,omitempty"`
-	Retrieval             json.RawMessage `json:"retrieval,omitempty"`
+	GoogleSearch          any `json:"googleSearch,omitempty"`
+	GoogleSearchRetrieval any `json:"googleSearchRetrieval,omitempty"`
+	CodeExecution         any `json:"codeExecution,omitempty"`
+	FunctionDeclarations  any `json:"functionDeclarations,omitempty"`
+	URLContext            any `json:"urlContext,omitempty"`
 }
 
 type GeminiChatGenerationConfig struct {
@@ -466,14 +447,7 @@ type GeminiChatCandidate struct {
 }
 
 type GeminiGroundingMetadata struct {
-	WebSearchQueries             []string        `json:"webSearchQueries,omitempty"`
-	RetrievalQueries             []string        `json:"retrievalQueries,omitempty"`
-	GroundingChunks              json.RawMessage `json:"groundingChunks,omitempty"`
-	GroundingSupports            json.RawMessage `json:"groundingSupports,omitempty"`
-	SearchEntryPoint             json.RawMessage `json:"searchEntryPoint,omitempty"`
-	RetrievalMetadata            json.RawMessage `json:"retrievalMetadata,omitempty"`
-	SourceFlaggingUris           json.RawMessage `json:"sourceFlaggingUris,omitempty"`
-	GoogleMapsWidgetContextToken string          `json:"googleMapsWidgetContextToken,omitempty"`
+	WebSearchQueries []string `json:"webSearchQueries,omitempty"`
 }
 
 type GeminiChatSafetyRating struct {

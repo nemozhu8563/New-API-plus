@@ -30,7 +30,6 @@ import {
   resolveChatUrl,
   type ChatPreset,
 } from '@/features/chat/lib/chat-links'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { normalizeHref } from '../lib/url-utils'
 import type { NavChatPresets } from '../types'
@@ -177,7 +176,7 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
               : t(
                   'Unable to prepare chat link. Please ensure you have an enabled API key.'
                 )
-          handleServerError(error, message)
+          toast.error(message)
           return
         } finally {
           loadingPresetIdRef.current = null

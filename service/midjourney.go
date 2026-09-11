@@ -117,9 +117,6 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	billingChannelId := task.GetBillingChannelId()
 	model.UpdateUserUsedQuota(task.UserId, -quota)
 	model.UpdateChannelUsedQuota(billingChannelId, -quota)
-	other := model.NewLogOther()
-	other.SetPublic("task_id", task.MjId)
-	other.SetPublic("reason", reason)
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,
@@ -128,7 +125,10 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		ModelName: CovertMjpActionToModelName(task.Action),
 		Quota:     quota,
 		TokenId:   task.TokenId,
-		Other:     other,
+		Other: map[string]interface{}{
+			"task_id": task.MjId,
+			"reason":  reason,
+		},
 	})
 
 	task.Quota = 0
@@ -278,7 +278,7 @@ func DoMidjourneyHttpRequest(c *gin.Context, timeout time.Duration, fullRequestU
 	//var requestBody io.Reader
 	//requestBody = c.Request.Body
 	// read request body to json, delete accountFilter and notifyHook
-	var mapResult map[string]any
+	var mapResult map[string]interface{}
 	// if get request, no need to read request body
 	if c.Request.Method != "GET" {
 		err := json.NewDecoder(c.Request.Body).Decode(&mapResult)

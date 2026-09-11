@@ -133,7 +133,7 @@ func parseStopSequences(stop any) []string {
 		}
 	case []string:
 		return v
-	case []any:
+	case []interface{}:
 		var sequences []string
 		for _, item := range v {
 			if str, ok := item.(string); ok && str != "" {

@@ -136,12 +136,15 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 			hScaled = float64(height) * r
 			patchesW := math.Ceil(wScaled / 32.0)
 			patchesH := math.Ceil(hScaled / 32.0)
-			imageTokens := min(int(patchesW*patchesH), 1536)
-			return common.QuotaRound(float64(imageTokens) * multiplier), nil
+			imageTokens := int(patchesW * patchesH)
+			if imageTokens > 1536 {
+				imageTokens = 1536
+			}
+			return int(math.Round(float64(imageTokens) * multiplier)), nil
 		}
 		// below cap
 		imageTokens := rawPatches
-		return common.QuotaRound(float64(imageTokens) * multiplier), nil
+		return int(math.Round(float64(imageTokens) * multiplier)), nil
 	}
 
 	// Tile-based calculation for 4o/4.1/4.5/o1/o3/etc.
@@ -178,13 +181,7 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 	if !constant.CountToken {
 		return 0, nil
 	}
-	return CountRequestToken(c, meta, info)
-}
 
-// CountRequestToken counts request tokens regardless of the billing estimation
-// switch. Utility endpoints such as Claude's messages/count_tokens must remain
-// available even when operators disable request-token estimation for relays.
-func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relaycommon.RelayInfo) (int, error) {
 	if meta == nil {
 		return 0, errors.New("token count meta is nil")
 	}
@@ -362,17 +359,17 @@ func CountTokenInput(input any, model string) int {
 	case string:
 		return CountTextToken(v, model)
 	case []string:
-		var text strings.Builder
+		text := ""
 		for _, s := range v {
-			text.WriteString(s)
+			text += s
 		}
-		return CountTextToken(text.String(), model)
-	case []any:
-		var text strings.Builder
+		return CountTextToken(text, model)
+	case []interface{}:
+		text := ""
 		for _, item := range v {
-			text.WriteString(fmt.Sprintf("%v", item))
+			text += fmt.Sprintf("%v", item)
 		}
-		return CountTextToken(text.String(), model)
+		return CountTextToken(text, model)
 	}
 	return CountTokenInput(fmt.Sprintf("%v", input), model)
 }

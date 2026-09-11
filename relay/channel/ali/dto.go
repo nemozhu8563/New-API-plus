@@ -35,8 +35,8 @@ type AliParameters struct {
 
 type AliChatRequest struct {
 	Model      string        `json:"model"`
-	Input      AliInput      `json:"input"`
-	Parameters AliParameters `json:"parameters"`
+	Input      AliInput      `json:"input,omitempty"`
+	Parameters AliParameters `json:"parameters,omitempty"`
 }
 
 type AliEmbeddingRequest struct {
@@ -96,7 +96,7 @@ type AliOutput struct {
 			Role             string            `json:"role,omitempty"`
 			Content          []AliMediaContent `json:"content,omitempty"`
 			ReasoningContent string            `json:"reasoning_content,omitempty"`
-		} `json:"message"`
+		} `json:"message,omitempty"`
 	} `json:"choices,omitempty"`
 }
 
@@ -166,7 +166,7 @@ type AliResponse struct {
 type AliImageRequest struct {
 	Model          string             `json:"model"`
 	Input          any                `json:"input"`
-	Parameters     AliImageParameters `json:"parameters"`
+	Parameters     AliImageParameters `json:"parameters,omitempty"`
 	ResponseFormat string             `json:"response_format,omitempty"`
 }
 
@@ -223,7 +223,7 @@ type AliRerankInput struct {
 type AliRerankRequest struct {
 	Model      string              `json:"model"`
 	Input      AliRerankInput      `json:"input"`
-	Parameters AliRerankParameters `json:"parameters"`
+	Parameters AliRerankParameters `json:"parameters,omitempty"`
 }
 
 type AliRerankResponse struct {

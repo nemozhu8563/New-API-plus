@@ -1,8 +1,6 @@
 package model
 
 import (
-	"slices"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
@@ -55,7 +53,7 @@ func isChannelEnabledForGroupModelTagDB(group string, modelName string, tag stri
 	if err == nil && count > 0 {
 		return true
 	}
-	normalized := ratio_setting.RoutingMatchModelName(modelName)
+	normalized := ratio_setting.FormatMatchingModelName(modelName)
 	if normalized == "" || normalized == modelName {
 		return false
 	}
@@ -70,5 +68,10 @@ func isChannelEnabledForGroupModelTagDB(group string, modelName string, tag stri
 }
 
 func isChannelIDInList(list []int, channelID int) bool {
-	return slices.Contains(list, channelID)
+	for _, id := range list {
+		if id == channelID {
+			return true
+		}
+	}
+	return false
 }

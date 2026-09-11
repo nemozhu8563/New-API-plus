@@ -303,7 +303,7 @@ func TestImageGenerationCallCounterCommitCapsAtMaxImageN(t *testing.T) {
 	t.Parallel()
 
 	counter := &ImageGenerationCallCounter{}
-	for i := range dto.MaxImageN + 3 {
+	for i := 0; i < dto.MaxImageN+3; i++ {
 		idx := i
 		counter.Observe(&dto.ResponsesOutput{
 			Type:   dto.ResponsesOutputTypeImageGenerationCall,

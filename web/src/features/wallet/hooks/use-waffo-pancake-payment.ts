@@ -2,8 +2,6 @@ import i18next from 'i18next'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
-import { handleServerError } from '@/lib/handle-server-error'
-
 import { requestWaffoPancakePayment, isApiSuccess } from '../api'
 
 function getCheckoutUrl(data: unknown): string | null {
@@ -40,10 +38,7 @@ function getErrorMessage(message: string | undefined, data: unknown): string {
     return data
   }
 
-  return (
-    (message && message !== 'success' ? message : undefined) ||
-    i18next.t('Payment request failed')
-  )
+  return message || i18next.t('Payment request failed')
 }
 
 /**
@@ -78,9 +73,7 @@ export function useWaffoPancakePayment() {
           }
         }
 
-        handleServerError(response, undefined, {
-          title: getErrorMessage(response.message, response.data),
-        })
+        toast.error(getErrorMessage(response.message, response.data))
         return false
       } catch {
         toast.error(i18next.t('Payment request failed'))

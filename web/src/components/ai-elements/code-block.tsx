@@ -1,15 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
 'use client'
 
-import { javascript } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorState, type Extension } from '@codemirror/state'
-import {
-  EditorView,
-  lineNumbers,
-  placeholder as placeholderExtension,
-} from '@codemirror/view'
+import { EditorView, lineNumbers } from '@codemirror/view'
 import { tags as highlightTags } from '@lezer/highlight'
 import {
   CheckIcon,
@@ -62,11 +57,9 @@ type CodeBlockEditorProps = Omit<
 > & {
   actions?: ReactNode
   ariaLabel: string
-  autoFocus?: boolean
   language: BundledLanguage | string
   onChange: (value: string) => void
   onKeyDown?: (event: globalThis.KeyboardEvent) => void
-  placeholder?: string
   rows?: number
   title?: ReactNode
   value: string
@@ -78,7 +71,6 @@ type CodeMirrorCodeViewProps = {
   language: BundledLanguage | string
   onChange?: (value: string) => void
   onKeyDown?: (event: globalThis.KeyboardEvent) => void
-  placeholder?: string
   readOnly?: boolean
   rows?: number
   showLineNumbers?: boolean
@@ -213,14 +205,6 @@ function getCodeMirrorLanguageExtension(language: BundledLanguage | string) {
     return markdown()
   }
 
-  if (requestedLanguage === 'javascript' || requestedLanguage === 'jsx') {
-    return javascript({ jsx: requestedLanguage === 'jsx' })
-  }
-
-  if (requestedLanguage === 'typescript' || requestedLanguage === 'tsx') {
-    return javascript({ jsx: requestedLanguage === 'tsx', typescript: true })
-  }
-
   return []
 }
 
@@ -264,7 +248,6 @@ function getCodeBlockMaxHeight(
 function getCodeMirrorExtensions(options: {
   language: BundledLanguage | string
   onKeyDown: (event: globalThis.KeyboardEvent) => void
-  placeholder?: string
   readOnly: boolean
   showLineNumbers: boolean
 }): Extension[] {
@@ -283,10 +266,6 @@ function getCodeMirrorExtensions(options: {
     }),
   ]
 
-  if (options.placeholder) {
-    extensions.push(placeholderExtension(options.placeholder))
-  }
-
   if (options.showLineNumbers) {
     extensions.unshift(lineNumbers())
   }
@@ -300,7 +279,6 @@ function CodeMirrorCodeView({
   language,
   onChange,
   onKeyDown,
-  placeholder,
   readOnly = false,
   rows = 8,
   showLineNumbers = true,
@@ -321,11 +299,10 @@ function CodeMirrorCodeView({
       getCodeMirrorExtensions({
         language,
         onKeyDown: (event) => onKeyDownRef.current?.(event),
-        placeholder,
         readOnly,
         showLineNumbers,
       }),
-    [language, placeholder, readOnly, showLineNumbers]
+    [language, readOnly, showLineNumbers]
   )
 
   useEffect(() => {
@@ -580,12 +557,10 @@ export const CodeBlock = ({
 export const CodeBlockEditor = ({
   actions,
   ariaLabel,
-  autoFocus = true,
   className,
   language,
   onChange,
   onKeyDown,
-  placeholder,
   rows = 8,
   title,
   value,
@@ -602,11 +577,10 @@ export const CodeBlockEditor = ({
     >
       <CodeMirrorCodeView
         ariaLabel={ariaLabel}
-        autoFocus={autoFocus}
+        autoFocus
         language={language}
         onChange={onChange}
         onKeyDown={onKeyDown}
-        placeholder={placeholder}
         rows={rows}
         showLineNumbers
         value={value}

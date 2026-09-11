@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { patchPlanStatus } from '../../api'
 import { useSubscriptions } from '../subscriptions-provider'
@@ -33,11 +32,9 @@ export function ToggleStatusDialog() {
         )
         triggerRefresh()
         setOpen(null)
-      } else {
-        handleServerError(res)
       }
-    } catch (error) {
-      handleServerError(error, t('Operation failed'))
+    } catch {
+      toast.error(t('Operation failed'))
     } finally {
       setLoading(false)
     }

@@ -50,7 +50,7 @@ func (i *ImageRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	// 用 struct tag 获取所有已定义字段名
-	knownFields := GetJSONFieldNames(reflect.TypeFor[ImageRequest]())
+	knownFields := GetJSONFieldNames(reflect.TypeOf(*i))
 
 	// 再正常解析已定义字段
 	type Alias ImageRequest

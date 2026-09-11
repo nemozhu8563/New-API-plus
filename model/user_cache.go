@@ -260,7 +260,7 @@ func updateUserSettingCache(userId int, setting string) error {
 // updateUserCacheField prevents individual cache refreshes from bypassing the
 // auth-version fence. It intentionally does nothing when the complete hash is
 // absent; the next GetUserCache call will repopulate it from the database.
-func updateUserCacheField(userId int, field string, value any) error {
+func updateUserCacheField(userId int, field string, value interface{}) error {
 	if !common.RedisEnabled {
 		return nil
 	}

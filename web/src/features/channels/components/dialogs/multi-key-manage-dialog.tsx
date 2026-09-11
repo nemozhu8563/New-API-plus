@@ -23,7 +23,6 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
-import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -120,10 +119,12 @@ export function MultiKeyManageDialog({
         setManualDisabledCount(response.data.manual_disabled_count || 0)
         setAutoDisabledCount(response.data.auto_disabled_count || 0)
       } else {
-        handleServerError(response, t('Failed to load key status'))
+        toast.error(response.message || t('Failed to load key status'))
       }
     } catch (error: unknown) {
-      handleServerError(error, t('Failed to load key status'))
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to load key status')
+      )
     } finally {
       setIsLoading(false)
     }
@@ -185,10 +186,12 @@ export function MultiKeyManageDialog({
           loadKeyStatus(currentPage, pageSize)
         }
       } else {
-        handleServerError(response, t('Operation failed'))
+        toast.error(response?.message || t('Operation failed'))
       }
     } catch (error: unknown) {
-      handleServerError(error, t('Operation failed'))
+      toast.error(
+        error instanceof Error ? error.message : t('Operation failed')
+      )
     } finally {
       setIsPerformingAction(false)
       setConfirmAction(null)

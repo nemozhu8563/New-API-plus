@@ -101,7 +101,18 @@ export const getPriceSummary = (
   const inputPrice = ratioToPrice(row.ratio)
   if (!inputPrice) return t('Unset price')
 
-  return `${t('Input')} $${inputPrice}`
+  const extraCount = [
+    row.completionRatio,
+    row.cacheRatio,
+    row.createCacheRatio,
+    row.imageRatio,
+    row.audioRatio,
+    row.audioCompletionRatio,
+  ].filter(hasPricingValue).length
+
+  return extraCount > 0
+    ? `${t('Input')} $${inputPrice} · ${extraCount} ${t('extras')}`
+    : `${t('Input')} $${inputPrice}`
 }
 
 export const getPriceDetail = (

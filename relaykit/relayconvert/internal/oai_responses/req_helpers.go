@@ -166,30 +166,30 @@ func ObjectValue(value any, fallbackKey string) map[string]any {
 	return responsesObjectValue(value, fallbackKey)
 }
 
-func responsesGeminiResponseMap(value any) map[string]any {
+func responsesGeminiResponseMap(value any) map[string]interface{} {
 	switch typed := value.(type) {
 	case nil:
-		return map[string]any{}
+		return map[string]interface{}{}
 	case map[string]any:
 		return typed
 	case string:
-		var object map[string]any
+		var object map[string]interface{}
 		if err := kitutil.Unmarshal([]byte(typed), &object); err == nil {
 			return object
 		}
-		var array []any
+		var array []interface{}
 		if err := kitutil.Unmarshal([]byte(typed), &array); err == nil {
-			return map[string]any{"result": array}
+			return map[string]interface{}{"result": array}
 		}
-		return map[string]any{"content": typed}
+		return map[string]interface{}{"content": typed}
 	case []any:
-		return map[string]any{"result": typed}
+		return map[string]interface{}{"result": typed}
 	default:
-		return map[string]any{"content": typed}
+		return map[string]interface{}{"content": typed}
 	}
 }
 
-func GeminiResponseMap(value any) map[string]any {
+func GeminiResponseMap(value any) map[string]interface{} {
 	return responsesGeminiResponseMap(value)
 }
 

@@ -9,13 +9,18 @@ import { GroupBadge } from '@/components/group-badge'
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { handleServerError } from '@/lib/handle-server-error'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import {
   editTagChannels,
@@ -48,24 +53,21 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
   // Fetch tag models
   const { data: tagModelsData, isLoading: isLoadingTagModels } = useQuery({
     queryKey: ['tag-models', currentTag],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (currentTag ? getTagModels(currentTag) : null)
-      ),
+    queryFn: () => (currentTag ? getTagModels(currentTag) : null),
     enabled: open && !!currentTag,
   })
 
   // Fetch all available models
   const { data: allModelsData } = useQuery({
     queryKey: ['all-models'],
-    queryFn: async () => requireServerSuccess(await getAllModels()),
+    queryFn: getAllModels,
     enabled: open,
   })
 
   // Fetch groups
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
-    queryFn: async () => requireServerSuccess(await getGroups()),
+    queryFn: getGroups,
     enabled: open,
   })
 
@@ -179,10 +181,12 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
         queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
         onOpenChange(false)
       } else {
-        handleServerError(response, t('Failed to update tag'))
+        toast.error(response.message || t('Failed to update tag'))
       }
     } catch (error: unknown) {
-      handleServerError(error, t('Failed to update tag'))
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to update tag')
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -292,10 +296,24 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
                         setSelectedModels([...selectedModels, value])
                       }
                     }}
-                    className='flex-1'
-                    placeholder={t('Add from available models...')}
-                    aria-label={t('Add from available models...')}
-                  />
+                  >
+                    <SelectTrigger className='flex-1'>
+                      <SelectValue
+                        placeholder={t('Add from available models...')}
+                      />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <ScrollArea className='h-60'>
+                          {availableModels.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </ScrollArea>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className='flex gap-2'>

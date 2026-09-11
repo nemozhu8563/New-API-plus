@@ -8,7 +8,6 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/ast"
-	"github.com/expr-lang/expr/parser"
 	"github.com/expr-lang/expr/vm"
 )
 
@@ -110,12 +109,10 @@ func usesRequestProbe(node ast.Node) bool {
 }
 
 type cachedEntry struct {
-	prog          *vm.Program
-	usedVars      map[string]bool
-	usedUsageKeys map[string]bool
-	requestRules  []RequestRuleTrace
-	version       int
-	fixedPricing  bool
+	prog         *vm.Program
+	usedVars     map[string]bool
+	requestRules []RequestRuleTrace
+	version      int
 }
 
 var (
@@ -124,7 +121,7 @@ var (
 )
 
 // compileEnvPrototypeV1 is the v1 type-checking prototype used at compile time.
-var compileEnvPrototypeV1 = map[string]any{
+var compileEnvPrototypeV1 = map[string]interface{}{
 	"p":          float64(0),
 	"c":          float64(0),
 	"len":        float64(0),
@@ -136,13 +133,11 @@ var compileEnvPrototypeV1 = map[string]any{
 	"ai":         float64(0),
 	"ao":         float64(0),
 	"tier":       func(string, float64) float64 { return 0 },
-	"fixed":      func(float64) float64 { return 0 },
 	"_trace":     func(int, bool, float64) float64 { return 1 },
 	"_trace_int": func(int, bool, int) int { return 1 },
 	"header":     func(string) string { return "" },
-	"param":      func(string) any { return nil },
-	"u":          func(string) any { return nil },
-	"has":        func(any, string) bool { return false },
+	"param":      func(string) interface{} { return nil },
+	"has":        func(interface{}, string) bool { return false },
 	"hour":       func(string) int { return 0 },
 	"minute":     func(string) int { return 0 },
 	"weekday":    func(string) int { return 0 },
@@ -155,7 +150,7 @@ var compileEnvPrototypeV1 = map[string]any{
 	"floor":      math.Floor,
 }
 
-func getCompileEnv(version int) map[string]any {
+func getCompileEnv(version int) map[string]interface{} {
 	switch version {
 	default:
 		return compileEnvPrototypeV1
@@ -191,21 +186,6 @@ func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
 	cacheMu.RUnlock()
 
 	version, body := ParseExprVersion(exprStr)
-	// Validate before optimization so unreachable fixed-price branches cannot
-	// bypass validation or a host's unsupported-protocol checks.
-	tree, err := parser.Parse(body)
-	if err != nil {
-		return nil, fmt.Errorf("expr compile error: %w", err)
-	}
-	fixedPricing := ast.Find(tree.Node, func(node ast.Node) bool {
-		identifier, ok := node.(*ast.IdentifierNode)
-		return ok && identifier.Value == "fixed"
-	}) != nil
-	if fixedPricing {
-		if err := validateFixedPricingTree(tree.Node); err != nil {
-			return nil, fmt.Errorf("expr compile error: %w", err)
-		}
-	}
 	patcher := &requestRulePatcher{}
 	prog, err := expr.Compile(body, expr.Env(getCompileEnv(version)), expr.Patch(patcher), expr.AsFloat64())
 	if patcher.restrictedIdentifier != "" {
@@ -216,12 +196,10 @@ func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
 	}
 
 	entry := &cachedEntry{
-		prog:          prog,
-		usedVars:      extractUsedVars(prog),
-		usedUsageKeys: extractUsedUsageKeys(prog),
-		requestRules:  patcher.requestRules,
-		version:       version,
-		fixedPricing:  fixedPricing,
+		prog:         prog,
+		usedVars:     extractUsedVars(prog),
+		requestRules: patcher.requestRules,
+		version:      version,
 	}
 	cacheMu.Lock()
 	if len(cache) >= maxCacheSize {
@@ -266,27 +244,6 @@ func extractUsedVars(prog *vm.Program) map[string]bool {
 	return vars
 }
 
-func extractUsedUsageKeys(prog *vm.Program) map[string]bool {
-	keys := make(map[string]bool)
-	ast.Find(prog.Node(), func(node ast.Node) bool {
-		call, ok := node.(*ast.CallNode)
-		if !ok || len(call.Arguments) != 1 {
-			return false
-		}
-		callee, ok := call.Callee.(*ast.IdentifierNode)
-		if !ok || callee.Value != "u" {
-			return false
-		}
-		literal, ok := call.Arguments[0].(*ast.StringNode)
-		if !ok {
-			return false
-		}
-		keys[strings.TrimSpace(literal.Value)] = true
-		return false
-	})
-	return keys
-}
-
 // UsedVars returns the set of identifier names referenced by an expression.
 // The result is cached alongside the compiled program. Returns nil for empty input.
 func UsedVars(exprStr string) map[string]bool {
@@ -310,33 +267,6 @@ func UsedVars(exprStr string) map[string]bool {
 	cacheMu.RUnlock()
 	if ok {
 		return entry.usedVars
-	}
-	return nil
-}
-
-// UsedUsageKeys returns literal keys referenced by u("...") calls. Calls with
-// dynamic arguments are intentionally omitted because they cannot be
-// validated statically.
-func UsedUsageKeys(exprStr string) map[string]bool {
-	if exprStr == "" {
-		return nil
-	}
-	hash := ExprHashString(exprStr)
-	cacheMu.RLock()
-	if entry, ok := cache[hash]; ok {
-		cacheMu.RUnlock()
-		return entry.usedUsageKeys
-	}
-	cacheMu.RUnlock()
-
-	if _, err := compileFromCacheByHash(exprStr, hash); err != nil {
-		return nil
-	}
-	cacheMu.RLock()
-	entry, ok := cache[hash]
-	cacheMu.RUnlock()
-	if ok {
-		return entry.usedUsageKeys
 	}
 	return nil
 }

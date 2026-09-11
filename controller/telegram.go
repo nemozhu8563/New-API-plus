@@ -1,18 +1,83 @@
 package controller
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-// TelegramLegacyAuth retires the unsigned-flow widget endpoints. Existing
-// Telegram bindings are used by the unified OAuth provider instead.
-func TelegramLegacyAuth(c *gin.Context) {
-	c.JSON(http.StatusGone, gin.H{
-		"success": false,
-		"code":    "TELEGRAM_LEGACY_AUTH_REMOVED",
-		"message": "Telegram login has changed. Reload the page and start Telegram OAuth again.",
+const (
+	// The legacy Telegram widget has no nonce. Keep its signed assertion short-lived
+	// so captured callbacks cannot be reused indefinitely.
+	telegramAuthorizationMaxAge     = 5 * time.Minute
+	telegramAuthorizationFutureSkew = 2 * time.Minute
+	telegramBindFlowTTL             = 5 * time.Minute
+
+	telegramBindErrorDisabled       = "TELEGRAM_BIND_DISABLED"
+	telegramBindErrorInvalidRequest = "TELEGRAM_BIND_INVALID_REQUEST"
+	telegramBindErrorFlowInvalid    = "TELEGRAM_BIND_FLOW_INVALID"
+	telegramBindErrorSessionInvalid = "TELEGRAM_BIND_SESSION_INVALID"
+	telegramBindErrorAlreadyBound   = "TELEGRAM_BIND_ALREADY_BOUND"
+	telegramBindErrorUserDeleted    = "TELEGRAM_BIND_USER_DELETED"
+	telegramBindErrorUserDisabled   = "TELEGRAM_BIND_USER_DISABLED"
+	telegramBindErrorInternal       = "TELEGRAM_BIND_INTERNAL_ERROR"
+)
+
+var (
+	errTelegramAccountAlreadyBound  = errors.New("telegram account is already bound")
+	errTelegramBindAssertionInvalid = errors.New("telegram bind assertion is invalid")
+	errTelegramBindUserDeleted      = errors.New("telegram bind user was deleted")
+	errTelegramBindUserDisabled     = errors.New("telegram bind user is disabled")
+)
+
+func TelegramBindStart(c *gin.Context) {
+	if !common.TelegramOAuthEnabled {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "管理员未开启通过 Telegram 登录以及注册",
+			"success": false,
+		})
+		return
+	}
+	identity, ok := middleware.GetSessionAuthIdentity(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
+		return
+	}
+	expiresAt := time.Now().Add(telegramBindFlowTTL)
+	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose:   model.AuthFlowPurposeTelegramBind,
+		UserId:    identity.UserID,
+		SessionId: identity.SessionID,
+		ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	callbackURL := "/api/oauth/telegram/bind/" + flowToken
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"flow_token":   flowToken,
+			"callback_url": callbackURL,
+			"expires_at":   expiresAt.Unix(),
+		},
 	})
 }
 

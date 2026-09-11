@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { api, type ApiRequestConfig } from '@/lib/api'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { normalizeModelList } from '../lib/upstream-update-utils'
 
@@ -109,9 +108,9 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
           },
           upstreamUpdateRequestConfig
         )
-        const { success, data } = res.data || {}
+        const { success, message, data } = res.data || {}
         if (!success) {
-          handleServerError(res.data, t('Operation failed'))
+          toast.error(message || t('Operation failed'))
           return
         }
 
@@ -129,7 +128,13 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
         closeModal()
         await refresh()
       } catch (e: unknown) {
-        handleServerError(e, t('Operation failed'))
+        const err = e as {
+          response?: { data?: { message?: string } }
+          message?: string
+        }
+        toast.error(
+          err?.response?.data?.message || err?.message || t('Operation failed')
+        )
       } finally {
         applyRef.current = false
         setApplyLoading(false)
@@ -148,9 +153,9 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
         {},
         upstreamUpdateRequestConfig
       )
-      const { success, data } = res.data || {}
+      const { success, message, data } = res.data || {}
       if (!success) {
-        handleServerError(res.data, t('Batch processing failed'))
+        toast.error(message || t('Batch processing failed'))
         return
       }
 
@@ -167,7 +172,15 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
       )
       await refresh()
     } catch (e: unknown) {
-      handleServerError(e, t('Batch processing failed'))
+      const err = e as {
+        response?: { data?: { message?: string } }
+        message?: string
+      }
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          t('Batch processing failed')
+      )
     } finally {
       applyAllRef.current = false
       setApplyAllLoading(false)
@@ -184,9 +197,9 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
           { id: ch.id },
           upstreamUpdateRequestConfig
         )
-        const { success, data } = res.data || {}
+        const { success, message, data } = res.data || {}
         if (!success) {
-          handleServerError(res.data, t('Detection failed'))
+          toast.error(message || t('Detection failed'))
           return
         }
 
@@ -198,7 +211,13 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
         )
         await refresh()
       } catch (e: unknown) {
-        handleServerError(e, t('Detection failed'))
+        const err = e as {
+          response?: { data?: { message?: string } }
+          message?: string
+        }
+        toast.error(
+          err?.response?.data?.message || err?.message || t('Detection failed')
+        )
       } finally {
         detectRef.current = false
       }
@@ -216,9 +235,9 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
         {},
         upstreamUpdateRequestConfig
       )
-      const { success } = res.data || {}
+      const { success, message } = res.data || {}
       if (!success) {
-        handleServerError(res.data, t('Batch detection failed'))
+        toast.error(message || t('Batch detection failed'))
         return
       }
 
@@ -229,7 +248,15 @@ export function useChannelUpstreamUpdates(refresh: () => Promise<void>) {
       )
       await refresh()
     } catch (e: unknown) {
-      handleServerError(e, t('Batch detection failed'))
+      const err = e as {
+        response?: { data?: { message?: string } }
+        message?: string
+      }
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          t('Batch detection failed')
+      )
     } finally {
       detectAllRef.current = false
       setDetectAllLoading(false)

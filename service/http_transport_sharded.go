@@ -23,7 +23,10 @@ type shardedRoundTripper struct {
 }
 
 func newShardedRoundTripper(policy HTTPTransportPolicy, factory func() *http.Transport) *shardedRoundTripper {
-	n := max(policy.Shards, 1)
+	n := policy.Shards
+	if n < 1 {
+		n = 1
+	}
 	shards := make([]http.RoundTripper, n)
 	for i := 0; i < n; i++ {
 		transport := factory()

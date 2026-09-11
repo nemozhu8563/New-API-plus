@@ -2,8 +2,6 @@ import i18next from 'i18next'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
-import { handleServerError } from '@/lib/handle-server-error'
-
 import { requestCreemPayment, isApiSuccess } from '../api'
 
 /**
@@ -26,7 +24,7 @@ export function useCreemPayment() {
         return true
       }
 
-      handleServerError(response, i18next.t('Payment request failed'))
+      toast.error(response.message || i18next.t('Payment request failed'))
       return false
     } catch {
       toast.error(i18next.t('Payment request failed'))

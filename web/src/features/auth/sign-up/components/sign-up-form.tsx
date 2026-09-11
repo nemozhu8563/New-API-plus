@@ -59,7 +59,7 @@ export function SignUpForm({
     setTurnstileToken,
     validateTurnstile,
   } = useTurnstile()
-  const { redirectToLogin, handleLoginResult } = useAuthRedirect()
+  const { redirectToLogin, handleLoginSuccess } = useAuthRedirect()
   const {
     isSending: isSendingCode,
     secondsLeft,
@@ -157,12 +157,10 @@ export function SignUpForm({
         toast.success(t('Account created! Please sign in'))
         redirectToLogin()
       } else {
-        handleServerError(createServerError(res, t('Failed to create account')))
+        toast.error(res?.message || t('Failed to create account'))
       }
-    } catch (error) {
-      handleServerError(
-        AuthOperationError.from(error, t('Failed to create account'))
-      )
+    } catch {
+      // Errors are handled by global interceptor
     } finally {
       setIsLoading(false)
     }
@@ -208,16 +206,13 @@ export function SignUpForm({
         })
         toast.success(t('Signed in via WeChat'))
         handleWeChatDialogChange(false)
-        if (await handleLoginResult(res.data)) {
-          toast.success(t('Signed in via WeChat'))
-        }
       } else {
-        handleServerError(createServerError(res, t('Login failed')))
+        if (getServerErrorMessageKey(res)) return
+        toast.error(res?.message || t('Login failed'))
       }
     } catch (error: unknown) {
-      handleServerError(
-        new AuthOperationError(t('Login failed'), undefined, { cause: error })
-      )
+      if (getServerErrorMessageKey(error)) return
+      toast.error(t('Login failed'))
     } finally {
       setIsWeChatSubmitting(false)
     }
@@ -263,7 +258,7 @@ export function SignUpForm({
               <FormLabel>{t('Password')}</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder={t('Enter password (8–128 characters)')}
+                  placeholder={t('Enter password (8-20 characters)')}
                   {...field}
                 />
               </FormControl>

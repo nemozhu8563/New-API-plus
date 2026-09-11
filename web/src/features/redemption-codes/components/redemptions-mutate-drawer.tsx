@@ -62,10 +62,6 @@ import {
   transformRedemptionToFormDefaults,
 } from '../lib'
 import type { Redemption } from '../types'
-import {
-  RedemptionsExportDialog,
-  type RedemptionExportData,
-} from './redemptions-export-dialog'
 import { useRedemptions } from './redemptions-provider'
 
 type RedemptionsMutateDrawerProps = {
@@ -135,7 +131,7 @@ export function RedemptionsMutateDrawer({
           result.data.id !== redemptionId
         ) {
           setRedemptionLoadState('error')
-          handleServerError(result, t('Failed to load'))
+          toast.error(t('Failed to load'))
           return
         }
 
@@ -220,8 +216,6 @@ export function RedemptionsMutateDrawer({
           toast.success(t(SUCCESS_MESSAGES.REDEMPTION_UPDATED))
           onOpenChange(false)
           triggerRefresh()
-        } else {
-          handleServerError(result)
         }
       } else {
         // Create mode
@@ -235,23 +229,10 @@ export function RedemptionsMutateDrawer({
                 })
               : t(SUCCESS_MESSAGES.REDEMPTION_CREATED)
           )
-          if (result.data?.length) {
-            setCreatedCodes({
-              keys: result.data,
-              name: basePayload.name,
-              quota: formatQuotaWithCurrency(basePayload.quota, {
-                abbreviate: false,
-              }),
-            })
-          }
           onOpenChange(false)
           triggerRefresh()
-        } else {
-          handleServerError(result)
         }
       }
-    } catch (error) {
-      handleServerError(error)
     } finally {
       setIsSubmitting(false)
     }
@@ -300,40 +281,41 @@ export function RedemptionsMutateDrawer({
   const benefitType = form.watch('benefit_type')
 
   return (
-    <>
-      <Sheet
-        open={open}
-        onOpenChange={(v) => {
-          onOpenChange(v)
-          if (!v) {
-            form.reset()
-          }
-        }}
-      >
-        <SheetContent
-          className={sideDrawerContentClassName('sm:max-w-[600px]')}
-        >
-          <SheetHeader className={sideDrawerHeaderClassName()}>
-            <SheetTitle>
-              {isUpdate
-                ? t('Update Redemption Code')
-                : t('Create Redemption Code')}
-            </SheetTitle>
-            <SheetDescription>
-              {isUpdate
-                ? t('Update the redemption code by providing necessary info.')
-                : t(
-                    'Add new redemption code(s) by providing necessary info.'
-                  )}{' '}
-              {t('Click save when you&apos;re done.')}
-            </SheetDescription>
-          </SheetHeader>
-          <Form {...form}>
-            <form
-              id='redemption-form'
-              onSubmit={handleSubmit}
-              className={sideDrawerFormClassName()}
-              aria-busy={isLoadingRedemption}
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v)
+        if (!v) {
+          form.reset()
+        }
+      }}
+    >
+      <SheetContent className={sideDrawerContentClassName('sm:max-w-[600px]')}>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <SheetTitle>
+            {isUpdate
+              ? t('Update Redemption Code')
+              : t('Create Redemption Code')}
+          </SheetTitle>
+          <SheetDescription>
+            {isUpdate
+              ? t('Update the redemption code by providing necessary info.')
+              : t(
+                  'Add new redemption code(s) by providing necessary info.'
+                )}{' '}
+            {t('Click save when you&apos;re done.')}
+          </SheetDescription>
+        </SheetHeader>
+        <Form {...form}>
+          <form
+            id='redemption-form'
+            onSubmit={handleSubmit}
+            className={sideDrawerFormClassName()}
+            aria-busy={isLoadingRedemption}
+          >
+            <fieldset
+              disabled={!isUpdateReady || isSubmitting}
+              className='contents'
             >
               <SideDrawerSection>
                 <FormField
@@ -548,15 +530,28 @@ export function RedemptionsMutateDrawer({
                 {!isUpdate && (
                   <FormField
                     control={form.control}
-                    name='name'
+                    name='count'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Name')}</FormLabel>
+                        <FormLabel>{t('Quantity')}</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder={t('Enter a name')} />
+                          <Input
+                            {...field}
+                            type='number'
+                            min='1'
+                            max='100'
+                            placeholder={t('Number of codes to create')}
+                            onChange={(e) =>
+                              field.onChange(
+                                Number.parseInt(e.target.value, 10) || 1
+                              )
+                            }
+                          />
                         </FormControl>
                         <FormDescription>
-                          {t('Name for this redemption code (1-20 characters)')}
+                          {t(
+                            'Create multiple redemption codes at once (1-100)'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

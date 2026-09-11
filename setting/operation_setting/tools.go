@@ -162,13 +162,13 @@ func RebuildToolPriceIndex() {
 	}
 
 	for key, price := range merged {
-		before, after, ok := strings.Cut(key, ":")
-		if !ok {
+		colonIdx := strings.IndexByte(key, ':')
+		if colonIdx < 0 {
 			idx.defaults[key] = price
 			continue
 		}
-		toolName := before
-		modelPart := after
+		toolName := key[:colonIdx]
+		modelPart := key[colonIdx+1:]
 		prefix := strings.TrimSuffix(modelPart, "*")
 		idx.prefixes[toolName] = append(idx.prefixes[toolName], prefixEntry{prefix: prefix, price: price})
 	}

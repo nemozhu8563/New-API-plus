@@ -45,7 +45,6 @@ interface TimingMetricsCellProps {
    * indicator used elsewhere on the mobile card.
    */
   indicator?: 'bar' | 'dot'
-  compact?: boolean
 }
 
 export function TimingMetricsCell(props: TimingMetricsCellProps) {
@@ -67,13 +66,7 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
   const totalTimeLabel = formatUseTime(props.useTimeSec)
 
   const labels = (
-    <div
-      className={cn(
-        'flex min-h-8 min-w-0 flex-col justify-center gap-0.5 text-xs leading-tight',
-        props.compact &&
-          'min-h-0 flex-row flex-wrap items-center gap-x-2.5 gap-y-1'
-      )}
-    >
+    <div className='flex min-h-8 min-w-0 flex-col justify-center gap-0.5 text-xs leading-tight'>
       {showFirstToken && (
         <div className='flex items-baseline gap-1.5'>
           {indicator === 'dot' && (
@@ -140,9 +133,6 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
 
 interface StreamTpsCellProps {
   isStream: boolean
-  compact?: boolean
-  /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
-  isTask?: boolean
   tokensPerSecond?: number | null
   streamStatus?: LogOtherData['stream_status']
   className?: string
@@ -156,16 +146,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
     props.tokensPerSecond != null
       ? `${Math.round(props.tokensPerSecond)} t/s`
       : '—'
-  let streamLabel = props.isStream ? t('Stream') : t('Non-stream')
-  if (props.isTask) {
-    streamLabel = t('Async')
-  }
+  const streamLabel = props.isStream ? t('Stream') : t('Non-stream')
 
   return (
     <div
       className={cn(
         'flex shrink-0 flex-col items-start justify-center gap-0.5 text-xs leading-tight',
-        props.compact && 'flex-row flex-wrap items-center gap-1.5',
         props.className
       )}
     >
@@ -199,12 +185,9 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
           </TooltipProvider>
         )}
       </span>
-      {(!props.compact ||
-        (props.isStream && props.tokensPerSecond != null)) && (
-        <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
-          {tpsLabel}
-        </span>
-      )}
+      <span className='text-muted-foreground/60 px-0.5 tabular-nums'>
+        {tpsLabel}
+      </span>
     </div>
   )
 }

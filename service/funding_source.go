@@ -135,7 +135,7 @@ func refundWithRetry(fn func() error) error {
 	}
 	const maxAttempts = 3
 	var lastErr error
-	for i := range maxAttempts {
+	for i := 0; i < maxAttempts; i++ {
 		if err := fn(); err == nil {
 			return nil
 		} else {

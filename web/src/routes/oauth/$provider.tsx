@@ -6,15 +6,14 @@ import {
 } from '@tanstack/react-router'
 import type { AxiosRequestConfig } from 'axios'
 import i18next from 'i18next'
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { toast } from 'sonner'
 
 import { OAuthCallbackScreen } from '@/features/auth/components/oauth-callback-screen'
 import {
-  OAUTH_POPUP_CALLBACK_MESSAGE,
-  OAUTH_POPUP_RESULT_MESSAGE,
+  OAUTH_BIND_CALLBACK_MESSAGE,
+  OAUTH_BIND_RESULT_MESSAGE,
 } from '@/features/auth/constants'
-import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import {
   parseTelegramBindCallback,
@@ -23,7 +22,6 @@ import {
 } from '@/features/auth/lib/oauth-bind-window'
 import {
   getOAuthSessionStorage,
-  consumeOAuthLoginRedirect,
   resolveOAuthCallbackMode,
 } from '@/features/auth/lib/oauth-callback-mode'
 import { api, applyAuthBundle, isAuthBundle } from '@/lib/api'
@@ -33,12 +31,10 @@ import { trackEvent } from '@/lib/site-telemetry'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
   skipBusinessError?: boolean
-  skipAuthRefresh?: boolean
 }
 
-interface OAuthPopupResult {
-  intent: 'bind' | 'verify'
-  type: typeof OAUTH_POPUP_RESULT_MESSAGE
+interface OAuthBindingResult {
+  type: typeof OAUTH_BIND_RESULT_MESSAGE
   provider: string
   state: string
   success: boolean
@@ -47,12 +43,6 @@ interface OAuthPopupResult {
 
 function OAuthCallback() {
   const navigate = useNavigate()
-  const { handleLoginResult } = useAuthRedirect()
-  const loginExchange = useRef<{
-    key: string
-    request: Promise<{ data: LoginResponse }>
-  } | null>(null)
-  const completedLogin = useRef<string | null>(null)
   const { provider } = useParams({ from: '/oauth/$provider' }) as {
     provider: string
   }
@@ -70,7 +60,7 @@ function OAuthCallback() {
   const isTelegramBindCallback =
     provider === 'telegram' &&
     (search.telegram_bind === 'success' || search.telegram_bind === 'error')
-  let mode: 'login' | 'bind' | 'verify' = 'login'
+  let mode: 'login' | 'bind' = 'login'
   if (isTelegramBindCallback) {
     mode = 'bind'
   } else if (typeof window !== 'undefined') {
@@ -110,10 +100,10 @@ function OAuthCallback() {
       return
     }
 
-    if (mode === 'bind' || mode === 'verify') {
+    if (mode === 'bind') {
       const opener = window.opener
       if (!opener || opener.closed) {
-        toast.error(i18next.t('OAuth window is no longer available.'))
+        toast.error(i18next.t('OAuth binding window is no longer available'))
         return
       }
 
@@ -126,11 +116,10 @@ function OAuthCallback() {
         ) {
           return
         }
-        const result = event.data as Partial<OAuthPopupResult> | null
+        const result = event.data as Partial<OAuthBindingResult> | null
         if (
           !result ||
-          result.type !== OAUTH_POPUP_RESULT_MESSAGE ||
-          result.intent !== mode ||
+          result.type !== OAUTH_BIND_RESULT_MESSAGE ||
           result.provider !== provider ||
           result.state !== state
         ) {
@@ -138,25 +127,22 @@ function OAuthCallback() {
         }
         cancelResultTimeout()
         if (result.success) {
-          if (mode === 'bind') toast.success(i18next.t('Binding successful!'))
+          toast.success(i18next.t('Binding successful!'))
           window.close()
           return
         }
-        handleServerError(result, i18next.t('OAuth failed'))
+        toast.error(result.message || i18next.t('OAuth failed'))
         delayedClose = window.setTimeout(() => window.close(), 1500)
       }
 
       window.addEventListener('message', handleBindingResult)
       cancelResultTimeout = startOAuthBindResponseDeadline(() => {
-        toast.error(
-          i18next.t('OAuth authorization timed out. Please try again.')
-        )
+        toast.error(i18next.t('OAuth binding timed out. Please try again.'))
         delayedClose = window.setTimeout(() => window.close(), 1500)
       })
       opener.postMessage(
         {
-          type: OAUTH_POPUP_CALLBACK_MESSAGE,
-          intent: mode,
+          type: OAUTH_BIND_CALLBACK_MESSAGE,
           provider,
           code,
           state,
@@ -187,9 +173,6 @@ function OAuthCallback() {
       return
     }
 
-    const loginKey = `${provider}:${state}:${code}`
-    if (completedLogin.current === loginKey) return
-    let active = true
     void (async () => {
       try {
         const config: OAuthRequestConfig = {
@@ -200,7 +183,6 @@ function OAuthCallback() {
             error_description: search.error_description,
           },
           skipBusinessError: true,
-          skipAuthRefresh: true,
         }
         const response = await api.get(`/api/oauth/${provider}`, config)
         if (response.data?.success && isAuthBundle(response.data?.data)) {
@@ -211,28 +193,31 @@ function OAuthCallback() {
           return
         }
         const messageKey = getServerErrorMessageKey(response.data)
-        handleServerError(
-          response.data,
+        toast.error(
           messageKey
             ? i18next.t(messageKey)
             : response.data?.message || i18next.t('OAuth failed')
         )
       } catch (error: unknown) {
-        if (!active) return
-        handleServerError(
-          AuthOperationError.from(error, i18next.t('OAuth failed'))
-        )
+        const messageKey = getServerErrorMessageKey(error)
+        const responseMessage = (
+          error as { response?: { data?: { message?: string } } }
+        ).response?.data?.message
+        if (!messageKey) {
+          toast.error(
+            responseMessage ||
+              (error instanceof Error
+                ? error.message
+                : i18next.t('OAuth failed'))
+          )
+        }
       }
       safeNavigate('/sign-in', '/sign-in')
     })()
-    return () => {
-      active = false
-    }
   }, [
     callbackState,
     mode,
     navigate,
-    handleLoginResult,
     provider,
     search.code,
     search.error,

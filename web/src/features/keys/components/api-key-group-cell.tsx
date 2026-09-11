@@ -26,8 +26,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useMediaQuery } from '@/hooks'
-import { cn } from '@/lib/utils'
 
 import {
   AutoGroupBadge,
@@ -44,26 +42,16 @@ type ApiKeyGroupCellProps = {
 
 export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
   const { t } = useTranslation()
-  const isMobile = useMediaQuery('(max-width: 640px)')
 
-  const group = props.group?.trim() || ''
-  if (group !== 'auto') {
-    const ratio =
-      group && typeof props.ratio === 'number' ? props.ratio : undefined
+  if (props.group !== 'auto') {
+    const ratio = typeof props.ratio === 'number' ? props.ratio : undefined
     return (
       <TruncatedCell
-        className={isMobile ? 'w-full' : 'max-w-50'}
-        tabIndex={0}
-        tooltipContent={group || t('Follow user group')}
+        className='-ml-1.5'
+        tooltipContent={props.group || '-'}
         tooltipClassName='break-all'
       >
-        <GroupBadge
-          group={group}
-          ratio={ratio}
-          ratioLabel={group ? undefined : t('Inherited')}
-          className='px-0'
-          containerClassName={cn('gap-3', isMobile && 'w-full justify-between')}
-        />
+        <GroupBadge group={props.group} ratio={ratio} />
       </TruncatedCell>
     )
   }
@@ -74,11 +62,7 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
         render={
           <BadgeCell
             data-api-key-group-cell='auto'
-            tabIndex={0}
-            className={cn(
-              'ml-0 gap-3 overflow-visible text-xs',
-              isMobile ? 'w-full justify-between' : 'max-w-50'
-            )}
+            className='gap-1.5 overflow-visible text-xs'
           />
         }
       >

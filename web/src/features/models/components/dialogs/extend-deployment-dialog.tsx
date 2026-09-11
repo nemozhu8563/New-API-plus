@@ -8,8 +8,6 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { handleServerError } from '@/lib/handle-server-error'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { estimatePrice, extendDeployment, getDeployment } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
@@ -39,10 +37,7 @@ export function ExtendDeploymentDialog({
 
   const { data: detailsRes, isLoading: isLoadingDetails } = useQuery({
     queryKey: ['deployment-details-for-extend', deploymentId],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId ? getDeployment(deploymentId) : null)
-      ),
+    queryFn: () => (deploymentId ? getDeployment(deploymentId) : null),
     enabled: open && deploymentId !== null,
   })
 
@@ -84,19 +79,17 @@ export function ExtendDeploymentDialog({
     isFetching: isFetchingPrice,
   } = useQuery({
     queryKey: ['deployment-extend-price', deploymentId, hours, priceParams],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (priceParams
-          ? estimatePrice({
-              location_ids: priceParams.location_ids,
-              hardware_id: priceParams.hardware_id,
-              gpus_per_container: priceParams.gpus_per_container,
-              replica_count: priceParams.replica_count,
-              duration_hours: hours,
-              currency: 'usdc',
-            })
-          : null)
-      ),
+    queryFn: () =>
+      priceParams
+        ? estimatePrice({
+            location_ids: priceParams.location_ids,
+            hardware_id: priceParams.hardware_id,
+            gpus_per_container: priceParams.gpus_per_container,
+            replica_count: priceParams.replica_count,
+            duration_hours: hours,
+            currency: 'usdc',
+          })
+        : null,
     enabled: open && Boolean(priceParams) && hours > 0,
   })
 
@@ -152,9 +145,9 @@ export function ExtendDeploymentDialog({
         onOpenChange(false)
         return
       }
-      handleServerError(res, t('Extend failed'))
+      toast.error(res.message || t('Extend failed'))
     } catch (err: unknown) {
-      handleServerError(err, t('Extend failed'))
+      toast.error(err instanceof Error ? err.message : t('Extend failed'))
     } finally {
       setIsSubmitting(false)
     }

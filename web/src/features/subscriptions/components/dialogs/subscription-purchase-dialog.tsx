@@ -7,7 +7,14 @@ import { Dialog } from '@/components/dialog'
 import { GroupBadge } from '@/components/group-badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { redirectToHostedCheckout } from '@/features/wallet/lib'
 import { formatQuota } from '@/lib/format'
@@ -63,6 +70,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
   const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
+  const selectedEpayMethodLabel =
+    (props.epayMethods || []).find((m) => m.type === selectedEpayMethod)
+      ?.name ||
+    selectedEpayMethod ||
+    t('Select payment method')
   const totalAmount = Number(plan.total_amount || 0)
   const price = formatSubscriptionPrice(
     Number(plan.price_amount || 0),
@@ -90,10 +102,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
         toast.success(t('Redirecting to payment page...'))
         redirectToHostedCheckout(res.data.pay_link)
       } else {
-        handleServerError(res, t('Payment request failed'))
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
       }
-    } catch (error) {
-      handleServerError(error, t('Payment request failed'))
+    } catch {
+      toast.error(t('Payment request failed'))
     } finally {
       setPaying(false)
     }
@@ -109,10 +125,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
         toast.success(t('Payment page opened'))
         props.onOpenChange(false)
       } else {
-        handleServerError(res, t('Payment request failed'))
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
       }
-    } catch (error) {
-      handleServerError(error, t('Payment request failed'))
+    } catch {
+      toast.error(t('Payment request failed'))
     } finally {
       setPaying(false)
     }
@@ -129,10 +149,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
         toast.success(t('Redirecting to payment page...'))
         window.location.href = res.data.checkout_url
       } else {
-        handleServerError(res, t('Payment request failed'))
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
       }
-    } catch (error) {
-      handleServerError(error, t('Payment request failed'))
+    } catch {
+      toast.error(t('Payment request failed'))
     } finally {
       setPaying(false)
     }
@@ -174,10 +198,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
         toast.success(t('Payment initiated'))
         props.onOpenChange(false)
       } else {
-        handleServerError(res, t('Payment request failed'))
+        toast.error(
+          res.message && res.message !== 'success'
+            ? res.message
+            : t('Payment request failed')
+        )
       }
-    } catch (error) {
-      handleServerError(error, t('Payment request failed'))
+    } catch {
+      toast.error(t('Payment request failed'))
     } finally {
       setPaying(false)
     }
@@ -299,8 +327,20 @@ export function SubscriptionPurchaseDialog(props: Props) {
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
                   disabled={limitReached}
-                  className='flex-1'
-                />
+                >
+                  <SelectTrigger className='flex-1'>
+                    <SelectValue>{selectedEpayMethodLabel}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectGroup>
+                      {(props.epayMethods || []).map((m) => (
+                        <SelectItem key={m.type} value={m.type}>
+                          {m.name || m.type}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
                 <Button
                   onClick={handlePayEpay}
                   disabled={paying || !selectedEpayMethod || limitReached}

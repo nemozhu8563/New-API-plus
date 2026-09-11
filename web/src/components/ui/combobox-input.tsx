@@ -9,12 +9,10 @@ export type ComboboxInputOption = {
   value: string
   label: string
   icon?: React.ReactNode
-  disabled?: boolean
-  description?: string
 }
 
 interface ComboboxInputProps {
-  options: readonly ComboboxInputOption[]
+  options: ComboboxInputOption[]
   value?: string
   onValueChange: (value: string) => void
   placeholder?: string
@@ -23,10 +21,6 @@ interface ComboboxInputProps {
   id?: string
   allowCustomValue?: boolean
   openOnFocus?: boolean
-  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
-  'aria-label'?: string
-  'aria-labelledby'?: string
-  'aria-invalid'?: React.AriaAttributes['aria-invalid']
 }
 
 export function ComboboxInput({
@@ -39,17 +33,12 @@ export function ComboboxInput({
   id,
   allowCustomValue = false,
   openOnFocus = true,
-  onKeyDown,
-  'aria-label': ariaLabel,
-  'aria-labelledby': ariaLabelledBy,
-  'aria-invalid': ariaInvalid,
 }: ComboboxInputProps) {
   const { t } = useTranslation()
   const resolvedPlaceholder = placeholder ?? t('Select or type...')
   const resolvedEmptyText = t(emptyText ?? 'No option found.')
   const [open, setOpen] = React.useState(false)
   const [searchValue, setSearchValue] = React.useState('')
-  const [searchChanged, setSearchChanged] = React.useState(false)
   const [highlightedIndex, setHighlightedIndex] = React.useState(-1)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -62,14 +51,14 @@ export function ComboboxInput({
   const displayValue = open ? searchValue : (selectedOption?.label ?? value)
 
   const filteredOptions = React.useMemo(() => {
-    if (!searchChanged || !searchValue.trim()) return options
+    if (!searchValue.trim()) return options
     const search = searchValue.toLowerCase().trim()
     return options.filter(
       (option) =>
         option.label.toLowerCase().includes(search) ||
         option.value.toLowerCase().includes(search)
     )
-  }, [options, searchValue, searchChanged])
+  }, [options, searchValue])
 
   // Reset highlight when filtered options change
   React.useEffect(() => {
@@ -103,9 +92,6 @@ export function ComboboxInput({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-      e.preventDefault()
-      setSearchValue(allowCustomValue ? value : '')
-      setSearchChanged(false)
       setOpen(true)
       return
     }
@@ -126,14 +112,12 @@ export function ComboboxInput({
         )
         break
       case 'Enter':
+        e.preventDefault()
         if (highlightedIndex >= 0 && filteredOptions[highlightedIndex]) {
-          e.preventDefault()
           handleSelect(filteredOptions[highlightedIndex].value)
         } else if (allowCustomValue && searchValue.trim()) {
-          e.preventDefault()
           handleSelect(searchValue.trim())
         } else {
-          if (!onKeyDown) e.preventDefault()
           // No highlighted option, just close the dropdown and keep current value
           setOpen(false)
           setSearchValue('')
@@ -141,7 +125,6 @@ export function ComboboxInput({
         break
       case 'Escape':
         e.preventDefault()
-        e.stopPropagation()
         setOpen(false)
         setSearchValue('')
         break
@@ -166,18 +149,7 @@ export function ComboboxInput({
         id={id}
         type='text'
         role='combobox'
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabelledBy}
-        aria-invalid={ariaInvalid}
-        aria-expanded={!!showDropdown}
-        aria-controls={
-          showDropdown && filteredOptions.length > 0 ? listId : undefined
-        }
-        aria-activedescendant={
-          showDropdown && highlightedIndex >= 0
-            ? `${listId}-${highlightedIndex}`
-            : undefined
-        }
+        aria-expanded={open}
         aria-haspopup='listbox'
         aria-autocomplete='list'
         autoComplete='off'
@@ -186,7 +158,6 @@ export function ComboboxInput({
         onChange={(e) => {
           const nextValue = e.target.value
           setSearchValue(nextValue)
-          setSearchChanged(true)
           if (allowCustomValue) {
             onValueChange(nextValue)
           }
@@ -195,27 +166,17 @@ export function ComboboxInput({
         onPointerDown={() => {
           pointerFocusRef.current = true
           if (document.activeElement === inputRef.current && !open) {
-            setSearchValue(allowCustomValue ? value : '')
-            setSearchChanged(false)
             setOpen(true)
           }
         }}
         onFocus={() => {
-          setSearchValue(allowCustomValue ? value : '')
-          setSearchChanged(false)
+          setSearchValue(allowCustomValue && !selectedOption ? value : '')
           if (openOnFocus || pointerFocusRef.current) {
             setOpen(true)
           }
           pointerFocusRef.current = false
         }}
-        onBlur={() => {
-          setOpen(false)
-          setSearchValue('')
-        }}
-        onKeyDown={(event) => {
-          handleKeyDown(event)
-          if (!event.defaultPrevented) onKeyDown?.(event)
-        }}
+        onKeyDown={handleKeyDown}
         className={cn('pr-9', className)}
       />
       <ChevronsUpDown className='pointer-events-none absolute top-1/2 right-3 size-4 shrink-0 -translate-y-1/2 opacity-50' />
@@ -225,14 +186,12 @@ export function ComboboxInput({
           {filteredOptions.length > 0 ? (
             <ul
               ref={listRef}
-              id={listId}
               role='listbox'
               className='max-h-[200px] overflow-y-auto p-1'
             >
               {filteredOptions.map((option, index) => (
                 <li
                   key={option.value}
-                  id={`${listId}-${index}`}
                   role='option'
                   aria-selected={value === option.value}
                   data-highlighted={index === highlightedIndex}
@@ -254,7 +213,7 @@ export function ComboboxInput({
                       value === option.value ? 'opacity-100' : 'opacity-0'
                     )}
                   />
-                  {option.icon && <span aria-hidden>{option.icon}</span>}
+                  {option.icon && <span>{option.icon}</span>}
                   <span className='truncate'>{option.label}</span>
                 </li>
               ))}

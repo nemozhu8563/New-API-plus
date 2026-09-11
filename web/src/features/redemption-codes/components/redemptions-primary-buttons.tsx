@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import { deleteInvalidRedemptions } from '../api'
 import { ERROR_MESSAGES } from '../constants'
@@ -32,7 +31,7 @@ export function RedemptionsPrimaryButtons() {
         triggerRefresh()
         setShowDeleteInvalidConfirm(false)
       } else {
-        handleServerError(result, t(ERROR_MESSAGES.DELETE_INVALID_FAILED))
+        toast.error(result.message || t(ERROR_MESSAGES.DELETE_INVALID_FAILED))
       }
     } finally {
       setIsDeleting(false)

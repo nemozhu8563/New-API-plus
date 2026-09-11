@@ -110,7 +110,7 @@ export function usePayment() {
             })
 
         if (!isApiSuccess(response)) {
-          handleServerError(response, i18next.t('Payment request failed'))
+          toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
 
@@ -142,8 +142,8 @@ export function usePayment() {
         }
 
         return false
-      } catch (error) {
-        handleServerError(error, i18next.t('Payment request failed'))
+      } catch {
+        toast.error(i18next.t('Payment request failed'))
         return false
       } finally {
         setProcessing(false)

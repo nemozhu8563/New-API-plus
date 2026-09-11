@@ -24,8 +24,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { handleServerError } from '@/lib/handle-server-error'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getDeployment, updateDeployment } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
@@ -89,10 +87,7 @@ export function UpdateConfigDialog({
 
   const { data: detailsRes, isLoading } = useQuery({
     queryKey: ['deployment-details-for-update', deploymentId],
-    queryFn: async () =>
-      requireServerSuccess(
-        await (deploymentId ? getDeployment(deploymentId) : null)
-      ),
+    queryFn: () => (deploymentId ? getDeployment(deploymentId) : null),
     enabled: open && deploymentId !== null,
   })
 
@@ -189,10 +184,10 @@ export function UpdateConfigDialog({
         onOpenChange(false)
         return
       }
-      handleServerError(res, t('Update failed'))
+      toast.error(res.message || t('Update failed'))
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('Update failed')
-      handleServerError(err, msg)
+      toast.error(msg)
     }
   }
 

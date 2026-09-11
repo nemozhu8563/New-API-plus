@@ -1,6 +1,5 @@
 import { getGroups as getUserGroups } from '@/features/users/api'
 import { api, type ApiRequestConfig } from '@/lib/api'
-import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
   AddChannelRequest,
@@ -30,25 +29,6 @@ const channelActionConfig = (
   skipBusinessError: true,
   skipErrorHandler: true,
 })
-
-export type TaskPluginOption = {
-  sortPriority?: number
-  website?: string
-  key: string
-  name: string
-  icon?: string
-  hasIcon?: boolean
-  baseUrl?: string
-  models: string[]
-}
-
-export async function getTaskPluginOptions(): Promise<TaskPluginOption[]> {
-  const response = await api.get<{
-    success: boolean
-    data: TaskPluginOption[]
-  }>('/api/task_plugin_options')
-  return requireServerSuccess(response.data).data
-}
 
 export type CodexUsageResponse = {
   success: boolean
@@ -297,15 +277,13 @@ export async function deleteDisabledChannels(): Promise<{
  */
 export async function getChannelKey(
   id: number,
-  proofToken: string,
-  signal?: AbortSignal
+  proofToken?: string
 ): Promise<{ success: boolean; message?: string; data?: { key: string } }> {
   const res = await api.post(
     `/api/channel/${id}/key`,
     undefined,
     channelActionConfig({
-      headers: { 'X-Security-Proof': proofToken },
-      signal,
+      headers: proofToken ? { 'X-Security-Proof': proofToken } : undefined,
     })
   )
   return res.data

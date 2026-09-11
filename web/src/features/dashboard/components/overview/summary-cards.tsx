@@ -20,7 +20,6 @@ import {
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import { formatNumber, formatQuota } from '@/lib/format'
-import { requireServerSuccess } from '@/lib/server-error-message'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'

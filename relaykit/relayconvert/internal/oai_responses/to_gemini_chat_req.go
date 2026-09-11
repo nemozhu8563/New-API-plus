@@ -5,13 +5,11 @@ import (
 	"strings"
 
 	"context"
-
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedgemini "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/gemini"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
-	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 )
 
 func convertOpenAIResponsesRequestToGeminiChat(c context.Context, info convmeta.Meta, request any) (any, error) {
@@ -44,10 +42,10 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 			Temperature: req.Temperature,
 		},
 	}
-	if req.TopP != nil {
+	if req.TopP != nil && *req.TopP > 0 {
 		geminiRequest.GenerationConfig.TopP = kitutil.GetPointer(*req.TopP)
 	}
-	if req.MaxOutputTokens != nil {
+	if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
 		geminiRequest.GenerationConfig.MaxOutputTokens = kitutil.GetPointer(*req.MaxOutputTokens)
 	}
 
@@ -61,19 +59,11 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 	if err := applyResponsesTextToGemini(req.Text, geminiRequest); err != nil {
 		return nil, err
 	}
-	reasoningIntent, err := reasoning.FromOpenAIResponses(req)
-	if err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
-	var reasoningPivot dto.GeneralOpenAIRequest
-	if err := reasoning.ApplyToOpenAIChat(&reasoningPivot, reasoningIntent); err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
-	reasoningPivot.Model = req.Model
-	reasoningPivot.MaxCompletionTokens = req.MaxOutputTokens
-	if err := sharedgemini.ApplyThinkingConfig(geminiRequest, info, reasoningPivot); err != nil {
-		return nil, reasoning.AsClientError(err)
-	}
+	sharedgemini.ApplyThinkingConfig(geminiRequest, info, dto.GeneralOpenAIRequest{
+		Model:               req.Model,
+		MaxCompletionTokens: req.MaxOutputTokens,
+		ReasoningEffort:     ReasoningEffort(req),
+	})
 
 	var safetySettings []dto.GeminiChatSafetySettings
 	for _, category := range sharedgemini.SafetySettingCategories {
@@ -95,8 +85,8 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 		return nil, err
 	}
 	for i := range functions {
-		if params, ok := functions[i].Parameters.(map[string]any); ok {
-			if props, hasProps := params["properties"].(map[string]any); hasProps && len(props) == 0 {
+		if params, ok := functions[i].Parameters.(map[string]interface{}); ok {
+			if props, hasProps := params["properties"].(map[string]interface{}); hasProps && len(props) == 0 {
 				functions[i].Parameters = nil
 				continue
 			}
@@ -147,10 +137,7 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 			}
 			appendGeminiContentPart(geminiRequest, "model", part)
 		case ResponsesInputTypeFunctionCallOutput:
-			part, err := responsesFunctionOutputItemToGeminiPart(item, callNames)
-			if err != nil {
-				return nil, err
-			}
+			part := responsesFunctionOutputItemToGeminiPart(item, callNames)
 			appendGeminiContentPart(geminiRequest, "user", part)
 		default:
 			role := responsesGeminiRole(item)
@@ -265,33 +252,24 @@ func responsesFunctionCallItemToGeminiPart(item map[string]any) (dto.GeminiPart,
 	callID := CallID(item)
 	return dto.GeminiPart{
 		FunctionCall: &dto.FunctionCall{
-			ID:           callID,
 			FunctionName: name,
 			Arguments:    ObjectValue(item["arguments"], "arguments"),
 		},
 	}, callID, nil
 }
 
-func responsesFunctionOutputItemToGeminiPart(item map[string]any, callNames map[string]string) (dto.GeminiPart, error) {
+func responsesFunctionOutputItemToGeminiPart(item map[string]any, callNames map[string]string) dto.GeminiPart {
 	callID := CallID(item)
 	name := strings.TrimSpace(kitutil.Interface2String(item["name"]))
 	if name == "" {
 		name = callNames[callID]
 	}
-	response := &dto.GeminiFunctionResponse{
-		Name:     name,
-		Response: GeminiResponseMap(item["output"]),
-	}
-	if callID != "" {
-		id, err := kitutil.Marshal(callID)
-		if err != nil {
-			return dto.GeminiPart{}, fmt.Errorf("failed to marshal function response ID: %w", err)
-		}
-		response.ID = id
-	}
 	return dto.GeminiPart{
-		FunctionResponse: response,
-	}, nil
+		FunctionResponse: &dto.GeminiFunctionResponse{
+			Name:     name,
+			Response: GeminiResponseMap(item["output"]),
+		},
+	}
 }
 
 func appendGeminiContentPart(req *dto.GeminiChatRequest, role string, part dto.GeminiPart) {

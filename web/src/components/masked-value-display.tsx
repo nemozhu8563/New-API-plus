@@ -5,21 +5,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-
-export function MaskedValueTrigger(props: ComponentProps<typeof Button>) {
-  return (
-    <Button
-      variant='ghost'
-      size='sm'
-      {...props}
-      className={cn(
-        'text-muted-foreground h-7 max-w-full min-w-0 justify-start truncate px-0 font-mono text-xs hover:bg-transparent aria-expanded:bg-transparent',
-        props.className
-      )}
-    />
-  )
-}
 
 interface MaskedValueDisplayProps {
   /** 弹层内标题，如 "Full API Key" / "Full Code" */
@@ -41,7 +26,15 @@ export function MaskedValueDisplay(props: MaskedValueDisplayProps) {
   return (
     <div className='flex max-w-full min-w-0 items-center'>
       <Popover>
-        <PopoverTrigger render={<MaskedValueTrigger />}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 max-w-full min-w-0 justify-start truncate px-0 font-mono hover:bg-transparent aria-expanded:bg-transparent'
+            />
+          }
+        >
           <span className='truncate'>{props.maskedValue}</span>
         </PopoverTrigger>
         <PopoverContent

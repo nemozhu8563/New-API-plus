@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { handleServerError } from '@/lib/handle-server-error'
-import { requireServerSuccess } from '@/lib/server-error-message'
+import { toast } from 'sonner'
 
 import { getUserGroups, getUserModels } from '../api'
 import {
@@ -41,8 +39,7 @@ export function usePlaygroundOptions({
     isLoading: isLoadingModels,
   } = useQuery({
     queryKey: ['playground-models', currentGroup],
-    queryFn: async () =>
-      requireServerSuccess(await getUserModels(currentGroup)),
+    queryFn: () => getUserModels(currentGroup),
     enabled: currentGroup !== '',
   })
 
@@ -52,14 +49,13 @@ export function usePlaygroundOptions({
     isError: isGroupsError,
   } = useQuery({
     queryKey: ['playground-groups'],
-    queryFn: async () => requireServerSuccess(await getUserGroups()),
+    queryFn: getUserGroups,
   })
 
   useEffect(() => {
     if (!isModelsError) return
 
-    handleServerError(
-      modelsError,
+    toast.error(
       getOptionLoadErrorMessage(
         modelsError,
         t('Failed to load playground models')
@@ -70,8 +66,7 @@ export function usePlaygroundOptions({
   useEffect(() => {
     if (!isGroupsError) return
 
-    handleServerError(
-      groupsError,
+    toast.error(
       getOptionLoadErrorMessage(
         groupsError,
         t('Failed to load playground groups')

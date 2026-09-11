@@ -49,7 +49,7 @@ func ValidateTOTPCode(secret, code string) bool {
 func GenerateBackupCodes() ([]string, error) {
 	codes := make([]string, BackupCodeCount)
 
-	for i := range BackupCodeCount {
+	for i := 0; i < BackupCodeCount; i++ {
 		code, err := generateRandomBackupCode()
 		if err != nil {
 			return nil, err

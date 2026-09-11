@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Plus, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
-import { ErrorState } from '@/components/error-state'
-import { LoadingState } from '@/components/loading-state'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,7 +15,6 @@ import {
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { createServerError } from '@/lib/server-error-message'
 
 import { getMissingModels } from '../../api'
 import { DEFAULT_PAGE_SIZE } from '../../constants'
@@ -40,15 +37,9 @@ export function MissingModelsDialog({
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: modelsQueryKeys.missing(),
-    queryFn: async () => {
-      const response = await getMissingModels()
-      if (!response.success) {
-        throw createServerError(response, t('Operation failed'))
-      }
-      return response
-    },
+    queryFn: getMissingModels,
     enabled: open,
   })
 
@@ -114,11 +105,6 @@ export function MissingModelsDialog({
       contentHeight='min(74vh, 760px)'
       bodyClassName='space-y-4'
       initialFocus={!isMobile}
-      footer={
-        <Button variant='outline' onClick={() => setOpen('sync-wizard')}>
-          {t('Sync missing metadata')}
-        </Button>
-      }
     >
       {isLoading && (
         <div className='flex items-center justify-center py-12'>

@@ -1,5 +1,4 @@
 .idea
-.review
 .vscode
 .zed
 .history
@@ -8,8 +7,6 @@ upload
 *.db
 build
 *.db-journal
-*.db-shm
-*.db-wal
 logs
 node_modules/
 web/dist

@@ -25,7 +25,7 @@ func TestApplyChannelAffinityOverrideTemplate_NoTemplate(t *testing.T) {
 	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 		RuleName: "rule-no-template",
 	})
-	base := map[string]any{
+	base := map[string]interface{}{
 		"temperature": 0.7,
 	}
 
@@ -37,7 +37,7 @@ func TestApplyChannelAffinityOverrideTemplate_NoTemplate(t *testing.T) {
 func TestApplyChannelAffinityOverrideTemplate_MergeTemplate(t *testing.T) {
 	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 		RuleName: "rule-with-template",
-		ParamTemplate: map[string]any{
+		ParamTemplate: map[string]interface{}{
 			"temperature": 0.2,
 			"top_p":       0.95,
 		},
@@ -49,7 +49,7 @@ func TestApplyChannelAffinityOverrideTemplate_MergeTemplate(t *testing.T) {
 		KeyHint:        "abcd...wxyz",
 		KeyFingerprint: "abcd1234",
 	})
-	base := map[string]any{
+	base := map[string]interface{}{
 		"temperature": 0.7,
 		"max_tokens":  2000,
 	}
@@ -63,11 +63,11 @@ func TestApplyChannelAffinityOverrideTemplate_MergeTemplate(t *testing.T) {
 
 	anyInfo, ok := ctx.Get(ginKeyChannelAffinityLogInfo)
 	require.True(t, ok)
-	info, ok := anyInfo.(map[string]any)
+	info, ok := anyInfo.(map[string]interface{})
 	require.True(t, ok)
 	overrideInfoAny, ok := info["override_template"]
 	require.True(t, ok)
-	overrideInfo, ok := overrideInfoAny.(map[string]any)
+	overrideInfo, ok := overrideInfoAny.(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, true, overrideInfo["applied"])
 	require.Equal(t, "rule-with-template", overrideInfo["rule_name"])
@@ -77,8 +77,8 @@ func TestApplyChannelAffinityOverrideTemplate_MergeTemplate(t *testing.T) {
 func TestApplyChannelAffinityOverrideTemplate_MergeOperations(t *testing.T) {
 	ctx := buildChannelAffinityTemplateContextForTest(channelAffinityMeta{
 		RuleName: "rule-with-ops-template",
-		ParamTemplate: map[string]any{
-			"operations": []map[string]any{
+		ParamTemplate: map[string]interface{}{
+			"operations": []map[string]interface{}{
 				{
 					"mode":  "pass_headers",
 					"value": []string{"Originator"},
@@ -86,9 +86,9 @@ func TestApplyChannelAffinityOverrideTemplate_MergeOperations(t *testing.T) {
 			},
 		},
 	})
-	base := map[string]any{
+	base := map[string]interface{}{
 		"temperature": 0.7,
-		"operations": []map[string]any{
+		"operations": []map[string]interface{}{
 			{
 				"path":  "model",
 				"mode":  "trim_prefix",
@@ -103,15 +103,15 @@ func TestApplyChannelAffinityOverrideTemplate_MergeOperations(t *testing.T) {
 
 	opsAny, ok := merged["operations"]
 	require.True(t, ok)
-	ops, ok := opsAny.([]any)
+	ops, ok := opsAny.([]interface{})
 	require.True(t, ok)
 	require.Len(t, ops, 2)
 
-	firstOp, ok := ops[0].(map[string]any)
+	firstOp, ok := ops[0].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, "pass_headers", firstOp["mode"])
 
-	secondOp, ok := ops[1].(map[string]any)
+	secondOp, ok := ops[1].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, "trim_prefix", secondOp["mode"])
 }
@@ -327,7 +327,7 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, 9527, channelID)
 
-	baseOverride := map[string]any{
+	baseOverride := map[string]interface{}{
 		"temperature": 0.2,
 	}
 	mergedOverride, applied := ApplyChannelAffinityOverrideTemplate(ctx, baseOverride)
@@ -342,7 +342,7 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 		},
 		ChannelMeta: &relaycommon.ChannelMeta{
 			ParamOverride: mergedOverride,
-			HeadersOverride: map[string]any{
+			HeadersOverride: map[string]interface{}{
 				"X-Static": "legacy-static",
 			},
 		},

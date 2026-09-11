@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import i18next from 'i18next'
 import { useEffect } from 'react'
+import { toast } from 'sonner'
 
 import { wechatLoginByCode } from '@/features/auth/api'
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
@@ -32,14 +33,18 @@ function OAuthComponent() {
             navigate({ href: target, replace: true })
             return
           }
-          throw createServerError(res, i18next.t('OAuth failed'))
+          if (getServerErrorMessageKey(res)) {
+            navigate({ to: '/sign-in', replace: true })
+            return
+          }
         }
-        handleServerError(new AuthOperationError(i18next.t('OAuth failed')))
       } catch (error: unknown) {
-        handleServerError(
-          AuthOperationError.from(error, i18next.t('OAuth failed'))
-        )
+        if (getServerErrorMessageKey(error)) {
+          navigate({ to: '/sign-in', replace: true })
+          return
+        }
       }
+      toast.error(i18next.t('OAuth failed'))
       navigate({ to: '/sign-in', replace: true })
     })()
   }, [navigate, search])

@@ -39,7 +39,14 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -698,16 +705,43 @@ export function AdvancedCustomEditorDialog({
               </p>
             </div>
             <div className='flex flex-wrap gap-2'>
-              <Combobox
-options={availableIncomingPathOptions}
-value=''
-onValueChange={(incomingPath) => {
+              <Select
+                items={availableIncomingPathOptions}
+                value={null}
+                onValueChange={(incomingPath) => {
                   if (typeof incomingPath === 'string') addRoute(incomingPath)
                 }}
-disabled={availableIncomingPathOptions.length === 0}
-className='w-full'
-placeholder={t('Add route')}
-/>
+              >
+                <SelectTrigger
+                  size='sm'
+                  disabled={availableIncomingPathOptions.length === 0}
+                >
+                  <Plus data-icon='inline-start' />
+                  <SelectValue placeholder={t('Add route')} />
+                </SelectTrigger>
+                <SelectContent
+                  align='end'
+                  alignItemWithTrigger={false}
+                  className={longSelectContentClass}
+                >
+                  <SelectGroup>
+                    {availableIncomingPathOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        className={longSelectItemClass}
+                      >
+                        <div className='flex min-w-0 flex-col gap-1 leading-snug whitespace-normal'>
+                          <span>{option.label}</span>
+                          <span className='text-muted-foreground font-mono text-xs break-all'>
+                            {option.value}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
               <Select
                 value={null}
                 onValueChange={(value) => {
@@ -1102,6 +1136,7 @@ function RouteGroupEditor({
   const { t } = useTranslation()
   const incomingPath = group.incomingPath || '/v1/chat/completions'
   const isModelListGroup = incomingPath === ADVANCED_CUSTOM_MODEL_LIST_PATH
+  const incomingPathLabel = getAdvancedCustomIncomingPathLabel(incomingPath)
   const catchAllRoute = group.routeRows.find((routeRow) =>
     isCatchAllRoute(routeRow.route)
   )
@@ -1149,32 +1184,46 @@ function RouteGroupEditor({
                 </Badge>
               ) : null}
             </div>
-            <Combobox
-options={ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS.map((option) => ({
-  ...option,
-  description: option.value,
-  disabled: (option.value !== incomingPath && usedIncomingPaths.has(option.value)) ||
-    (option.value === ADVANCED_CUSTOM_MODEL_LIST_PATH && group.routeRows.length > 1),
-}))}
-value={incomingPath}
-onValueChange={onIncomingPathChange}
-className='h-9 max-w-full lg:max-w-[420px]'
-/>
+            <Select
+              items={ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS}
+              value={incomingPath}
+              onValueChange={onIncomingPathChange}
+            >
+              <SelectTrigger className='h-9 max-w-full lg:max-w-[420px]'>
+                <SelectValue className='min-w-0 truncate'>
+                  {incomingPathLabel}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                alignItemWithTrigger={false}
+                className={longSelectContentClass}
+              >
+                <SelectGroup>
+                  {ADVANCED_CUSTOM_INCOMING_PATH_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={
+                        (option.value !== incomingPath &&
+                          usedIncomingPaths.has(option.value)) ||
+                        (option.value === ADVANCED_CUSTOM_MODEL_LIST_PATH &&
+                          group.routeRows.length > 1)
+                      }
+                      className={longSelectItemClass}
+                    >
+                      <div className='flex min-w-0 flex-col gap-1 leading-snug whitespace-normal'>
+                        <span>{option.label}</span>
+                        <span className='text-muted-foreground font-mono text-xs break-all'>
+                          {option.value}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-      ) : null}
 
-      <div className={cn('px-3 py-2', !hideHeader && 'border-t')}>
-        <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-          <p className='text-muted-foreground text-xs leading-relaxed'>
-            {isModelListGroup
-              ? t(
-                  'This route discovers upstream OpenAI models and cannot be split or matched by client model rules.'
-                )
-              : t(
-                  'Routes with the same incoming path are split by client model rules. Unmatched requests use the final fallback.'
-                )}
-          </p>
           {!isModelListGroup ? (
             <Button
               type='button'
@@ -1182,11 +1231,23 @@ className='h-9 max-w-full lg:max-w-[420px]'
               size='sm'
               onClick={onAddRoute}
             >
-              <Plus data-icon='inline-start' aria-hidden='true' />
+              <Plus data-icon='inline-start' />
               {t('Add split')}
             </Button>
           ) : null}
         </div>
+      ) : null}
+
+      <div className={cn('px-3 py-2', !hideHeader && 'border-t')}>
+        <p className='text-muted-foreground text-xs leading-relaxed'>
+          {isModelListGroup
+            ? t(
+                'This route discovers upstream OpenAI models and cannot be split or matched by client model rules.'
+              )
+            : t(
+                'Routes with the same incoming path are split by client model rules. Unmatched requests use the final fallback.'
+              )}
+        </p>
         {groupHasError && validationError ? (
           <p className='text-destructive mt-1 text-xs'>
             {validationError.routeIndex !== undefined

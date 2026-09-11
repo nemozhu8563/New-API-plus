@@ -16,12 +16,19 @@ import {
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -31,7 +38,6 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
-import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   getAdminPlans,
@@ -120,18 +126,10 @@ export function UserSubscriptionsDialog(props: Props) {
         getAdminPlans(),
         getUserSubscriptions(props.user.id),
       ])
-      if (plansRes.success) {
-        setPlans(plansRes.data || [])
-      } else {
-        handleServerError(plansRes)
-      }
-      if (subsRes.success) {
-        setSubs(subsRes.data || [])
-      } else {
-        handleServerError(subsRes)
-      }
-    } catch (error) {
-      handleServerError(error, t('Loading failed'))
+      if (plansRes.success) setPlans(plansRes.data || [])
+      if (subsRes.success) setSubs(subsRes.data || [])
+    } catch {
+      toast.error(t('Loading failed'))
     } finally {
       setLoading(false)
     }
@@ -159,11 +157,9 @@ export function UserSubscriptionsDialog(props: Props) {
         setSelectedPlanId('')
         await loadData()
         props.onSuccess?.()
-      } else {
-        handleServerError(res)
       }
-    } catch (error) {
-      handleServerError(error, t('Request failed'))
+    } catch {
+      toast.error(t('Request failed'))
     } finally {
       setCreating(false)
     }
@@ -178,8 +174,6 @@ export function UserSubscriptionsDialog(props: Props) {
           toast.success(res.data?.message || t('Has been invalidated'))
           await loadData()
           props.onSuccess?.()
-        } else {
-          handleServerError(res)
         }
       } else {
         const res = await deleteUserSubscription(confirmAction.subId)
@@ -187,12 +181,10 @@ export function UserSubscriptionsDialog(props: Props) {
           toast.success(t('Deleted'))
           await loadData()
           props.onSuccess?.()
-        } else {
-          handleServerError(res)
         }
       }
-    } catch (error) {
-      handleServerError(error, t('Operation failed'))
+    } catch {
+      toast.error(t('Operation failed'))
     } finally {
       setConfirmAction(null)
     }
@@ -214,11 +206,9 @@ export function UserSubscriptionsDialog(props: Props) {
         )
         await loadData()
         props.onSuccess?.()
-      } else {
-        handleServerError(res)
       }
-    } catch (error) {
-      handleServerError(error, t('Operation failed'))
+    } catch {
+      toast.error(t('Operation failed'))
     } finally {
       setResetting(false)
       setResetAction(null)
@@ -238,8 +228,8 @@ export function UserSubscriptionsDialog(props: Props) {
 
           <div className={sideDrawerFormClassName()}>
             <div className='flex gap-2'>
-              <Combobox
-                options={plans.map((p) => ({
+              <Select
+                items={plans.map((p) => ({
                   value: String(p.plan.id),
                   label: (
                     <>
