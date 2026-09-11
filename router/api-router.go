@@ -110,6 +110,14 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", middleware.UserCriticalRateLimit("security-verification"), middleware.DisableCache(), controller.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", middleware.DisableCache(), controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.GET("/affiliate/summary", controller.GetAffiliateSummary)
+				selfRoute.GET("/affiliate/commissions", controller.GetAffiliateCommissions)
+				selfRoute.GET("/affiliate/invitees", controller.GetAffiliateInvitees)
+				selfRoute.GET("/affiliate/redemptions", controller.GetAffiliateRedemptions)
+				selfRoute.GET("/affiliate/conversions", controller.GetAffiliateConversions)
+				selfRoute.POST("/affiliate/convert", middleware.CriticalRateLimit(), controller.ConvertAffiliateCashback)
+				selfRoute.GET("/affiliate/withdrawals", controller.GetAffiliateWithdrawals)
+				selfRoute.POST("/affiliate/withdrawals", middleware.CriticalRateLimit(), controller.CreateAffiliateWithdrawal)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
@@ -165,10 +173,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Subscription billing (plans, purchase, admin management)
+		apiRouter.GET("/subscription/plans", controller.GetSubscriptionPlans)
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())
 		{
-			subscriptionRoute.GET("/plans", controller.GetSubscriptionPlans)
 			subscriptionRoute.GET("/self", controller.GetSubscriptionSelf)
 			subscriptionRoute.PUT("/self/preference", controller.UpdateSubscriptionPreference)
 			subscriptionRoute.POST("/balance/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestBalancePay)
@@ -305,6 +313,20 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		apiRouter.GET("/audit", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.AuditRead), controller.GetAuditLogs)
 		apiRouter.GET("/audit/self", middleware.DisableCache(), middleware.UserAuth(), controller.GetAuditLogs)
+		affiliateRoute := apiRouter.Group("/affiliate")
+		affiliateRoute.Use(middleware.AdminAuth())
+		{
+			affiliateRoute.GET("/agents", controller.AdminListAffiliateAgents)
+			affiliateRoute.GET("/agents/:user_id", controller.AdminGetAffiliateAgent)
+			affiliateRoute.PUT("/agents/:user_id", middleware.CriticalRateLimit(), controller.AdminUpdateAffiliateAgent)
+			affiliateRoute.GET("/invitations", controller.AdminListAffiliateInvitations)
+			affiliateRoute.GET("/redemptions", controller.AdminListAffiliateRedemptions)
+			affiliateRoute.GET("/commissions", controller.AdminListAffiliateCommissions)
+			affiliateRoute.GET("/conversions", controller.AdminListAffiliateConversions)
+			affiliateRoute.GET("/withdrawals", controller.AdminListAffiliateWithdrawals)
+			affiliateRoute.POST("/withdrawals/:id/pay", middleware.CriticalRateLimit(), controller.AdminPayAffiliateWithdrawal)
+			affiliateRoute.POST("/withdrawals/:id/reject", middleware.CriticalRateLimit(), controller.AdminRejectAffiliateWithdrawal)
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
@@ -312,6 +334,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
+		logRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllLogsCSV)
+		logRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserLogsCSV)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
 		systemTaskRoute := apiRouter.Group("/system-task")
@@ -358,11 +382,15 @@ func SetApiRouter(router *gin.Engine) {
 
 		mjRoute := apiRouter.Group("/mj")
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
+		mjRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllMidjourneyCSV)
+		mjRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserMidjourneyCSV)
 		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
 
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
+			taskRoute.GET("/export", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.ExportAllTaskCSV)
+			taskRoute.GET("/self/export", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.ExportUserTaskCSV)
 			taskRoute.GET("", middleware.AdminAuth(), controller.GetAllTask)
 			taskRoute.GET("/:task_id/artifacts", middleware.UserAuth(), controller.GetDashboardTaskArtifacts)
 		}

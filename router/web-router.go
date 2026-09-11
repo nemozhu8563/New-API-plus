@@ -15,8 +15,9 @@ import (
 
 // WebAssets holds the embedded dashboard frontend assets.
 type WebAssets struct {
-	BuildFS   embed.FS
-	IndexPage []byte
+	BuildFS     embed.FS
+	IndexPage   []byte
+	SiteRuntime SiteRuntimeConfig
 }
 
 func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
@@ -36,7 +37,7 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 				return
 			}
 			c.Header("Cache-Control", "no-cache")
-			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.IndexPage)
+			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.SiteRuntime.RenderIndexPage(assets.IndexPage, c.Request))
 		},
 	)
 }

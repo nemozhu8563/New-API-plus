@@ -113,6 +113,7 @@ function buildSearchSourceKey(values: {
 
 interface CommonLogsFilterBarProps<TData> {
   table: Table<TData>
+  exportAction?: React.ReactNode
 }
 
 export function CommonLogsFilterBar<TData>(
@@ -487,7 +488,7 @@ export function CommonLogsFilterBar<TData>(
       table={props.table}
       compactMobile
       stats={statsBar}
-      actionStart={sensitiveToggle}
+      actionStart={<>{sensitiveToggle}{props.exportAction}</>}
       primaryFilters={
         <>
           {dateRangeFilter}

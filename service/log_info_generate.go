@@ -97,6 +97,10 @@ func AppendRelayLogAdminInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelRatio, groupRatio, completionRatio float64,
 	cacheTokens int, cacheRatio float64, modelPrice float64, userGroupRatio float64) *model.LogOther {
 	other := model.NewLogOther()
+	if len(relayInfo.RequestConversionMeta) > 0 {
+		other.SetPublic("request_conversion_meta", relayInfo.RequestConversionMeta)
+	}
+
 	other.SetPublic("model_ratio", modelRatio)
 	other.SetPublic("group_ratio", groupRatio)
 	other.SetPublic("completion_ratio", completionRatio)

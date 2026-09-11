@@ -229,14 +229,45 @@ var userBindColumns = map[string]bool{
 // 绑定操作必须只写绑定列：若改为“读取完整用户 → 改一个字段 → 整体更新”，
 // 读快照期间并发发生的封禁、降权或分组变更会被旧快照覆盖恢复。
 // 角色、状态、分组只允许通过各自带锁/CAS 的专用方法修改。
+var externalIdentityProvidersByColumn = map[string]string{
+	"github_id":   ExternalIdentityProviderGitHub,
+	"oidc_id":     ExternalIdentityProviderOIDC,
+	"telegram_id": ExternalIdentityProviderTelegram,
+}
+
 func UpdateUserBindColumn(userId int, column string, value string) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return UpdateUserBindColumnWithTx(tx, userId, column, value)
+	})
+}
+
+// UpdateUserBindColumnWithTx updates one built-in provider binding inside the
+// caller's transaction. Providers backed by ExternalIdentityClaim claim their
+// subject before the users-table column is written, so competing binds cannot
+// both succeed.
+func UpdateUserBindColumnWithTx(tx *gorm.DB, userId int, column string, value string) error {
+	if tx == nil {
+		return errors.New("database transaction is empty")
+	}
 	if userId <= 0 {
 		return errors.New("id 为空！")
 	}
 	if !userBindColumns[column] {
 		return fmt.Errorf("invalid user bind column: %s", column)
 	}
-	return DB.Model(&User{}).Where("id = ?", userId).Update(column, value).Error
+	if err := LockUserForOAuthBindingWithTx(tx, userId); err != nil {
+		return err
+	}
+	if provider := externalIdentityProvidersByColumn[column]; provider != "" {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return errors.New("external identity is empty")
+		}
+		if err := ClaimExternalIdentityWithTx(tx, provider, value, userId); err != nil {
+			return err
+		}
+	}
+	return tx.Model(&User{}).Where("id = ?", userId).Update(column, value).Error
 }
 
 // 根据用户角色生成默认的边栏配置
@@ -1115,7 +1146,16 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 	if user.Id == 0 {
 		return errors.New("user id is empty")
 	}
-	return DB.Model(user).Update("github_id", newGitHubId).Error
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := ReleaseExternalIdentityWithTx(tx, ExternalIdentityProviderGitHub, user.Id); err != nil {
+			return err
+		}
+		return UpdateUserBindColumnWithTx(tx, user.Id, "github_id", newGitHubId)
+	}); err != nil {
+		return err
+	}
+	user.GitHubId = strings.TrimSpace(newGitHubId)
+	return nil
 }
 
 func (user *User) FillUserByDiscordId() error {

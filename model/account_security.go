@@ -128,7 +128,7 @@ func UpdateUserBindColumnForSessionWithTx(tx *gorm.DB, identity AuthSessionIdent
 	if count != 0 {
 		return ErrExternalIdentityAlreadyClaimed
 	}
-	return tx.Model(&User{}).Where("id = ?", identity.UserID).Update(column, value).Error
+	return UpdateUserBindColumnWithTx(tx, identity.UserID, column, value)
 }
 
 func UpdateUserOAuthBindingForSessionWithTx(tx *gorm.DB, identity AuthSessionIdentity, providerID int, subject string) error {

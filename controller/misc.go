@@ -190,11 +190,11 @@ func GetAbout(c *gin.Context) {
 }
 
 func GetUserAgreement(c *gin.Context) {
-	serveRevalidatedJSON(c, system_setting.GetLegalSettings().UserAgreement)
+	serveRevalidatedJSON(c, system_setting.GetLocalizedUserAgreement(c.Query("locale")))
 }
 
 func GetPrivacyPolicy(c *gin.Context) {
-	serveRevalidatedJSON(c, system_setting.GetLegalSettings().PrivacyPolicy)
+	serveRevalidatedJSON(c, system_setting.GetLocalizedPrivacyPolicy(c.Query("locale")))
 }
 
 func GetMidjourney(c *gin.Context) {

@@ -13,6 +13,7 @@ import (
 )
 
 func SetRouter(router *gin.Engine, assets WebAssets) {
+	SetSEORouter(router, assets.SiteRuntime)
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)

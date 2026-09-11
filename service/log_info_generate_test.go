@@ -21,5 +21,5 @@ func TestGenerateTextOtherInfoIncludesRequestConversionMeta(t *testing.T) {
 
 	other := GenerateTextOtherInfo(c, info, 0, 0, 0, 0, 0, 0, 0)
 
-	require.Equal(t, []string{"assistant_prefill_continuation"}, other["request_conversion_meta"])
+	require.Equal(t, []string{"assistant_prefill_continuation"}, other.Snapshot()["request_conversion_meta"])
 }

@@ -3,11 +3,6 @@ import type { CustomOAuthBinding } from '@/lib/oauth'
 import { authRequestOptions, authResult } from '@/lib/secure-verification'
 import type { LoginSession } from '@/stores/auth-store'
 
-export async function generateAccessToken(): Promise<{ success?: boolean; data?: string; message?: string }> {
-  const res = await api.post('/api/user/access-token')
-  return res.data
-}
-
 import { normalizeUserSettings } from './lib/user-settings'
 import type {
   ApiResponse,
