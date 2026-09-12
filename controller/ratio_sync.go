@@ -871,28 +871,35 @@ func isHeroHaoPricingEndpoint(rawURL string) bool {
 // selling/reference are intentionally ignored. Values are kept as returned
 // because this deployment treats the upstream CNY numbers as credit values.
 func convertHeroHaoOfficialPricing(reader io.Reader) (map[string]any, error) {
+	type heroHaoPricingModel struct {
+		Model   string `json:"model"`
+		Enabled *bool  `json:"enabled"`
+		Prices  struct {
+			Input struct {
+				Official string `json:"official"`
+			} `json:"input"`
+			Output struct {
+				Official string `json:"official"`
+			} `json:"output"`
+			CacheRead struct {
+				Official string `json:"official"`
+			} `json:"cacheRead"`
+			CacheWrite struct {
+				Official string `json:"official"`
+			} `json:"cacheWrite"`
+		} `json:"prices"`
+	}
 	var response struct {
-		Models []struct {
-			Model   string `json:"model"`
-			Enabled *bool  `json:"enabled"`
-			Prices  struct {
-				Input struct {
-					Official string `json:"official"`
-				} `json:"input"`
-				Output struct {
-					Official string `json:"official"`
-				} `json:"output"`
-				CacheRead struct {
-					Official string `json:"official"`
-				} `json:"cacheRead"`
-				CacheWrite struct {
-					Official string `json:"official"`
-				} `json:"cacheWrite"`
-			} `json:"prices"`
-		} `json:"models"`
+		Models []heroHaoPricingModel `json:"models"`
+		Token  struct {
+			Models []heroHaoPricingModel `json:"models"`
+		} `json:"token"`
 	}
 	if err := common.DecodeJson(reader, &response); err != nil {
 		return nil, fmt.Errorf("failed to decode HeroHao pricing response: %w", err)
+	}
+	if len(response.Models) == 0 {
+		response.Models = response.Token.Models
 	}
 	if len(response.Models) == 0 {
 		return nil, fmt.Errorf("empty HeroHao pricing response")
