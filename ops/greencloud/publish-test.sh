@@ -36,7 +36,9 @@ release_id=$4
 cd "$remote_dir"
 cp -p compose.yaml "backups/compose.before-$release_id.yaml"
 docker load < "import/$release_id/image.tar.gz"
-export NEW_API_IMAGE="$image"
+# The test compose pins an immutable image tag in compose.yaml; update that
+# source of truth before recreating the service.
+sed -i -E "s#^([[:space:]]*image:[[:space:]]*).*$#\1$image#" compose.yaml
 docker compose -f compose.yaml config >/dev/null
 docker compose -f compose.yaml up -d --no-deps --no-build --pull never --force-recreate "$service"
 REMOTE_SCRIPT
