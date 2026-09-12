@@ -307,12 +307,17 @@ func FetchUpstreamRatios(c *gin.Context) {
 				// stores its source type as "pricing", so override that value too.
 				if strings.EqualFold(mustHostname(chItem.BaseURL), "sub2.herohao.top") {
 					endpoint = "/pricing/api/pricing"
+					if parsed, err := url.Parse(chItem.BaseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+						fullURL = parsed.Scheme + "://" + parsed.Host + endpoint
+					}
 				} else if endpoint == "" {
 					endpoint = defaultEndpoint
 				} else if !strings.HasPrefix(endpoint, "/") {
 					endpoint = "/" + endpoint
 				}
-				fullURL = chItem.BaseURL + endpoint
+				if fullURL == "" {
+					fullURL = chItem.BaseURL + endpoint
+				}
 			}
 			isModelsDev := isModelsDevAPIEndpoint(fullURL)
 			isHeroHao := isHeroHaoPricingEndpoint(fullURL)
