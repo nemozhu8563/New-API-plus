@@ -303,12 +303,12 @@ func FetchUpstreamRatios(c *gin.Context) {
 			} else if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
 				fullURL = endpoint
 			} else {
-				if endpoint == "" {
-					if strings.EqualFold(mustHostname(chItem.BaseURL), "sub2.herohao.top") {
-						endpoint = "/pricing/api/pricing"
-					} else {
-						endpoint = defaultEndpoint
-					}
+				// HeroHao exposes pricing at a dedicated endpoint. The admin UI
+				// stores its source type as "pricing", so override that value too.
+				if strings.EqualFold(mustHostname(chItem.BaseURL), "sub2.herohao.top") {
+					endpoint = "/pricing/api/pricing"
+				} else if endpoint == "" {
+					endpoint = defaultEndpoint
 				} else if !strings.HasPrefix(endpoint, "/") {
 					endpoint = "/" + endpoint
 				}
