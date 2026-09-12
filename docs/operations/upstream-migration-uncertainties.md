@@ -23,3 +23,10 @@
 - 本次是本地代码合并和验证，没有进行生产部署、真实 Stripe 付款、Webhook、退款、争议或权益 E2E。
 - 未完成所有数据库迁移场景的完整 fresh/upgrade 双轮矩阵；已有矩阵仅覆盖本轮涉及的定向路径。
 - Task 主键上的历史 schema 约束冲突仍待单独数据库兼容性任务处理。
+
+## 2026-09-12 测试环境发布
+
+- 已通过 GreenCloud `root@173.249.203.66` 使用 `~/.ssh/greencloud_core_rsa2048` 部署，仅重建 `new-api-test`。
+- 远端镜像：`new-api:new-api-test-20260912T004726Z-510a0445e`，来源为合并提交 `510a0445e`。
+- 容器已回读为 `healthy`；本机 3001 端口和 `https://test.tryvalo.com/api/status` 均返回 `success: true`。
+- 发布前配置已备份到 `/srv/new-api-test/backups/new-api-test-20260912T0105Z-510a0445e/`；PostgreSQL、Redis 和生产环境未改动。
