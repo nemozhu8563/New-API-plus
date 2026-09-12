@@ -304,13 +304,18 @@ func FetchUpstreamRatios(c *gin.Context) {
 				fullURL = endpoint
 			} else {
 				if endpoint == "" {
-					endpoint = defaultEndpoint
+					if strings.EqualFold(mustHostname(chItem.BaseURL), "sub2.herohao.top") {
+						endpoint = "/pricing/api/pricing"
+					} else {
+						endpoint = defaultEndpoint
+					}
 				} else if !strings.HasPrefix(endpoint, "/") {
 					endpoint = "/" + endpoint
 				}
 				fullURL = chItem.BaseURL + endpoint
 			}
 			isModelsDev := isModelsDevAPIEndpoint(fullURL)
+			isHeroHao := isHeroHaoPricingEndpoint(fullURL)
 
 			uniqueName := chItem.Name
 			if chItem.ID != 0 {
@@ -400,6 +405,17 @@ func FetchUpstreamRatios(c *gin.Context) {
 				converted, err := convertModelsDevToRatioData(bytes.NewReader(bodyBytes))
 				if err != nil {
 					logger.LogWarn(c.Request.Context(), "models.dev parse failed from "+chItem.Name+": "+err.Error())
+					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
+					return
+				}
+				ch <- upstreamResult{Name: uniqueName, Data: converted}
+				return
+			}
+
+			if isHeroHao {
+				converted, err := convertHeroHaoOfficialPricing(bytes.NewReader(bodyBytes))
+				if err != nil {
+					logger.LogWarn(c.Request.Context(), "HeroHao pricing parse failed from "+chItem.Name+": "+err.Error())
 					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 					return
 				}
@@ -631,6 +647,14 @@ func FetchUpstreamRatios(c *gin.Context) {
 	})
 }
 
+func mustHostname(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
+}
+
 func buildDifferences(localData map[string]any, successfulChannels []struct {
 	name string
 	data map[string]any
@@ -832,6 +856,75 @@ func isModelsDevAPIEndpoint(rawURL string) bool {
 		path = "/"
 	}
 	return path == modelsDevPath
+}
+
+func isHeroHaoPricingEndpoint(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), "sub2.herohao.top") && strings.TrimSuffix(parsed.Path, "/") == "/pricing/api/pricing"
+}
+
+// convertHeroHaoOfficialPricing converts HeroHao's pricing document into the
+// local expression format. official values are the published base prices;
+// selling/reference are intentionally ignored. Values are kept as returned
+// because this deployment treats the upstream CNY numbers as credit values.
+func convertHeroHaoOfficialPricing(reader io.Reader) (map[string]any, error) {
+	var response struct {
+		Models []struct {
+			Model   string `json:"model"`
+			Enabled *bool  `json:"enabled"`
+			Prices  struct {
+				Input struct {
+					Official string `json:"official"`
+				} `json:"input"`
+				Output struct {
+					Official string `json:"official"`
+				} `json:"output"`
+				CacheRead struct {
+					Official string `json:"official"`
+				} `json:"cacheRead"`
+				CacheWrite struct {
+					Official string `json:"official"`
+				} `json:"cacheWrite"`
+			} `json:"prices"`
+		} `json:"models"`
+	}
+	if err := common.DecodeJson(reader, &response); err != nil {
+		return nil, fmt.Errorf("failed to decode HeroHao pricing response: %w", err)
+	}
+	if len(response.Models) == 0 {
+		return nil, fmt.Errorf("empty HeroHao pricing response")
+	}
+	expressions := make(map[string]any)
+	modes := make(map[string]any)
+	for _, item := range response.Models {
+		if item.Model == "" || (item.Enabled != nil && !*item.Enabled) {
+			continue
+		}
+		input, err := strconv.ParseFloat(item.Prices.Input.Official, 64)
+		if err != nil || input < 0 {
+			continue
+		}
+		output, err := strconv.ParseFloat(item.Prices.Output.Official, 64)
+		if err != nil || output < 0 {
+			continue
+		}
+		expr := fmt.Sprintf("p * %g + c * %g", input, output)
+		if cache, err := strconv.ParseFloat(item.Prices.CacheRead.Official, 64); err == nil && cache >= 0 && cache != input {
+			expr += fmt.Sprintf(" + cr * %g", cache)
+		}
+		if cache, err := strconv.ParseFloat(item.Prices.CacheWrite.Official, 64); err == nil && cache >= 0 && cache != input {
+			expr += fmt.Sprintf(" + cc * %g", cache)
+		}
+		expressions[item.Model] = expr
+		modes[item.Model] = billing_setting.BillingModeTieredExpr
+	}
+	if len(expressions) == 0 {
+		return nil, fmt.Errorf("no valid HeroHao official pricing entries")
+	}
+	return map[string]any{billing_setting.BillingModeField: modes, billing_setting.BillingExprField: expressions}, nil
 }
 
 // convertOpenRouterToRatioData parses OpenRouter's /v1/models response and converts
