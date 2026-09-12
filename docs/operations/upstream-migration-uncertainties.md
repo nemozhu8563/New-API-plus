@@ -1,20 +1,25 @@
 # Upstream 合并与模块验收
 
-目标：将官方 upstream/main bdef117505247769268b209665fb3ad7554c3da7 合入本地，并保护 Tryvalo、钱包、Stripe、订阅、计费和敏感词行为。当前分支尚未通过验收；本地检查不代表生产发布。
+更新时间：2026-09-12（Asia/Shanghai）
 
-## 当前执行计划
+## 已完成
 
-1. 删除合并时恢复的旧 profile 安全页面孤立组件：当前 /security 已承接绑定、账户删除、密码、2FA 与 Access Token。先核对引用，再使用新安全流程现有测试核验，避免旧接口绕过 proof。
-2. 将定价编辑器、输入组件和定价格式化工具迁移到 upstream 当前契约，保留本地钱包 Credits 与支付币种边界；运行定价回归。
-3. 接回站点运行时渲染及 SEO 路由，以真实嵌入根页面测试证明。
-4. 按 Go 失败测试分模块恢复本地事务、身份归属、渠道分组、日志与定价 schema 契约。每项修改用原失败用例和相邻测试验证。
-5. 执行根 Go、独立 relaykit、前端测试、类型检查、lint、format 和构建，更新 facts 后再报告完成。
+- 通过代理 `HTTP(S)_PROXY=http://127.0.0.1:10808` 更新官方远端 `upstream`。
+- 官方 `upstream/main` 当前提交为 `385d2dfd1`（safe multi-RP ID passkey support）。
+- 本地分支 `codex/upstream-integration-20260911` 已完成合并，提交为 `510a0445e`。
+- 冲突文件已逐项处理，未解决冲突为空；本地 Tryvalo、钱包、Stripe、订阅、计费、敏感词、affiliate、OAuth、站点运行时及渠道路由逻辑保留，同时吸收 upstream 的 passkey、插件、定价和渠道能力改动。
 
-## 尚待验证的冲突
+## 已验证
 
-- 钱包额度上限：累计钱包容量与单次计费 int32 饱和上限必须分离，不能通过放宽测试隐藏溢出。
-- OAuth：upstream proof 与 session 流程必须保持；本地 external identity 归属、独占绑定与 OIDC 回调域名需共同验证。
-- 订阅：余额购买、Stripe 支付限制、权益快照、退款和并发扣款契约需确认；SQLite/MySQL/PostgreSQL 兼容仍待验证。
-- Relay：标签覆盖、自动分组、首次预扣与渠道排除需恢复一致。
-- Plugin：usage schema、表达式、任务与分页日志导出需要端到端契约测试。
-- 现有摘要声称的部分提交和文档未出现在当前 HEAD；以当前 Git、代码和本轮结果为准。
+- 根模块 `go test ./...`：代码测试通过；一次并行运行中的 OAuth 用例出现状态竞争，单独重跑已通过。
+- `model`、`setting/ratio_setting` 定向测试通过。
+- `relaykit` 使用 `GOWORK=off` 独立构建与测试通过。
+- 前端 `bun run typecheck`、`bun run lint`、`bun run format:check`、`bun run build` 通过；lint 仅保留 warning。
+- SQLite、MySQL 8.4、PostgreSQL 16 的既有定向迁移/审计/模型矩阵已通过。
+
+## 保留的不确定项
+
+- 前端全量测试仍有旧断言与 upstream 新 UI 结构不一致，集中于 setup guide、pricing model cards、task price display、model mapping editor；未用回滚产品功能的方式掩盖这些差异。
+- 本次是本地代码合并和验证，没有进行生产部署、真实 Stripe 付款、Webhook、退款、争议或权益 E2E。
+- 未完成所有数据库迁移场景的完整 fresh/upgrade 双轮矩阵；已有矩阵仅覆盖本轮涉及的定向路径。
+- Task 主键上的历史 schema 约束冲突仍待单独数据库兼容性任务处理。
