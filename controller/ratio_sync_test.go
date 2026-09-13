@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,6 +15,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 )
+
+func TestConvertHeroHaoOfficialPricingPreservesDeepSeekTiers(t *testing.T) {
+	body := []byte(`{"models":[{"model":"deepseek-v4-flash-0731","prices":{"input":{"official":"1.0000"},"output":{"official":"4.0000"},"cacheRead":{"official":"0.0200"},"cacheWrite":{"official":"0.0000"}},"tiers":[{"label":"平常时段 · 北京时间 0–9时、12–14时、18–24时；周六全天、周日全天","prices":{"input":{"official":"1.0000"},"output":{"official":"4.0000"},"cacheRead":{"official":"0.0200"},"cacheWrite":{"official":"0.0000"}}},{"label":"工作日高峰期 · 北京时间 9–12时、14–18时","prices":{"input":{"official":"2.0000"},"output":{"official":"8.0000"},"cacheRead":{"official":"0.0400"},"cacheWrite":{"official":"0.0000"}}}]}]}`)
+	data, err := convertHeroHaoOfficialPricing(bytes.NewReader(body))
+	require.NoError(t, err)
+	expr := valueMap(data[billing_setting.BillingExprField])["deepseek-v4-flash-0731"]
+	assert.Equal(t, `((weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") <= 5) && ((hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12) || (hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18))) ? tier("peak", p * 2 + c * 8 + cr * 0.04 + cc * 0) : tier("off_peak", p * 1 + c * 4 + cr * 0.02 + cc * 0)`, expr)
+}
 
 func TestPricingSyncExpressionPriority(t *testing.T) {
 	expression := `tier("base", p * 2 + c * 8 + cr * 0)`

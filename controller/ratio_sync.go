@@ -871,29 +871,34 @@ func isHeroHaoPricingEndpoint(rawURL string) bool {
 	return strings.EqualFold(parsed.Hostname(), "sub2.herohao.top") && strings.TrimSuffix(parsed.Path, "/") == "/pricing/api/pricing"
 }
 
+type heroHaoPrice struct {
+	Official string `json:"official"`
+}
+
+type heroHaoPrices struct {
+	Input      heroHaoPrice `json:"input"`
+	Output     heroHaoPrice `json:"output"`
+	CacheRead  heroHaoPrice `json:"cacheRead"`
+	CacheWrite heroHaoPrice `json:"cacheWrite"`
+}
+
+type heroHaoTier struct {
+	Label  string        `json:"label"`
+	Prices heroHaoPrices `json:"prices"`
+}
+
+type heroHaoPricingModel struct {
+	Model   string        `json:"model"`
+	Enabled *bool         `json:"enabled"`
+	Prices  heroHaoPrices `json:"prices"`
+	Tiers   []heroHaoTier `json:"tiers"`
+}
+
 // convertHeroHaoOfficialPricing converts HeroHao's pricing document into the
 // local expression format. official values are the published base prices;
 // selling/reference are intentionally ignored. Values are kept as returned
 // because this deployment treats the upstream CNY numbers as credit values.
 func convertHeroHaoOfficialPricing(reader io.Reader) (map[string]any, error) {
-	type heroHaoPricingModel struct {
-		Model   string `json:"model"`
-		Enabled *bool  `json:"enabled"`
-		Prices  struct {
-			Input struct {
-				Official string `json:"official"`
-			} `json:"input"`
-			Output struct {
-				Official string `json:"official"`
-			} `json:"output"`
-			CacheRead struct {
-				Official string `json:"official"`
-			} `json:"cacheRead"`
-			CacheWrite struct {
-				Official string `json:"official"`
-			} `json:"cacheWrite"`
-		} `json:"prices"`
-	}
 	var response struct {
 		Models []heroHaoPricingModel `json:"models"`
 		Token  struct {
@@ -923,12 +928,9 @@ func convertHeroHaoOfficialPricing(reader io.Reader) (map[string]any, error) {
 		if err != nil || output < 0 {
 			continue
 		}
-		expr := fmt.Sprintf("p * %g + c * %g", input, output)
-		if cache, err := strconv.ParseFloat(item.Prices.CacheRead.Official, 64); err == nil && cache >= 0 && cache != input {
-			expr += fmt.Sprintf(" + cr * %g", cache)
-		}
-		if cache, err := strconv.ParseFloat(item.Prices.CacheWrite.Official, 64); err == nil && cache >= 0 && cache != input {
-			expr += fmt.Sprintf(" + cc * %g", cache)
+		expr := heroHaoTokenExpression(input, output, item.Prices.CacheRead.Official, item.Prices.CacheWrite.Official)
+		if tierExpr, ok := heroHaoTieredExpression(item.Tiers); ok {
+			expr = tierExpr
 		}
 		expressions[item.Model] = expr
 		modes[item.Model] = billing_setting.BillingModeTieredExpr
@@ -937,6 +939,60 @@ func convertHeroHaoOfficialPricing(reader io.Reader) (map[string]any, error) {
 		return nil, fmt.Errorf("no valid HeroHao official pricing entries")
 	}
 	return map[string]any{billing_setting.BillingModeField: modes, billing_setting.BillingExprField: expressions}, nil
+}
+
+func heroHaoTokenExpression(input, output float64, cacheRead, cacheWrite string) string {
+	expr := fmt.Sprintf("p * %g + c * %g", input, output)
+	if cache, err := strconv.ParseFloat(cacheRead, 64); err == nil && cache >= 0 && cache != input {
+		expr += fmt.Sprintf(" + cr * %g", cache)
+	}
+	if cache, err := strconv.ParseFloat(cacheWrite, 64); err == nil && cache >= 0 && cache != input {
+		expr += fmt.Sprintf(" + cc * %g", cache)
+	}
+	return expr
+}
+
+// heroHaoTieredExpression preserves the two DeepSeek schedules published by
+// HeroHao: weekday peak hours (09–12 and 14–18, Asia/Shanghai) and the
+// off-peak schedule covering all other times. Unknown tier layouts fall back
+// to the model's base official price so a provider-side format change cannot
+// silently invent a billing rule.
+func heroHaoTieredExpression(tiers []heroHaoTier) (string, bool) {
+	if len(tiers) != 2 {
+		return "", false
+	}
+	peakIndex := -1
+	for i := range tiers {
+		if strings.Contains(tiers[i].Label, "高峰") {
+			peakIndex = i
+			break
+		}
+	}
+	if peakIndex < 0 {
+		return "", false
+	}
+	offPeakIndex := 1 - peakIndex
+	peak, ok := heroHaoTierExpression(tiers[peakIndex])
+	if !ok {
+		return "", false
+	}
+	offPeak, ok := heroHaoTierExpression(tiers[offPeakIndex])
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("((weekday(\"Asia/Shanghai\") >= 1 && weekday(\"Asia/Shanghai\") <= 5) && ((hour(\"Asia/Shanghai\") >= 9 && hour(\"Asia/Shanghai\") < 12) || (hour(\"Asia/Shanghai\") >= 14 && hour(\"Asia/Shanghai\") < 18))) ? tier(\"peak\", %s) : tier(\"off_peak\", %s)", peak, offPeak), true
+}
+
+func heroHaoTierExpression(tier heroHaoTier) (string, bool) {
+	input, err := strconv.ParseFloat(tier.Prices.Input.Official, 64)
+	if err != nil || input < 0 {
+		return "", false
+	}
+	output, err := strconv.ParseFloat(tier.Prices.Output.Official, 64)
+	if err != nil || output < 0 {
+		return "", false
+	}
+	return heroHaoTokenExpression(input, output, tier.Prices.CacheRead.Official, tier.Prices.CacheWrite.Official), true
 }
 
 // convertOpenRouterToRatioData parses OpenRouter's /v1/models response and converts
