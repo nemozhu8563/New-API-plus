@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useNavigate } from '@tanstack/react-router'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import { useState } from 'react'
@@ -11,6 +29,9 @@ import { Label } from '@/components/ui/label'
 import { useCountdown } from '@/hooks/use-countdown'
 import { api } from '@/lib/api'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { handleServerError } from '@/lib/handle-server-error'
+import { AuthOperationError } from '@/lib/secure-verification'
+import { createServerError } from '@/lib/server-error-message'
 
 import { AuthLayout } from '../auth-layout'
 
@@ -64,9 +85,11 @@ export function ResetPasswordConfirm({
         } else {
           toast.success(t('Password reset: {{password}}', { password }))
         }
+      } else {
+        handleServerError(createServerError(res.data, t('Request failed')))
       }
-    } catch {
-      // Errors handled by global interceptor
+    } catch (error) {
+      handleServerError(AuthOperationError.from(error))
     } finally {
       setLoading(false)
     }
@@ -85,15 +108,6 @@ export function ResetPasswordConfirm({
       )
       setTimeout(() => setCopied(false), 2000)
     }
-  }
-
-  let submitLabel = t('auth.resetPasswordConfirm.confirm')
-  if (newPassword) {
-    submitLabel = t('auth.resetPasswordConfirm.backToLogin')
-  } else if (isActive) {
-    submitLabel = t('auth.resetPasswordConfirm.retry', {
-      seconds: secondsLeft,
-    })
   }
 
   return (
@@ -170,7 +184,15 @@ export function ResetPasswordConfirm({
               newPassword ? false : loading || isActive || !isValidResetLink
             }
           >
-            {submitLabel}
+            {newPassword && t('auth.resetPasswordConfirm.backToLogin')}
+            {!newPassword &&
+              isActive &&
+              t('auth.resetPasswordConfirm.retry', {
+                seconds: secondsLeft,
+              })}
+            {!newPassword &&
+              !isActive &&
+              t('auth.resetPasswordConfirm.confirm')}
           </Button>
 
           {!newPassword && (

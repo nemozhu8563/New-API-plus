@@ -60,7 +60,6 @@ function subscriptionResponse(
       })),
       all_subscriptions: [],
 
-
       billing_debt: 0,
     },
   }
@@ -185,3 +184,15 @@ describe('dashboard summary cards', () => {
     queryClient.clear()
   })
 })
+
+vi.mock('@tanstack/react-router', () => ({
+  Link: (props: {
+    children: React.ReactNode
+    to: string
+    className?: string
+  }) => (
+    <a href={props.to} className={props.className}>
+      {props.children}
+    </a>
+  ),
+}))

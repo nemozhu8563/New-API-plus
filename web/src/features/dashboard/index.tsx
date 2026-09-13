@@ -1,5 +1,5 @@
-import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
-import { CreditCard, Eye, EyeOff } from 'lucide-react'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -299,53 +299,35 @@ export function Dashboard() {
     ) : null
   const sectionActions = modelActions ?? flowActions
 
+  if (activeSection === 'overview') {
+    return <OverviewDashboard />
+  }
+
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {activeSection === 'overview' ? (
-          <span className='flex flex-col gap-0.5'>
-            <span>{t(meta.titleKey)}</span>
-            <span className='text-muted-foreground text-xs font-normal'>
-              {t('Monitor balance, usage, and request volume')}
-            </span>
-          </span>
-        ) : (
-          t(meta.titleKey)
-        )}
-      </SectionPageLayout.Title>
-      {activeSection === 'overview' && (
-        <SectionPageLayout.Actions>
-          <Button size='sm' render={<Link to='/wallet' />}>
-            <CreditCard />
-            {t('Recharge')}
-          </Button>
-        </SectionPageLayout.Actions>
-      )}
+      <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-3 sm:space-y-4'>
-          {activeSection !== 'overview' && (
-            <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
-              {showSectionTabs ? (
-                <Tabs value={activeSection} onValueChange={handleSectionChange}>
-                  <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                    {visibleSections.map((section) => (
-                      <TabsTrigger key={section} value={section}>
-                        {t(SECTION_META[section].titleKey)}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              ) : (
-                <div />
-              )}
-              {sectionActions != null && (
-                <div className='flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2'>
-                  {sectionActions}
-                </div>
-              )}
-            </div>
-          )}
-          {activeSection === 'overview' && <OverviewDashboard />}
+          <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
+            {showSectionTabs ? (
+              <Tabs value={activeSection} onValueChange={handleSectionChange}>
+                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                  {visibleSections.map((section) => (
+                    <TabsTrigger key={section} value={section}>
+                      {t(SECTION_META[section].titleKey)}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            ) : (
+              <div />
+            )}
+            {sectionActions != null && (
+              <div className='flex shrink-0 flex-wrap items-center gap-1.5 sm:gap-2'>
+                {sectionActions}
+              </div>
+            )}
+          </div>
           {activeSection === 'models' && (
             <>
               <FadeIn>

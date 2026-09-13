@@ -21,7 +21,7 @@ type PaymentComplianceRequest struct {
 
 func requirePaymentCompliance(c *gin.Context) bool {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		c.JSON(http.StatusOK, gin.H{"success": false, "code": i18n.MsgPaymentComplianceRequired, "message": common.TranslateMessage(c, i18n.MsgPaymentComplianceRequired)})
 		return false
 	}
 	return true

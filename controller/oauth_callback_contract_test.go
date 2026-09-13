@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -70,6 +71,9 @@ func setupOAuthCallbackContractTest(t *testing.T) (*gorm.DB, *oauthCallbackContr
 		&model.User{},
 		&model.UserSession{},
 		&model.AuthFlow{},
+		&model.TwoFA{},
+		&model.PasskeyCredential{},
+		&model.AuditLog{},
 		&model.ExternalIdentityClaim{},
 		&model.Log{},
 	))
@@ -189,7 +193,19 @@ func TestOAuthBindRejectsIdentityOwnedByAnotherUserWithoutSwitchingLogin(t *test
 		Status: model.UserSessionStatusActive, RefreshHash: "existing-refresh-hash", LoginMethod: "password",
 		CreatedAt: now, LastActiveAt: now, ExpiresAt: now + 3600,
 	}).Error)
-	flowToken := createOAuthCallbackContractFlow(t, model.AuthFlowIntentBind, binder.Id, "binder-session")
+	identity := service.AuthIdentity{UserID: binder.Id, SessionID: "binder-session", UserAuthVersion: binder.AuthVersion, SessionVersion: 1}
+	operation := service.VerificationOperation{Scope: service.VerificationScopeAccountBind, Context: []byte(`{"provider":"oauth-callback-contract"}`)}
+	proof := issueSecurityEnrollmentProof(t, identity, operation, service.VerificationMethodPassword)
+	authorization, err := service.ConsumeOperationProof(proof, identity, operation)
+	require.NoError(t, err)
+	payload, err := common.Marshal(oauthFlowPayload{Authorization: authorization, SessionIdentity: &identity})
+	require.NoError(t, err)
+	flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
+		Purpose: model.AuthFlowPurposeOAuth, Provider: oauthCallbackContractProviderName,
+		Intent: model.AuthFlowIntentBind, UserId: binder.Id, SessionId: identity.SessionID,
+		Payload: string(payload), ExpiresAt: time.Now().Add(time.Minute),
+	})
+	require.NoError(t, err)
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

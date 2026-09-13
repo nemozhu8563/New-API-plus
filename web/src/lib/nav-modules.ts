@@ -1,4 +1,24 @@
-import { getStatus } from '@/lib/api'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import type { QueryClient } from '@tanstack/react-query'
+
+import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
@@ -124,26 +144,12 @@ export function parseHeaderNavModulesFromStatus(
   return parseHeaderNavModules(status?.HeaderNavModules)
 }
 
-function getCachedStatus(): Record<string, unknown> | null {
-  try {
-    if (typeof window === 'undefined') return null
-    const raw = window.localStorage.getItem('status')
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
-function cacheStatus(status: Record<string, unknown> | null): void {
-  try {
-    if (typeof window !== 'undefined' && status) {
-      window.localStorage.setItem('status', JSON.stringify(status))
-    }
-  } catch {
-    /* empty */
-  }
-}
-
+/**
+ * Resolve one module's access flags from an already-loaded status payload.
+ *
+ * Falls back to the module's default when status is missing or does not carry
+ * a `HeaderNavModules` entry for it.
+ */
 export function getModuleAccessFromStatus(
   status: Record<string, unknown> | null,
   module: HeaderNavModule
@@ -151,27 +157,53 @@ export function getModuleAccessFromStatus(
   return parseHeaderNavModulesFromStatus(status)[module] ?? DEFAULTS[module]
 }
 
+/**
+ * Read module access synchronously from the persisted status snapshot.
+ *
+ * For render paths that cannot await, such as deciding whether to show a nav
+ * item. Never issues a request; use {@link getModuleAccessForGuard} when the
+ * caller can await.
+ */
 export function getModuleAccess(module: HeaderNavModule): ModuleAccess {
-  return getModuleAccessFromStatus(getCachedStatus(), module)
+  return getModuleAccessFromStatus(readCachedStatus(), module)
 }
 
-export async function getFreshModuleAccess(
+/**
+ * Resolve module access for a router `beforeLoad` guard.
+ *
+ * Reads through the shared `['status']` cache, so a guard on a fresh page load
+ * reuses the request already started during boot instead of issuing its own.
+ *
+ * Fresh entries resolve immediately. Stale or invalidated entries await a
+ * shared refresh before deciding navigation; a background refresh cannot undo
+ * a redirect already made by a guard. The backend still authorizes requests.
+ *
+ * On failure this fails closed, reporting the module as disabled and
+ * auth-required.
+ */
+export async function getModuleAccessForGuard(
+  queryClient: QueryClient,
   module: HeaderNavModule
 ): Promise<ModuleAccess> {
   try {
-    const status = (await getStatus()) as Record<string, unknown> | null
-    cacheStatus(status)
+    const status = await queryClient.fetchQuery(statusQueryOptions)
     return getModuleAccessFromStatus(status, module)
   } catch {
     return { enabled: false, requireAuth: true }
   }
 }
 
+/**
+ * Whether an admin sidebar entry is enabled by `SidebarModulesAdmin`.
+ *
+ * Fails open: an absent, blank, or unparsable configuration keeps every module
+ * visible, so a status read that has not landed yet cannot blank the sidebar.
+ */
 export function isSidebarModuleEnabled(
   section: string,
   module: string
 ): boolean {
-  const status = getCachedStatus()
+  const status = readCachedStatus()
   if (!status) return true
 
   const raw = status.SidebarModulesAdmin

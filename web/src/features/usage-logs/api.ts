@@ -1,29 +1,40 @@
-import { api } from '@/lib/api'
+/*
+Copyright (C) 2023-2026 QuantumNous
 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { api, type ApiRequestConfig } from '@/lib/api'
+
+import { buildQueryParams } from './lib/query-params'
+import { parseTaskArtifactsResponse } from './lib/task-artifacts'
 import type {
+  LogCategory,
   GetLogsParams,
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
-  LogCategory,
+  TaskArtifactsResponse,
   UserInfo,
 } from './types'
 
 // ============================================================================
 // Generic API Helpers
 // ============================================================================
-
-function buildQueryParams(params: Record<string, unknown>): URLSearchParams {
-  const queryParams = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') {
-      queryParams.append(key, String(value))
-    }
-  }
-  return queryParams
-}
 
 function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
@@ -103,9 +114,18 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
 
-// ============================================================================
-// CSV Export
-// ============================================================================
+const taskArtifactRequestConfig = {
+  skipBusinessError: true,
+  skipErrorHandler: true,
+} satisfies ApiRequestConfig
+
+export async function getTaskArtifacts(taskId: string) {
+  const response = await api.get<TaskArtifactsResponse>(
+    `/api/task/${encodeURIComponent(taskId)}/artifacts`,
+    taskArtifactRequestConfig
+  )
+  return parseTaskArtifactsResponse(response.data)
+}
 
 const exportEndpoints: Record<LogCategory, string> = {
   common: '/api/log',

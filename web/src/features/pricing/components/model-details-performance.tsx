@@ -16,6 +16,7 @@ import {
   getSuccessRateTextClass,
 } from '@/features/performance-metrics/lib/format'
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import type { UptimeDayPoint } from '../lib/mock-stats'
@@ -147,7 +148,8 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics', props.model.model_name],
-    queryFn: () => getPerfMetrics(props.model.model_name, 24),
+    queryFn: async () =>
+      requireServerSuccess(await getPerfMetrics(props.model.model_name, 24)),
     staleTime: 60 * 1000,
   })
   const groups = useMemo(

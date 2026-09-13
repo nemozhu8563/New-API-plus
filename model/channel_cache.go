@@ -11,26 +11,27 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/relaykit/dto"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 var group2model2channels map[string]map[string][]int // enabled channel
-var group2model2tag2channels map[string]map[string]map[string][]int
-var channelsIDM map[int]*Channel // all channels include disabled
+var channelsIDM map[int]*Channel                     // all channels include disabled
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
-var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
+var channel2advancedCustomConfig map[int]*kitdto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		InvalidatePricingCache()
+		rebuildTaskAliasView()
 		return
 	}
 	newChannelId2channel := make(map[int]*Channel)
-	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	newChannel2advancedCustomConfig := make(map[int]*kitdto.AdvancedCustomConfig)
 	var channels []*Channel
 	DB.Find(&channels)
 	for _, channel := range channels {
@@ -48,35 +49,21 @@ func InitChannelCache() {
 		groups[ability.Group] = true
 	}
 	newGroup2model2channels := make(map[string]map[string][]int)
-	newGroup2model2tag2channels := make(map[string]map[string]map[string][]int)
 	for group := range groups {
 		newGroup2model2channels[group] = make(map[string][]int)
-		newGroup2model2tag2channels[group] = make(map[string]map[string][]int)
 	}
 	for _, channel := range channels {
 		if channel.Status != common.ChannelStatusEnabled {
 			continue // skip disabled channels
 		}
-		groups := strings.Split(channel.Group, ",")
-		for _, group := range groups {
-			if _, ok := newGroup2model2channels[group]; !ok {
-				newGroup2model2channels[group] = make(map[string][]int)
-			}
-			if _, ok := newGroup2model2tag2channels[group]; !ok {
-				newGroup2model2tag2channels[group] = make(map[string]map[string][]int)
-			}
-			models := strings.Split(channel.Models, ",")
+		groups := strings.SplitSeq(channel.Group, ",")
+		for group := range groups {
+			models := channel.GetModels()
 			for _, model := range models {
 				if _, ok := newGroup2model2channels[group][model]; !ok {
 					newGroup2model2channels[group][model] = make([]int, 0)
 				}
 				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
-				if channel.Tag != nil && *channel.Tag != "" {
-					if _, ok := newGroup2model2tag2channels[group][model]; !ok {
-						newGroup2model2tag2channels[group][model] = make(map[string][]int)
-					}
-					newGroup2model2tag2channels[group][model][*channel.Tag] = append(newGroup2model2tag2channels[group][model][*channel.Tag], channel.Id)
-				}
 			}
 		}
 	}
@@ -90,20 +77,9 @@ func InitChannelCache() {
 			newGroup2model2channels[group][model] = channels
 		}
 	}
-	for group, model2tag2channels := range newGroup2model2tag2channels {
-		for model, tag2channels := range model2tag2channels {
-			for tag, channels := range tag2channels {
-				sort.Slice(channels, func(i, j int) bool {
-					return newChannelId2channel[channels[i]].GetPriority() > newChannelId2channel[channels[j]].GetPriority()
-				})
-				newGroup2model2tag2channels[group][model][tag] = channels
-			}
-		}
-	}
 
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
-	group2model2tag2channels = newGroup2model2tag2channels
 	//channelsIDM = newChannelId2channel
 	for i, channel := range newChannelId2channel {
 		if channel.ChannelInfo.IsMultiKey {
@@ -126,6 +102,7 @@ func InitChannelCache() {
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
+	rebuildTaskAliasView()
 	common.SysLog("channels synced from database")
 }
 
@@ -137,32 +114,27 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, tag string, retry int, requestPath string) (*Channel, error) {
-	return GetRandomSatisfiedChannelExcluding(group, model, tag, retry, requestPath, nil)
-}
-
-func GetRandomSatisfiedChannelExcluding(group string, model string, tag string, retry int, requestPath string, excluded map[int]struct{}) (*Channel, error) {
+func GetRandomSatisfiedChannel(
+	group string,
+	model string,
+	retry int,
+	filters []dto.ChannelFilter,
+) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannelExcluding(group, model, tag, retry, requestPath, excluded)
+		return GetChannel(group, model, retry, filters)
 	}
 
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
-	channels := filterChannelsByRequestPathAndModel(
-		getChannelsByGroupModelTagUnlocked(group, model, tag),
-		requestPath,
-		model,
-	)
-	if len(excluded) > 0 {
-		availableChannels := make([]int, 0, len(channels))
-		for _, channelID := range channels {
-			if _, isExcluded := excluded[channelID]; !isExcluded {
-				availableChannels = append(availableChannels, channelID)
-			}
-		}
-		channels = availableChannels
+	// First, try to find channels with the exact model name.
+	channels, _ := filterCandidateIDs(group2model2channels[group][model], model, filters)
+
+	// If no channels found, try to find channels with the normalized model name.
+	if len(channels) == 0 {
+		normalizedModel := ratio_setting.RoutingMatchModelName(model)
+		channels, _ = filterCandidateIDs(group2model2channels[group][normalizedModel], model, filters)
 	}
 
 	if len(channels) == 0 {
@@ -244,90 +216,16 @@ func GetRandomSatisfiedChannelExcluding(group string, model string, tag string, 
 	return nil, errors.New("channel not found")
 }
 
-func GetEnabledTagsByGroupModel(group string, model string) []string {
-	if !common.MemoryCacheEnabled {
-		return getEnabledTagsByGroupModelDB(group, model)
-	}
-
-	channelSyncLock.RLock()
-	defer channelSyncLock.RUnlock()
-
-	tag2channels := getTagChannelsByGroupModelUnlocked(group, model)
-	if len(tag2channels) == 0 {
-		return []string{}
-	}
-	tags := make([]string, 0, len(tag2channels))
-	for tag := range tag2channels {
-		if tag == "" {
-			continue
-		}
-		tags = append(tags, tag)
-	}
-	sort.Strings(tags)
-	return tags
-}
-
-func getTagChannelsByGroupModelUnlocked(group string, model string) map[string][]int {
-	if group2model2tag2channels == nil {
-		return nil
-	}
-	tagChannels := group2model2tag2channels[group][model]
-	if len(tagChannels) > 0 {
-		return tagChannels
-	}
-	normalizedModel := ratio_setting.FormatMatchingModelName(model)
-	if normalizedModel == "" || normalizedModel == model {
-		return nil
-	}
-	return group2model2tag2channels[group][normalizedModel]
-}
-
-func getChannelsByGroupModelTagUnlocked(group string, model string, tag string) []int {
-	if tag != "" {
-		tagChannels := getTagChannelsByGroupModelUnlocked(group, model)
-		if len(tagChannels) > 0 {
-			return tagChannels[tag]
-		}
-	}
-
-	channels := group2model2channels[group][model]
-	if len(channels) > 0 {
-		return channels
-	}
-
-	normalizedModel := ratio_setting.FormatMatchingModelName(model)
-	if normalizedModel == "" || normalizedModel == model {
-		return nil
-	}
-	return group2model2channels[group][normalizedModel]
-}
-
-// filterChannelsByRequestPathAndModel restricts candidates by request path and
-// model. Only Advanced Custom (type 58) channels are path-checked: they are kept
-// only when one of their configured routes matches requestPath and model. All
-// other channel types always pass. When requestPath is empty, filtering is skipped.
-// Caller must hold channelSyncLock (read lock). The cached slice is never mutated.
-func filterChannelsByRequestPathAndModel(channels []int, requestPath string, model string) []int {
-	if requestPath == "" || len(channels) == 0 {
-		return channels
-	}
-	filtered := make([]int, 0, len(channels))
-	for _, channelId := range channels {
-		channel, ok := channelsIDM[channelId]
-		if !ok {
-			// keep it so the downstream consistency error is raised as before
-			filtered = append(filtered, channelId)
-			continue
-		}
-		if channel.Type != constant.ChannelTypeAdvancedCustom {
-			filtered = append(filtered, channelId)
-			continue
-		}
-		if config := channel2advancedCustomConfig[channelId]; config != nil && config.SupportsPathForModel(requestPath, model) {
-			filtered = append(filtered, channelId)
-		}
-	}
-	return filtered
+// GetRandomSatisfiedChannelExcluding selects a channel while excluding IDs
+// already attempted by the caller.
+func GetRandomSatisfiedChannelExcluding(group, model, tag string, retry int, requestPath string, excluded map[int]struct{}, filters ...dto.ChannelFilter) (*Channel, error) {
+	constraints := append([]dto.ChannelFilter(nil), filters...)
+	constraints = append(constraints,
+		dto.ChannelFilter{Kind: dto.FilterRouteTag, RouteTag: tag},
+		dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: excluded},
+		dto.ChannelFilter{Kind: dto.FilterRequestPath, RequestPath: requestPath},
+	)
+	return GetRandomSatisfiedChannel(group, model, retry, constraints)
 }
 
 func CacheGetChannel(id int) (*Channel, error) {
@@ -375,33 +273,16 @@ func CacheUpdateChannelStatus(id int, status int) {
 		// delete the channel from group2model2channels
 		for group, model2channels := range group2model2channels {
 			for model, channels := range model2channels {
-				group2model2channels[group][model] = removeChannelIDFromSlice(channels, id)
-			}
-		}
-		for group, model2tag2channels := range group2model2tag2channels {
-			for model, tag2channels := range model2tag2channels {
-				for tag, channels := range tag2channels {
-					group2model2tag2channels[group][model][tag] = removeChannelIDFromSlice(channels, id)
+				for i, channelId := range channels {
+					if channelId == id {
+						// remove the channel from the slice
+						group2model2channels[group][model] = append(channels[:i], channels[i+1:]...)
+						break
+					}
 				}
 			}
 		}
 	}
-}
-
-func removeChannelIDFromSlice(channels []int, channelID int) []int {
-	if len(channels) == 0 {
-		return channels
-	}
-	filtered := channels[:0]
-	for _, id := range channels {
-		if id != channelID {
-			filtered = append(filtered, id)
-		}
-	}
-	if len(filtered) == 0 {
-		return nil
-	}
-	return filtered
 }
 
 func CacheUpdateChannel(channel *Channel) {
@@ -422,7 +303,7 @@ func CacheUpdateChannel(channel *Channel) {
 	}
 	channelsIDM[channel.Id] = channel
 	if channel2advancedCustomConfig == nil {
-		channel2advancedCustomConfig = make(map[int]*dto.AdvancedCustomConfig)
+		channel2advancedCustomConfig = make(map[int]*kitdto.AdvancedCustomConfig)
 	}
 	delete(channel2advancedCustomConfig, channel.Id)
 	if channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -437,4 +318,48 @@ func CacheUpdateChannel(channel *Channel) {
 	// updatePricingLock while holding channelSyncLock would be an AB-BA deadlock.
 	channelSyncLock.Unlock()
 	InvalidatePricingCache()
+}
+
+// GetEnabledTagsByGroupModel uses the same group/model membership and normalized
+// model fallback as channel selection, in both cache modes.
+func GetEnabledTagsByGroupModel(group, modelName string) []string {
+	seen := make(map[string]bool)
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		defer channelSyncLock.RUnlock()
+		ids := group2model2channels[group][modelName]
+		if len(ids) == 0 {
+			ids = group2model2channels[group][ratio_setting.FormatMatchingModelName(modelName)]
+		}
+		for _, id := range ids {
+			if ch := channelsIDM[id]; ch != nil && ch.Status == common.ChannelStatusEnabled && ch.GetTag() != "" {
+				seen[ch.GetTag()] = true
+			}
+		}
+	} else {
+		var abilities []Ability
+		query := DB.Where(commonGroupCol+" = ? AND model = ? AND enabled = ?", group, modelName, true)
+		if err := query.Find(&abilities).Error; err != nil {
+			common.SysError(err.Error())
+			return nil
+		}
+		normalized := ratio_setting.FormatMatchingModelName(modelName)
+		if len(abilities) == 0 && normalized != modelName {
+			if err := DB.Where(commonGroupCol+" = ? AND model = ? AND enabled = ?", group, normalized, true).Find(&abilities).Error; err != nil {
+				common.SysError(err.Error())
+				return nil
+			}
+		}
+		for _, ability := range abilities {
+			if ability.Tag != nil && *ability.Tag != "" {
+				seen[*ability.Tag] = true
+			}
+		}
+	}
+	tags := make([]string, 0, len(seen))
+	for tag := range seen {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
 }

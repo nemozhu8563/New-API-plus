@@ -1,11 +1,29 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { Label } from '@/components/ui/label'
 import { formatQuota, formatCompactNumber } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { getUserInfo } from '../../api'
 import type { UserInfo } from '../../types'
@@ -16,16 +34,11 @@ interface UserInfoDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-interface InfoItemProps {
-  label: string
-  value: string | number
-}
-
-function InfoItem(props: InfoItemProps) {
+function InfoItem({ label, value }: { label: string; value: string | number }) {
   return (
     <div className='space-y-1.5'>
-      <Label className='text-muted-foreground text-xs'>{props.label}</Label>
-      <div className='text-sm font-semibold'>{props.value}</div>
+      <Label className='text-muted-foreground text-xs'>{label}</Label>
+      <div className='text-sm font-semibold'>{value}</div>
     </div>
   )
 }
@@ -47,12 +60,10 @@ export function UserInfoDialog({
         if (result.success) {
           setUserInfo(result.data || null)
         } else {
-          toast.error(result.message || t('Failed to fetch user information'))
+          handleServerError(result, t('Failed to fetch user information'))
         }
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to fetch user info:', error)
-        toast.error(t('Failed to fetch user information'))
+        handleServerError(error, t('Failed to fetch user information'))
       } finally {
         setIsLoading(false)
       }

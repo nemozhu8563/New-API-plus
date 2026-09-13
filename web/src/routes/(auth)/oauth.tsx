@@ -1,14 +1,31 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import i18next from 'i18next'
 import { useEffect } from 'react'
-import { toast } from 'sonner'
 
 import { wechatLoginByCode } from '@/features/auth/api'
 import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
 import { applyAuthBundle, isAuthBundle } from '@/lib/api'
-import { DEFAULT_CONSOLE_ROUTE } from '@/lib/app-entry-route'
-import { getServerErrorMessageKey } from '@/lib/server-error-message'
-import { trackEvent } from '@/lib/site-telemetry'
+import { handleServerError } from '@/lib/handle-server-error'
+import { AuthOperationError } from '@/lib/secure-verification'
+import { createServerError } from '@/lib/server-error-message'
 
 function OAuthComponent() {
   const navigate = useNavigate()
@@ -26,25 +43,20 @@ function OAuthComponent() {
           const res = await wechatLoginByCode(search.code)
           if (res?.success && isAuthBundle(res.data)) {
             applyAuthBundle(res.data)
-            trackEvent('login', { method: 'wechat' })
             const target =
               sanitizeAuthRedirect(search?.redirect, window.location.origin) ??
-              DEFAULT_CONSOLE_ROUTE
+              '/dashboard'
             navigate({ href: target, replace: true })
             return
           }
-          if (getServerErrorMessageKey(res)) {
-            navigate({ to: '/sign-in', replace: true })
-            return
-          }
+          throw createServerError(res, i18next.t('OAuth failed'))
         }
+        handleServerError(new AuthOperationError(i18next.t('OAuth failed')))
       } catch (error: unknown) {
-        if (getServerErrorMessageKey(error)) {
-          navigate({ to: '/sign-in', replace: true })
-          return
-        }
+        handleServerError(
+          AuthOperationError.from(error, i18next.t('OAuth failed'))
+        )
       }
-      toast.error(i18next.t('OAuth failed'))
       navigate({ to: '/sign-in', replace: true })
     })()
   }, [navigate, search])

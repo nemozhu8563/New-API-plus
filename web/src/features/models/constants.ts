@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import type { TFunction } from 'i18next'
 
 import type { NameRule, ModelStatus, SyncSource } from './types'
@@ -55,8 +73,8 @@ export function getNameRuleConfig(
 export function getModelStatusOptions(t: TFunction) {
   return [
     { label: t('All Status'), value: 'all' },
-    { label: t('Enabled'), value: 'enabled' },
-    { label: t('Disabled'), value: 'disabled' },
+    { label: t('Shown'), value: 'enabled' },
+    { label: t('Not shown'), value: 'disabled' },
   ] as const
 }
 
@@ -64,8 +82,8 @@ export function getModelStatusConfig(
   t: TFunction
 ): Record<ModelStatus, { label: string; variant: 'success' | 'neutral' }> {
   return {
-    1: { label: t('Enabled'), variant: 'success' },
-    0: { label: t('Disabled'), variant: 'neutral' },
+    1: { label: t('Shown'), variant: 'success' },
+    0: { label: t('Not shown'), variant: 'neutral' },
   }
 }
 
@@ -170,12 +188,6 @@ export function getSyncSourceOptions(t: TFunction) {
       value: 'official' as SyncSource,
       description: t('Sync from the public upstream metadata repository.'),
       disabled: false,
-    },
-    {
-      label: t('Configuration File'),
-      value: 'config' as SyncSource,
-      description: t('Upload or reference a local configuration file.'),
-      disabled: true,
     },
   ] as const
 }

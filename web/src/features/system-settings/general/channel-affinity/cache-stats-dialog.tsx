@@ -1,9 +1,27 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { formatTimestampToDate } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { getAffinityUsageCache } from './api'
 
@@ -48,11 +66,11 @@ export function CacheStatsDialog(props: Props) {
       .then((res) => {
         if (seq !== seqRef.current) return
         if (res.success) setStats((res.data as Record<string, unknown>) || {})
-        else toast.error(res.message || t('Request failed'))
+        else handleServerError(res, t('Request failed'))
       })
-      .catch(() => {
+      .catch((error) => {
         if (seq !== seqRef.current) return
-        toast.error(t('Request failed'))
+        handleServerError(error, t('Request failed'))
       })
       .finally(() => {
         if (seq !== seqRef.current) return
@@ -123,35 +141,6 @@ export function CacheStatsDialog(props: Props) {
     return data
   }, [stats, props.target, t])
 
-  let statsContent = (
-    <div className='text-muted-foreground py-8 text-center text-sm'>
-      {t('No data available')}
-    </div>
-  )
-  if (loading) {
-    statsContent = (
-      <div className='text-muted-foreground py-8 text-center text-sm'>
-        {t('Loading...')}
-      </div>
-    )
-  } else if (rows.length > 0) {
-    statsContent = (
-      <div className='space-y-2'>
-        {rows.map((row) => (
-          <div
-            key={row.key}
-            className='flex justify-between gap-4 border-b pb-1 text-sm'
-          >
-            <span className='text-muted-foreground'>{row.key}</span>
-            <span className='text-right font-medium break-all'>
-              {row.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   return (
     <Dialog
       open={props.open}
@@ -166,7 +155,31 @@ export function CacheStatsDialog(props: Props) {
           'Hit criteria: If cached tokens exist in usage, it counts as a hit.'
         )}
       </p>
-      {statsContent}
+      {loading && (
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('Loading...')}
+        </div>
+      )}
+      {!loading && rows.length > 0 && (
+        <div className='space-y-2'>
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className='flex justify-between gap-4 border-b pb-1 text-sm'
+            >
+              <span className='text-muted-foreground'>{row.key}</span>
+              <span className='text-right font-medium break-all'>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!loading && !(rows.length > 0) && (
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('No data available')}
+        </div>
+      )}
     </Dialog>
   )
 }

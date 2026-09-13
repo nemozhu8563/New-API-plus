@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -8,6 +26,8 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { estimatePrice, extendDeployment, getDeployment } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
@@ -37,7 +57,10 @@ export function ExtendDeploymentDialog({
 
   const { data: detailsRes, isLoading: isLoadingDetails } = useQuery({
     queryKey: ['deployment-details-for-extend', deploymentId],
-    queryFn: () => (deploymentId ? getDeployment(deploymentId) : null),
+    queryFn: async () =>
+      requireServerSuccess(
+        await (deploymentId ? getDeployment(deploymentId) : null)
+      ),
     enabled: open && deploymentId !== null,
   })
 
@@ -79,17 +102,19 @@ export function ExtendDeploymentDialog({
     isFetching: isFetchingPrice,
   } = useQuery({
     queryKey: ['deployment-extend-price', deploymentId, hours, priceParams],
-    queryFn: () =>
-      priceParams
-        ? estimatePrice({
-            location_ids: priceParams.location_ids,
-            hardware_id: priceParams.hardware_id,
-            gpus_per_container: priceParams.gpus_per_container,
-            replica_count: priceParams.replica_count,
-            duration_hours: hours,
-            currency: 'usdc',
-          })
-        : null,
+    queryFn: async () =>
+      requireServerSuccess(
+        await (priceParams
+          ? estimatePrice({
+              location_ids: priceParams.location_ids,
+              hardware_id: priceParams.hardware_id,
+              gpus_per_container: priceParams.gpus_per_container,
+              replica_count: priceParams.replica_count,
+              duration_hours: hours,
+              currency: 'usdc',
+            })
+          : null)
+      ),
     enabled: open && Boolean(priceParams) && hours > 0,
   })
 
@@ -114,18 +139,6 @@ export function ExtendDeploymentDialog({
 
   const canSubmit = Boolean(deploymentId) && hours > 0 && !isSubmitting
 
-  let estimatedCost: React.ReactNode = t('Not available')
-  if (isLoadingPrice || isFetchingPrice) {
-    estimatedCost = (
-      <span className='inline-flex items-center gap-2'>
-        <Loader2 className='h-4 w-4 animate-spin' />
-        {t('Calculating...')}
-      </span>
-    )
-  } else if (priceParams) {
-    estimatedCost = priceSummary || t('Not available')
-  }
-
   const onSubmit = async () => {
     if (!deploymentId) return
     const h = toInt(hours, 1)
@@ -145,9 +158,9 @@ export function ExtendDeploymentDialog({
         onOpenChange(false)
         return
       }
-      toast.error(res.message || t('Extend failed'))
+      handleServerError(res, t('Extend failed'))
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('Extend failed'))
+      handleServerError(err, t('Extend failed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -204,7 +217,20 @@ export function ExtendDeploymentDialog({
 
           <div className='space-y-1'>
             <div className='text-sm font-medium'>{t('Estimated cost')}</div>
-            <div className='text-muted-foreground text-sm'>{estimatedCost}</div>
+            <div className='text-muted-foreground text-sm'>
+              {(isLoadingPrice || isFetchingPrice) && (
+                <span className='inline-flex items-center gap-2'>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  {t('Calculating...')}
+                </span>
+              )}
+              {!(isLoadingPrice || isFetchingPrice) &&
+                priceParams &&
+                (priceSummary || t('Not available'))}
+              {!(isLoadingPrice || isFetchingPrice) &&
+                !priceParams &&
+                t('Not available')}
+            </div>
             {!priceParams ? (
               <div className='text-muted-foreground text-xs'>
                 {t('Unable to estimate price for this deployment.')}

@@ -185,6 +185,19 @@ func GetAllRedemptions(startIdx int, num int) (redemptions []*Redemption, total 
 	return redemptions, total, nil
 }
 
+func BatchDeleteRedemptions(ids []int) (int64, error) {
+	if len(ids) == 0 || len(ids) > 1000 {
+		return 0, errors.New("invalid redemption IDs")
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			return 0, errors.New("invalid redemption ID")
+		}
+	}
+	r := DB.Where("id IN ?", ids).Delete(&Redemption{})
+	return r.RowsAffected, r.Error
+}
+
 func SearchRedemptions(keyword string, status string, startIdx int, num int) (redemptions []*Redemption, total int64, err error) {
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -328,7 +341,7 @@ func redeemCode(key string, userId int, requiredBenefitType string) (*Redemption
 				return errors.New("该兑换码已被使用")
 			}
 			userResult := tx.Model(&User{}).
-				Where("id = ? AND quota <= ?", userId, common.MaxQuota-redemption.Quota).
+				Where("id = ? AND quota <= ?", userId, common.MaxWalletQuota-redemption.Quota).
 				Update("quota", gorm.Expr("quota + ?", redemption.Quota))
 			if userResult.Error != nil {
 				return userResult.Error
@@ -411,6 +424,9 @@ func (redemption *Redemption) Insert() error {
 	}
 	redemption.BenefitType = benefitType
 	if benefitType == RedemptionBenefitQuota {
+		if redemption.Quota < 0 || redemption.Quota > common.MaxQuota {
+			return errors.New("兑换码额度无效")
+		}
 		return DB.Create(redemption).Error
 	}
 	if redemption.Quota != 0 {

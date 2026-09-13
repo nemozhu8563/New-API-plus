@@ -86,26 +86,13 @@ func AddRedemption(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgRedemptionCountMax)
 		return
 	}
-	benefitType, err := model.NormalizeRedemptionBenefitType(redemption.BenefitType)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgRedemptionInvalid)
+	if redemption.Quota <= 0 {
+		common.ApiError(c, errors.New("redemption quota must be positive"))
 		return
 	}
-	redemption.BenefitType = benefitType
-	if benefitType == model.RedemptionBenefitQuota {
-		if redemption.Quota <= 0 || redemption.Quota > common.MaxQuota {
-			common.ApiErrorMsg(c, "兑换码额度必须大于 0 且不超过系统上限")
-			return
-		}
-	} else {
-		if err := redemption.FreezeSubscriptionPlan(redemption.SubscriptionPlanId); err != nil {
-			if errors.Is(err, model.ErrSubscriptionRedemptionPlanDisabled) {
-				common.ApiErrorI18n(c, i18n.MsgSubscriptionNotEnabled)
-			} else {
-				common.ApiErrorI18n(c, i18n.MsgSubscriptionInvalidId)
-			}
-			return
-		}
+	if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
@@ -115,16 +102,12 @@ func AddRedemption(c *gin.Context) {
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
 		cleanRedemption := model.Redemption{
-			UserId:                   c.GetInt("id"),
-			Name:                     redemption.Name,
-			Key:                      key,
-			CreatedTime:              common.GetTimestamp(),
-			Quota:                    redemption.Quota,
-			BenefitType:              redemption.BenefitType,
-			SubscriptionPlanId:       redemption.SubscriptionPlanId,
-			SubscriptionPlanTitle:    redemption.SubscriptionPlanTitle,
-			SubscriptionPlanSnapshot: redemption.SubscriptionPlanSnapshot,
-			ExpiredTime:              redemption.ExpiredTime,
+			UserId:      c.GetInt("id"),
+			Name:        redemption.Name,
+			Key:         key,
+			CreatedTime: common.GetTimestamp(),
+			Quota:       redemption.Quota,
+			ExpiredTime: redemption.ExpiredTime,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -138,18 +121,11 @@ func AddRedemption(c *gin.Context) {
 		}
 		keys = append(keys, key)
 	}
-	auditDetails := map[string]interface{}{
-		"name":         redemption.Name,
-		"count":        redemption.Count,
-		"benefit_type": redemption.BenefitType,
-	}
-	if redemption.BenefitType == model.RedemptionBenefitSubscription {
-		auditDetails["subscription_plan_id"] = redemption.SubscriptionPlanId
-		auditDetails["subscription_plan_title"] = redemption.SubscriptionPlanTitle
-	} else {
-		auditDetails["quota"] = logger.LogQuota(redemption.Quota)
-	}
-	recordManageAudit(c, "redemption.create", auditDetails)
+	recordManageAudit(c, "redemption.create", map[string]any{
+		"name":  redemption.Name,
+		"count": redemption.Count,
+		"quota": logger.LogQuota(redemption.Quota),
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -186,17 +162,13 @@ func UpdateRedemption(c *gin.Context) {
 		return
 	}
 	if statusOnly == "" {
-		benefitType, normalizeErr := model.NormalizeRedemptionBenefitType(cleanRedemption.BenefitType)
-		if normalizeErr != nil {
-			common.ApiErrorI18n(c, i18n.MsgRedemptionInvalid)
+		if redemption.Quota <= 0 {
+			common.ApiError(c, errors.New("redemption quota must be positive"))
 			return
 		}
-		if benefitType == model.RedemptionBenefitQuota {
-			if redemption.Quota <= 0 || redemption.Quota > common.MaxQuota {
-				common.ApiErrorMsg(c, "兑换码额度必须大于 0 且不超过系统上限")
-				return
-			}
-			cleanRedemption.Quota = redemption.Quota
+		if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+			common.ApiError(c, err)
+			return
 		}
 		if valid, msg := validateExpiredTime(c, redemption.ExpiredTime); !valid {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
@@ -204,14 +176,13 @@ func UpdateRedemption(c *gin.Context) {
 		}
 		// If you add more fields, please also update redemption.Update()
 		cleanRedemption.Name = redemption.Name
+		cleanRedemption.Quota = redemption.Quota
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
 	}
 	if statusOnly != "" {
 		cleanRedemption.Status = redemption.Status
-		err = cleanRedemption.UpdateStatus()
-	} else {
-		err = cleanRedemption.Update()
 	}
+	err = cleanRedemption.Update()
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -243,4 +214,25 @@ func validateExpiredTime(c *gin.Context, expired int64) (bool, string) {
 		return false, i18n.T(c, i18n.MsgRedemptionExpireTimeInvalid)
 	}
 	return true, ""
+}
+
+func DeleteRedemptionBatch(c *gin.Context) {
+	var request struct {
+		Ids []int `json:"ids" binding:"required,min=1,max=1000,dive,gt=0"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	count, err := model.BatchDeleteRedemptions(request.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "redemption.delete_batch", map[string]any{
+		"count":                    count,
+		"total":                    len(request.Ids),
+		"requested_redemption_ids": request.Ids,
+	})
+	common.ApiSuccess(c, count)
 }

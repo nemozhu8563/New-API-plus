@@ -5,13 +5,14 @@ import { useTranslation } from 'react-i18next'
 import { Footer } from '@/components/layout/components/footer'
 import { PublicLayout } from '@/components/layout/components/public-layout'
 import { Button } from '@/components/ui/button'
+import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 import {
   PUBLIC_HOME_ROUTE,
   resolveLandingPrimaryRoute,
 } from '@/lib/app-entry-route'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { LANDING_NAV_LINKS } from './landing-nav-links'
+import { resolveLandingNavLinks } from './landing-nav-links'
 import { LandingPlansSection } from './landing-plans-section'
 
 const LANDING_FOOTER_COLUMNS = [
@@ -79,11 +80,12 @@ export function TryvaloLandingPage() {
   const auth = useAuthStore((state) => state.auth)
   const isAuthenticated = Boolean(auth.user && auth.accessToken)
   const primaryRoute = resolveLandingPrimaryRoute(isAuthenticated)
+  const dynamicNavLinks = useTopNavLinks()
 
   return (
     <PublicLayout
       showMainContainer={false}
-      navLinks={LANDING_NAV_LINKS}
+      navLinks={resolveLandingNavLinks(dynamicNavLinks)}
       headerProps={{ homeUrl: PUBLIC_HOME_ROUTE }}
     >
       <main>

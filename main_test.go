@@ -26,7 +26,7 @@ func TestEmbeddedRootPageFlowsThroughSiteRuntimeRenderer(t *testing.T) {
 		BuildFS:     buildFS,
 		IndexPage:   indexPage,
 		SiteRuntime: siteRuntime,
-	})
+	}, func(c *gin.Context) { c.Next() })
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "https://tryvalo.com/", nil)

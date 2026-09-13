@@ -26,6 +26,13 @@ vi.mock('@/hooks/use-copy-to-clipboard', () => ({
 }))
 
 vi.mock('@/features/dashboard/hooks/use-status-data', () => ({
+  useApiInfo: () => ({ items: [], loading: false }),
+  useDashboardContentVisibility: () => ({
+    apiInfo: true,
+    announcements: true,
+    faq: false,
+    uptimeKuma: false,
+  }),
   useDashboardStatus: () => ({
     serverAddress: 'https://test.tryvalo.com/v1',
     announcements: true,

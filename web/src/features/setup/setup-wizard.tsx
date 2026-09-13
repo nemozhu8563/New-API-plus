@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
@@ -19,6 +37,9 @@ import {
 import { Form } from '@/components/ui/form'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { handleServerError } from '@/lib/handle-server-error'
+import { accountPasswordSchema } from '@/lib/password-policy'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { buildSetupPayload, getSetupStatus, submitSetup } from './api'
@@ -78,7 +99,7 @@ export function SetupWizard() {
     refetch,
   } = useQuery({
     queryKey: ['setup-status'],
-    queryFn: getSetupStatus,
+    queryFn: async () => requireServerSuccess(await getSetupStatus()),
     retry: false,
   })
 
@@ -93,13 +114,14 @@ export function SetupWizard() {
           navigate({ to: '/' })
         }, 1200)
       } else {
-        toast.error(
-          response.message || t('Initialization failed, please try again.')
+        handleServerError(
+          response,
+          t('Initialization failed, please try again.')
         )
       }
     },
-    onError: () => {
-      toast.error(t('Failed to initialize system'))
+    onError: (error) => {
+      handleServerError(error, t('Failed to initialize system'))
     },
   })
 
@@ -107,7 +129,7 @@ export function SetupWizard() {
     if (!statusResponse) return
 
     if (!statusResponse.success) {
-      toast.error(statusResponse.message || t('Failed to load setup status'))
+      handleServerError(statusResponse, t('Failed to load setup status'))
       return
     }
 
@@ -190,8 +212,8 @@ export function SetupWizard() {
     if (setupStatus?.root_init) return true
 
     const username = form.getValues('username')?.trim()
-    const password = form.getValues('password')?.trim()
-    const confirmPassword = form.getValues('confirmPassword')?.trim()
+    const password = form.getValues('password')
+    const confirmPassword = form.getValues('confirmPassword')
 
     if (!username) {
       form.setError('username', {
@@ -202,12 +224,12 @@ export function SetupWizard() {
       return false
     }
 
-    if (!password || password.length < 8) {
+    if (!accountPasswordSchema.safeParse(password).success) {
       form.setError('password', {
         type: 'manual',
-        message: t('Password must be at least 8 characters'),
+        message: t('Password must contain between 8 and 128 characters.'),
       })
-      toast.error(t('Password must be at least 8 characters'))
+      toast.error(t('Password must contain between 8 and 128 characters.'))
       return false
     }
 
@@ -307,27 +329,23 @@ export function SetupWizard() {
               {STEPS.map((step, index) => {
                 const isActive = currentStep === index
                 const isCompleted = currentStep > index
-                let stepClassName = 'border-muted bg-card'
-                if (isActive) {
-                  stepClassName = 'border-primary ring-primary/20 ring-2'
-                } else if (isCompleted) {
-                  stepClassName = 'border-primary/40 bg-primary/5'
-                }
-                const stepNumberClassName =
-                  isActive || isCompleted
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-muted-foreground/40 text-muted-foreground'
-
                 return (
                   <li
                     key={step.titleKey}
-                    className={cn('rounded-xl border p-3', stepClassName)}
+                    className={cn('rounded-xl border p-3', {
+                      'border-primary ring-primary/20 ring-2': isActive,
+                      'border-primary/40 bg-primary/5':
+                        !isActive && isCompleted,
+                      'border-muted bg-card': !isActive && !isCompleted,
+                    })}
                   >
                     <div className='flex items-start gap-3'>
                       <span
                         className={cn(
                           'flex size-6 items-center justify-center rounded-md border text-xs font-semibold',
-                          stepNumberClassName
+                          isActive || isCompleted
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-muted-foreground/40 text-muted-foreground'
                         )}
                       >
                         {index + 1}

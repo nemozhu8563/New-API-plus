@@ -2,6 +2,7 @@ import type {
   FlowQuotaDataItem,
   FlowUserFilterOption,
 } from '@/features/dashboard/types'
+import { createServerError } from '@/lib/server-error-message'
 
 export type FlowDisplayState = 'loading' | 'error' | 'empty' | 'chart'
 
@@ -16,7 +17,7 @@ export function requireSuccessfulFlowRows(
   fallbackMessage: string
 ): FlowQuotaDataItem[] {
   if (!response.success) {
-    throw new Error(response.message || fallbackMessage)
+    throw createServerError(response, response.message || fallbackMessage)
   }
   return response.data ?? []
 }

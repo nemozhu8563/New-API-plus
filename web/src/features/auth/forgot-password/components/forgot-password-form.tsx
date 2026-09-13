@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { useState } from 'react'
@@ -24,6 +42,9 @@ import {
 } from '@/features/auth/constants'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { useCountdown } from '@/hooks/use-countdown'
+import { handleServerError } from '@/lib/handle-server-error'
+import { AuthOperationError } from '@/lib/secure-verification'
+import { createServerError } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 export function ForgotPasswordForm({
@@ -63,10 +84,14 @@ export function ForgotPasswordForm({
         startCountdown()
         toast.success(t('Reset email sent, please check your inbox'))
       } else {
-        toast.error(res?.message || t('Failed to send reset email'))
+        handleServerError(
+          createServerError(res, t('Failed to send reset email'))
+        )
       }
-    } catch {
-      // Errors are handled by global interceptor
+    } catch (_error) {
+      handleServerError(
+        AuthOperationError.from(_error, t('Failed to send reset email'))
+      )
     } finally {
       setIsLoading(false)
     }
@@ -84,7 +109,7 @@ export function ForgotPasswordForm({
           name='email'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('Email')}</FormLabel>
+              <FormLabel>Email</FormLabel>
               <FormControl>
                 <Input placeholder='name@example.com' {...field} />
               </FormControl>

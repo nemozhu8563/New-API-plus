@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, RefreshCw, Trash2, Power, PowerOff } from 'lucide-react'
 import { useState, useEffect } from 'react'
@@ -23,6 +41,7 @@ import {
   ADMIN_PERMISSION_RESOURCES,
   hasPermission,
 } from '@/lib/admin-permissions'
+import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -119,12 +138,10 @@ export function MultiKeyManageDialog({
         setManualDisabledCount(response.data.manual_disabled_count || 0)
         setAutoDisabledCount(response.data.auto_disabled_count || 0)
       } else {
-        toast.error(response.message || t('Failed to load key status'))
+        handleServerError(response, t('Failed to load key status'))
       }
     } catch (error: unknown) {
-      toast.error(
-        error instanceof Error ? error.message : t('Failed to load key status')
-      )
+      handleServerError(error, t('Failed to load key status'))
     } finally {
       setIsLoading(false)
     }
@@ -186,12 +203,10 @@ export function MultiKeyManageDialog({
           loadKeyStatus(currentPage, pageSize)
         }
       } else {
-        toast.error(response?.message || t('Operation failed'))
+        handleServerError(response, t('Operation failed'))
       }
     } catch (error: unknown) {
-      toast.error(
-        error instanceof Error ? error.message : t('Operation failed')
-      )
+      handleServerError(error, t('Operation failed'))
     } finally {
       setIsPerformingAction(false)
       setConfirmAction(null)
@@ -368,7 +383,7 @@ export function MultiKeyManageDialog({
                 {t('No keys found')}
               </div>
             )}
-            {!isLoading && keys.length > 0 && (
+            {!isLoading && !(keys.length === 0) && (
               <StaticDataTable
                 className='rounded-none border-0'
                 tableClassName='min-w-[800px]'

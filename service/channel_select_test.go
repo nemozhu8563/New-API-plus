@@ -2,244 +2,184 @@ package service
 
 import (
 	"fmt"
-	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
-func seedGroupTagResolverChannelWithPriority(t *testing.T, db *gorm.DB, id int, group, modelName, tag string, priority int64) {
-	t.Helper()
-
-	var tagPtr *string
-	if tag != "" {
-		tagPtr = &tag
-	}
-	weight := uint(1)
-	autoBan := 1
-	channel := &model.Channel{
-		Id:       id,
-		Type:     1,
-		Key:      fmt.Sprintf("test-key-%d", id),
-		Status:   common.ChannelStatusEnabled,
-		Name:     fmt.Sprintf("channel-%d", id),
-		Weight:   &weight,
-		Priority: &priority,
-		AutoBan:  &autoBan,
-		Group:    group,
-		Models:   modelName,
-		Tag:      tagPtr,
-	}
-	if err := db.Create(channel).Error; err != nil {
-		t.Fatalf("failed to create channel: %v", err)
-	}
-	if err := channel.AddAbilities(nil); err != nil {
-		t.Fatalf("failed to add abilities: %v", err)
-	}
-}
-
-func TestGetRandomSatisfiedChannelByResolutionStrictOverrideUsesTaggedPool(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 1, "ask-public", "shared-model", "GPT", 0)
-	seedGroupTagResolverChannelWithPriority(t, db, 2, "ask-public", "shared-model", "", 10)
-	model.InitChannelCache()
-
-	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: true}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
-	if err != nil {
-		t.Fatalf("expected strict route selection to succeed, got error: %v", err)
-	}
-	if channel == nil || channel.Id != 1 {
-		t.Fatalf("expected strict route selection to use tagged channel 1, got %#v", channel)
-	}
-}
-
-func TestGetRandomSatisfiedChannelByResolutionPrefersTaggedPoolBeforeGeneralFallback(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 1, "ask-public", "shared-model", "GPT", 0)
-	seedGroupTagResolverChannelWithPriority(t, db, 2, "ask-public", "shared-model", "", 10)
-	model.InitChannelCache()
-
-	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: false}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
-	if err != nil {
-		t.Fatalf("expected preferred route selection to succeed, got error: %v", err)
-	}
-	if channel == nil || channel.Id != 1 {
-		t.Fatalf("expected preferred route selection to try tagged channel first, got %#v", channel)
-	}
-}
-
-func TestGetRandomSatisfiedChannelByResolutionFallsBackToGeneralPool(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 2, "ask-public", "shared-model", "", 0)
-	model.InitChannelCache()
-
-	resolution := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: false}
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", resolution, 0, "")
-	if err != nil {
-		t.Fatalf("expected general fallback selection to succeed, got error: %v", err)
-	}
-	if channel == nil || channel.Id != 2 {
-		t.Fatalf("expected general fallback to return channel 2, got %#v", channel)
-	}
-}
-
-func TestGetRandomSatisfiedChannelByResolutionWithoutRouteTagUsesGeneralPool(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 1, "ask-public", "shared-model", "GPT", 0)
-	seedGroupTagResolverChannelWithPriority(t, db, 2, "ask-public", "shared-model", "", 10)
-	model.InitChannelCache()
-
-	channel, err := GetRandomSatisfiedChannelByResolution("ask-public", "shared-model", &GroupBillingResolution{}, 0, "")
-	if err != nil {
-		t.Fatalf("expected general selection to succeed, got error: %v", err)
-	}
-	if channel == nil || channel.Id != 2 {
-		t.Fatalf("expected general selection to use highest-priority general channel 2, got %#v", channel)
-	}
-}
-
-func TestIsChannelEnabledForResolutionAllowsGeneralFallbackWhenNonStrict(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 1, "ask-public", "shared-model", "", 0)
-	model.InitChannelCache()
-
-	nonStrict := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: false}
-	if IsChannelEnabledForResolution("ask-public", "shared-model", nonStrict, 1) {
-		t.Fatalf("expected affinity validation to reject non-tagged channel when route tag is resolved")
-	}
-
-	strict := &GroupBillingResolution{RouteTag: "GPT", RouteTagStrict: true}
-	if IsChannelEnabledForResolution("ask-public", "shared-model", strict, 1) {
-		t.Fatalf("expected strict resolution to reject untagged general channel")
-	}
-}
-
-func withAutoGroupSettingsReset(t *testing.T) {
-	t.Helper()
-	originalAutoGroups := setting.AutoGroups2JsonString()
-	originalUserUsableGroups := setting.UserUsableGroups2JSONString()
-	t.Cleanup(func() {
-		_ = setting.UpdateAutoGroupsByJsonString(originalAutoGroups)
-		_ = setting.UpdateUserUsableGroupsByJSONString(originalUserUsableGroups)
-	})
-}
-
-func TestCacheGetRandomSatisfiedChannelAutoSkipsBrokenOverrideGroup(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-	withAutoGroupSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 2, "vip", "shared-model", "", 0)
-	model.InitChannelCache()
-
-	if err := ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`); err != nil {
-		t.Fatalf("failed to seed group ratio: %v", err)
-	}
-	if err := ratio_setting.UpdatePublicGroupModelTagOverrideByJSONString(`{"default":{"shared-model":"GPT"}}`); err != nil {
-		t.Fatalf("failed to seed model-tag override: %v", err)
-	}
-	if err := setting.UpdateAutoGroupsByJsonString(`["default","vip"]`); err != nil {
-		t.Fatalf("failed to seed auto groups: %v", err)
-	}
-	if err := setting.UpdateUserUsableGroupsByJSONString(`{"default":"默认分组","vip":"vip分组"}`); err != nil {
-		t.Fatalf("failed to seed usable groups: %v", err)
-	}
-
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
-
-	channel, selectGroup, err := CacheGetRandomSatisfiedChannel(&RetryParam{
-		Ctx:        ctx,
-		TokenGroup: "auto",
-		ModelName:  "shared-model",
-		Retry:      common.GetPointer(0),
-	})
-	if err != nil {
-		t.Fatalf("expected auto group selection to continue past broken override, got error: %v", err)
-	}
-	if selectGroup != "vip" {
-		t.Fatalf("expected auto group selection to fall through to vip, got %q", selectGroup)
-	}
-	if channel == nil || channel.Id != 2 {
-		t.Fatalf("expected fallback group to return vip channel 2, got %#v", channel)
-	}
-}
-
-func TestCacheUpdateChannelStatusRemovesTaggedChannelFromCache(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 1, "ask-public", "shared-model", "GPT", 0)
-	model.InitChannelCache()
-
-	if !model.IsChannelEnabledForGroupModelTag("ask-public", "shared-model", "GPT", 1) {
-		t.Fatalf("expected tagged channel to be enabled before cache update")
-	}
-
-	model.CacheUpdateChannelStatus(1, common.ChannelStatusAutoDisabled)
-
-	if model.IsChannelEnabledForGroupModelTag("ask-public", "shared-model", "GPT", 1) {
-		t.Fatalf("expected disabled tagged channel to be removed from tag cache")
-	}
-	channel, err := model.GetRandomSatisfiedChannel("ask-public", "shared-model", "GPT", 0, "")
-	if err != nil {
-		t.Fatalf("expected no error after removing tagged channel from cache, got %v", err)
-	}
-	if channel != nil {
-		t.Fatalf("expected tagged selection to return nil after cache removal, got %#v", channel)
-	}
-}
-
-func TestCacheGetRandomSatisfiedChannelSkipsOpenCircuitAndUsesNextPriority(t *testing.T) {
-	db := setupGroupTagResolverTestDB(t)
-	withResolverSettingsReset(t)
-	setupChannelCircuitBreakerTest(t)
-
-	seedGroupTagResolverChannelWithPriority(t, db, 18, "default", "shared-model", "", 10)
-	seedGroupTagResolverChannelWithPriority(t, db, 28, "default", "shared-model", "", 5)
-	seedGroupTagResolverChannelWithPriority(t, db, 29, "default", "shared-model", "", 0)
-	model.InitChannelCache()
-
-	assert.False(t, RecordChannelCircuitFailure(18, 524).Tripped)
-	assert.True(t, RecordChannelCircuitFailure(18, 524).Tripped)
-
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	retryParam := &RetryParam{
-		Ctx:        ctx,
-		TokenGroup: "default",
-		ModelName:  "shared-model",
-		Retry:      common.GetPointer(2),
-	}
-	retryParam.ForceSelectionRetryOnce(0)
-	channel, _, err := CacheGetRandomSatisfiedChannel(retryParam)
+func TestPinnedTaskPluginChannelTypesUsesPinnedGenerationIndex(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(channelSelectTaskPluginSource("legacy-select", constant.ChannelTypeKling), jsplugin.Options{})
 	require.NoError(t, err)
-	require.NotNil(t, channel)
-	assert.Equal(t, 28, channel.Id)
-	assert.Equal(t, 2, retryParam.GetRetry())
-	assert.True(t, IsChannelCircuitBypass(ctx))
 
-	channel, _, err = CacheGetRandomSatisfiedChannel(retryParam)
+	c, _ := gin.CreateTestContext(nil)
+	c.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{
+		Generation: registry.Generation(),
+		Plugin:     plugin,
+	})
+
+	types, keys := pinnedTaskPluginIdentities(c, "legacy-select")
+	assert.Equal(t, []int{constant.ChannelTypeKling}, types)
+	assert.Equal(t, []string{"legacy-select"}, keys)
+	types, keys = pinnedTaskPluginIdentities(c, "another-plugin")
+	assert.Empty(t, types)
+	assert.Empty(t, keys)
+	types, keys = pinnedTaskPluginIdentities(nil, "legacy-select")
+	assert.Empty(t, types)
+	assert.Empty(t, keys)
+}
+
+func TestPinnedTaskPluginChannelTypesLeavesGenericChannelsKeyed(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(channelSelectTaskPluginSource("generic-select", constant.ChannelTypeTaskPlugin), jsplugin.Options{})
 	require.NoError(t, err)
-	require.NotNil(t, channel)
-	assert.Equal(t, 29, channel.Id)
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{
+		Generation: registry.Generation(),
+		Plugin:     plugin,
+	})
+
+	types, keys := pinnedTaskPluginIdentities(c, "generic-select")
+	assert.Empty(t, types)
+	assert.Equal(t, []string{"generic-select"}, keys)
+}
+
+func TestPinnedTaskPluginChannelTypesIncludesSharedEndpointProviders(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	_, err := registry.Register(channelSelectEndpointPluginSource("gemini-select", constant.ChannelTypeGemini), jsplugin.Options{})
+	require.NoError(t, err)
+	_, err = registry.Register(channelSelectEndpointPluginSource("vertex-select", constant.ChannelTypeVertexAi), jsplugin.Options{})
+	require.NoError(t, err)
+	candidates := registry.Generation().LookupEndpointCandidates("POST", "/v1/responses", "task-model")
+	require.Len(t, candidates, 2)
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{
+		Generation: registry.Generation(),
+		Plugin:     candidates[0].Plugin,
+	})
+	c.Set(jsplugin.ContextKeyPinnedEndpoint, jsplugin.PinnedEndpoint{
+		Generation: registry.Generation(),
+		Plugin:     candidates[0].Plugin,
+		Protocol:   candidates[0].Protocol,
+		Operation:  candidates[0].Operation,
+		Model:      "task-model",
+		Candidates: candidates,
+	})
+
+	AppendTaskPluginIdentityFilter(c, candidates[0].Plugin.Meta.Key)
+	filters := GetChannelConstraints(c).Filters
+	require.Len(t, filters, 1)
+	assert.Equal(t, []int{constant.ChannelTypeGemini, constant.ChannelTypeVertexAi}, filters[0].TaskPluginChannelTypes)
+	assert.Equal(t, []string{"gemini-select", "vertex-select"}, filters[0].TaskPluginKeys)
+}
+
+func channelSelectTaskPluginSource(key string, channelType int) string {
+	return fmt.Sprintf(`
+export const meta = {
+  apiVersion: 1,
+  key: %q,
+  name: %q,
+  version: "1.0.0",
+  author: {name: "Test"},
+  %s
+  models: ["task-model"],
+  fetchMode: "per_task",
+};
+export function buildSubmitRequest() { return {}; }
+export function parseSubmitResponse() { return {taskId: "task"}; }
+export function buildQueryRequest() { return {}; }
+export function parseTaskResult() { return {status: "SUCCESS"}; }
+`, key, key, channelSelectChannelTypesField(channelType))
+}
+
+func channelSelectEndpointPluginSource(key string, channelType int) string {
+	return fmt.Sprintf(`
+export const meta = {
+  apiVersion: 1,
+  key: %q,
+  name: %q,
+  version: "1.0.0",
+  author: {name: "Test"},
+  %s
+  models: ["task-model"],
+  fetchMode: "per_task",
+  protocols: [{name: "openai_responses", supports: ["stream", "sync", "background"]}],
+};
+export function buildSubmitRequest() { return {}; }
+export function parseSubmitResponse() { return {taskId: "task"}; }
+export function buildQueryRequest() { return {}; }
+export function parseTaskResult() { return {status: "SUCCESS"}; }
+export const protocols = {openai_responses: {
+  decodeRequest: function(ctx) { return {kind: "submit", model: "task-model", requestBody: ctx.body.value}; },
+  renderEvents: function() { return {events: [], state: null, done: false}; },
+  renderFinal: function() { return {output: []}; },
+}};
+`, key, key, channelSelectChannelTypesField(channelType))
+}
+
+func channelSelectChannelTypesField(channelType int) string {
+	if channelType <= 0 || channelType == constant.ChannelTypeTaskPlugin {
+		return ""
+	}
+	return fmt.Sprintf("channelTypes: [%d],", channelType)
+}
+
+func TestPinnedTaskPluginChannelTypesIncludesCompatibleTypes(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(channelSelectCompatiblePluginSource("sora-select", constant.ChannelTypeSora, constant.ChannelTypeOpenAI), jsplugin.Options{})
+	require.NoError(t, err)
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{
+		Generation: registry.Generation(),
+		Plugin:     plugin,
+	})
+
+	types, keys := pinnedTaskPluginIdentities(c, "sora-select")
+	assert.Equal(t, []int{constant.ChannelTypeSora, constant.ChannelTypeOpenAI}, types)
+	assert.Equal(t, []string{"sora-select"}, keys)
+}
+
+func channelSelectCompatiblePluginSource(key string, channelType, compatibleType int) string {
+	return fmt.Sprintf(`
+export const meta = {
+  apiVersion: 1,
+  key: %q,
+  name: %q,
+  version: "1.0.0",
+  author: {name: "Test"},
+  channelTypes: [%d, %d],
+  models: ["task-model"],
+  fetchMode: "per_task",
+};
+export function buildSubmitRequest() { return {}; }
+export function parseSubmitResponse() { return {taskId: "task"}; }
+export function buildQueryRequest() { return {}; }
+export function parseTaskResult() { return {status: "SUCCESS"}; }
+`, key, key, channelType, compatibleType)
+}
+
+func TestSharedType61IdentityFilterContainsAllCandidateKeys(t *testing.T) {
+	registry := jsplugin.NewRegistry()
+	for _, key := range []string{"alpha", "beta"} {
+		_, err := registry.Register(channelSelectEndpointPluginSource(key, 0), jsplugin.Options{})
+		require.NoError(t, err)
+	}
+	generation := registry.Generation()
+	candidates := generation.LookupEndpointCandidates("POST", "/v1/responses", "task-model")
+	require.Len(t, candidates, 2)
+	c, _ := gin.CreateTestContext(nil)
+	c.Set(jsplugin.ContextKeyPinnedEndpoint, jsplugin.PinnedEndpoint{Generation: generation, Plugin: candidates[0].Plugin, Candidates: candidates})
+	AppendTaskPluginIdentityFilter(c, "alpha")
+	filters := GetChannelConstraints(c).Filters
+	require.Len(t, filters, 1)
+	assert.Equal(t, "alpha", filters[0].TaskPluginKey)
+	assert.Equal(t, []string{"alpha", "beta"}, filters[0].TaskPluginKeys)
+	assert.Empty(t, filters[0].TaskPluginChannelTypes)
 }

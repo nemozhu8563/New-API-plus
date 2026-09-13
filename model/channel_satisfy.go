@@ -1,20 +1,18 @@
 package model
 
 import (
+	"slices"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 func IsChannelEnabledForGroupModel(group string, modelName string, channelID int) bool {
-	return IsChannelEnabledForGroupModelTag(group, modelName, "", channelID)
-}
-
-func IsChannelEnabledForGroupModelTag(group string, modelName string, tag string, channelID int) bool {
 	if group == "" || modelName == "" || channelID <= 0 {
 		return false
 	}
 	if !common.MemoryCacheEnabled {
-		return isChannelEnabledForGroupModelTagDB(group, modelName, tag, channelID)
+		return isChannelEnabledForGroupModelDB(group, modelName, channelID)
 	}
 
 	channelSyncLock.RLock()
@@ -24,8 +22,12 @@ func IsChannelEnabledForGroupModelTag(group string, modelName string, tag string
 		return false
 	}
 
-	if isChannelIDInList(getChannelsByGroupModelTagUnlocked(group, modelName, tag), channelID) {
+	if isChannelIDInList(group2model2channels[group][modelName], channelID) {
 		return true
+	}
+	normalized := ratio_setting.RoutingMatchModelName(modelName)
+	if normalized != "" && normalized != modelName {
+		return isChannelIDInList(group2model2channels[group][normalized], channelID)
 	}
 	return false
 }
@@ -42,36 +44,33 @@ func IsChannelEnabledForAnyGroupModel(groups []string, modelName string, channel
 	return false
 }
 
-func isChannelEnabledForGroupModelTagDB(group string, modelName string, tag string, channelID int) bool {
+func isChannelEnabledForGroupModelDB(group string, modelName string, channelID int) bool {
 	var count int64
-	query := DB.Model(&Ability{}).
-		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, modelName, channelID, true)
-	if tag != "" {
-		query = query.Where("tag = ?", tag)
-	}
-	err := query.Count(&count).Error
+	err := DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, modelName, channelID, true).
+		Count(&count).Error
 	if err == nil && count > 0 {
 		return true
 	}
-	normalized := ratio_setting.FormatMatchingModelName(modelName)
+	normalized := ratio_setting.RoutingMatchModelName(modelName)
 	if normalized == "" || normalized == modelName {
 		return false
 	}
 	count = 0
-	query = DB.Model(&Ability{}).
-		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, normalized, channelID, true)
-	if tag != "" {
-		query = query.Where("tag = ?", tag)
-	}
-	err = query.Count(&count).Error
+	err = DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and channel_id = ? and enabled = ?", group, normalized, channelID, true).
+		Count(&count).Error
 	return err == nil && count > 0
 }
 
 func isChannelIDInList(list []int, channelID int) bool {
-	for _, id := range list {
-		if id == channelID {
-			return true
-		}
+	return slices.Contains(list, channelID)
+}
+
+func IsChannelEnabledForGroupModelTag(group, modelName, tag string, channelID int) bool {
+	if !IsChannelEnabledForGroupModel(group, modelName, channelID) {
+		return false
 	}
-	return false
+	channel, err := CacheGetChannel(channelID)
+	return err == nil && channel != nil && (tag == "" || channel.Tag != nil && *channel.Tag == tag)
 }

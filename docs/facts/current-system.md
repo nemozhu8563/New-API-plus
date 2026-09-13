@@ -24,6 +24,8 @@
 
 已确认（2026-09-03 09:44:47，Asia/Shanghai；Bing 回读同日）：根 Go 服务的站点运行时配置、GA4/Clarity consent gate、`/robots.txt` 与 `/sitemap.xml` 已发布到 GreenCloud 正式 `new-api`。该次发布使用镜像 `new-api:new-api-release-20260903T094447Z-e40d88d1535`，应用为 `running/healthy`、重启次数 `0`；PostgreSQL 与 Redis 未重建。`https://tryvalo.com/` 已运行 canonical 与公开 telemetry payload，初始 analytics consent 为拒绝，未同意时没有 GA4/Clarity 远程资源。GA4 已有精确 Tryvalo Web stream（`https://tryvalo.com`、Measurement ID `G-T2LD0R73QD`），但 Realtime 当前没有可用数据；Clarity 已有精确 Tryvalo project（`ycgor9smow`），当前 provider 页面仍在安装引导，未读到 Dashboard/录制数据。`sc-domain:tryvalo.com` 已由当前 Google 账号以 Owner 身份验证，`https://tryvalo.com/sitemap.xml` 已在 GSC 读回为成功（4 URL）。Bing 的精确站点 `https://tryvalo.com/` 已通过 GSC Import 导入并从 provider 页面读回；同一 sitemap 已提交一次，provider 原始状态为 `Submitted / Processing`。该状态只证明 Bing 已接收并处理中，不确认抓取或收录。正式发布与 provider 回读细节见 `docs/operations/2026-09-03-tryvalo-telemetry-search-production-release.md`。
 
+已确认（2026-09-12，Asia/Shanghai）：本地分支 `codex/upstream-integration-20260911` 已通过代理吸收官方 `upstream/main` 提交 `385d2dfd1`，合并提交为 `510a0445e`。冲突已解决且 `upstream/main` 可达；本地 Tryvalo、钱包、Stripe、订阅、计费、敏感词、affiliate、OAuth、站点运行时与渠道路由逻辑保留，同时接入 upstream 的 passkey、插件、定价和渠道能力。根 Go、relaykit 独立模块、前端类型检查/lint/格式/构建及相关定向测试已验证；前端全量测试仍有旧 UI 断言差异，生产部署与真实支付闭环未验证。详细边界见 `docs/operations/upstream-migration-uncertainties.md`。
+
 ## 事实文件索引
 
 | 事实文件 | 状态 | 用途 |

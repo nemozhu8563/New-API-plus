@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import type { TFunction } from 'i18next'
 
 import { formatTimestampToDate } from '@/lib/format'
@@ -176,4 +194,35 @@ export function isModelEnabled(model: Model): boolean {
  */
 export function isModelSyncOfficial(model: Model): boolean {
   return model.sync_official === 1
+}
+
+// Keep table labels compact; the drawer and tooltip share the full explanation.
+export function getModelChannelState(model: Model) {
+  const available = model.bound_channels?.length ?? 0
+  const configured = model.configured_channel_count ?? available
+  if (configured === 0) {
+    if (model.name_rule !== 0) {
+      return {
+        label: 'No matching channels',
+        description: 'No configured channel models match this metadata rule.',
+      }
+    }
+    return {
+      label: 'Metadata only',
+      description:
+        'No channel is configured. This model will not appear in the model square.',
+    }
+  }
+  if (available === 0) {
+    return {
+      label: 'No available channels',
+      description:
+        'No channel is currently available. This model will not appear in the model square.',
+    }
+  }
+  return {
+    label: 'Available channels: {{count}}',
+    description:
+      'Listing also depends on metadata visibility and the user’s group access.',
+  }
 }

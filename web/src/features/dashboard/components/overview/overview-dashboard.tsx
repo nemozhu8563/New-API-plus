@@ -10,13 +10,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { useDashboardStatus } from '../../hooks/use-status-data'
+import { useApiInfo, useDashboardStatus } from '../../hooks/use-status-data'
 import { resolvePrimaryApiAddress } from '../../lib/api-info'
 import { AnnouncementsPanel } from './announcements-panel'
+import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { SummaryCards } from './summary-cards'
 import { UptimePanel } from './uptime-panel'
@@ -80,7 +83,7 @@ function ConnectionOverview(props: {
     try {
       const result = await fetchTokenKey(props.keyItem.id)
       if (!result.success || !result.data?.key) {
-        toast.error(result.message || t('Failed to copy to clipboard'))
+        handleServerError(result, t('Failed to copy to clipboard'))
         return
       }
 
@@ -90,8 +93,8 @@ function ConnectionOverview(props: {
         return
       }
       toast.error(t('Failed to copy to clipboard'))
-    } catch {
-      toast.error(t('Failed to copy to clipboard'))
+    } catch (error) {
+      handleServerError(error, t('Failed to copy to clipboard'))
     } finally {
       setKeyCopying(false)
     }
@@ -236,14 +239,15 @@ export function OverviewDashboard() {
     faq: showFAQPanel,
     uptimeKuma: showUptimePanel,
   } = useDashboardStatus()
+  const { items: apiInfoItems } = useApiInfo()
   const apiAddress = resolvePrimaryApiAddress(serverAddress, getCurrentOrigin())
 
   const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
 
   const apiKeysQuery = useQuery({
-    queryKey: ['dashboard', 'overview', 'api-keys'],
+    queryKey: ['dashboard', 'overview', 'api-keys', user?.id],
     queryFn: async () => {
-      const result = await getApiKeys({ p: 1, size: 10 })
+      const result = requireServerSuccess(await getApiKeys({ p: 1, size: 10 }))
       return result.success ? (result.data?.items ?? []) : []
     },
     staleTime: 60 * 1000,
@@ -311,6 +315,8 @@ export function OverviewDashboard() {
           </div>
         )}
       </div>
+
+      {apiInfoItems.length > 0 && <ApiInfoPanel />}
 
       {showSupplementalPanels && (
         <div

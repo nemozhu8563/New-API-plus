@@ -92,3 +92,10 @@
 - 待定：生产数据库的全量数据完整性、Redis 缓存业务正确性、证书自动续期、容量和防火墙完整规则；当前检查只覆盖上述只读探针。
 - 待定：生产备份、数据库恢复演练、告警、容量、日志保留与应用回滚演练。
 - 待定：GitHub Actions 最近运行、Docker Hub 镜像、cosign 签名和 release 产物的远端读回。
+
+## 2026-09-12 upstream 合并测试环境发布
+
+- 已执行：通过 GreenCloud `root@173.249.203.66` 与 `~/.ssh/greencloud_core_rsa2048`，在远端构建 amd64 镜像 `new-api:new-api-test-20260912T004726Z-510a0445e`，更新 `/srv/new-api-test/compose.yaml`，并仅重建 `new-api-test`。
+- 已备份：发布前 Compose 保存在 `/srv/new-api-test/backups/new-api-test-20260912T0105Z-510a0445e/compose.yaml.before`，发布后配置为同目录 `compose.yaml.after`。
+- 已验证：容器使用目标镜像并为 `healthy`；GreenCloud 本机 `http://127.0.0.1:3001/api/status` 与 `https://test.tryvalo.com/api/status` 均返回 `success: true`。
+- 未执行：未重建测试 PostgreSQL/Redis，未修改生产应用、DNS、Caddy、支付配置或凭据；真实 Sandbox 支付、Webhook、权益、退款和争议 E2E 仍待定。

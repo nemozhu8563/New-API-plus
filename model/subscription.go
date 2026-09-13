@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,16 @@ const (
 )
 
 const SubscriptionCurrencyCNY = "CNY"
+
+func calcSubscriptionBalanceQuota(price float64) (int, error) {
+	if price <= 0 {
+		return 0, nil
+	}
+	if common.QuotaPerUnit <= 0 {
+		return 0, errors.New("额度单位配置错误")
+	}
+	return common.QuotaFromDecimalStrict(decimal.NewFromFloat(price).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Ceil())
+}
 
 // Subscription quota reset period
 const (
@@ -195,6 +206,22 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+}
+
+func migrateSubscriptionPlansToMonthlyBilling() error {
+	if DB == nil {
+		return nil
+	}
+	if err := DB.Model(&SubscriptionPlan{}).Where("public_visible IS NULL").Update("public_visible", gorm.Expr("enabled")).Error; err != nil {
+		return err
+	}
+	return DB.Model(&SubscriptionPlan{}).Where("1 = 1").Updates(map[string]interface{}{
+		"duration_unit":              SubscriptionDurationMonth,
+		"duration_value":             1,
+		"custom_seconds":             0,
+		"quota_reset_period":         SubscriptionResetBillingCycle,
+		"quota_reset_custom_seconds": 0,
+	}).Error
 }
 
 const subscriptionPlanRecommendationLockName = "recommendation"
@@ -947,6 +974,44 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 }
 
 // GetAllActiveUserSubscriptions returns all active subscriptions for a user.
+func PurchaseSubscriptionWithBalance(userId, planId int) error {
+	if userId <= 0 || planId <= 0 {
+		return errors.New("invalid userId or planId")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		if err != nil {
+			return err
+		}
+		if !plan.Enabled {
+			return errors.New("套餐未启用")
+		}
+		charge, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+		if err != nil {
+			return err
+		}
+		var user User
+		if err := lockForUpdate(tx).First(&user, userId).Error; err != nil {
+			return err
+		}
+		if charge > 0 && user.Quota < charge {
+			return errors.New("余额不足")
+		}
+		if charge > 0 {
+			if err := tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota - ?", charge)).Error; err != nil {
+				return err
+			}
+		}
+		_, err = CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance)
+		if err != nil {
+			return err
+		}
+		now := common.GetTimestamp()
+		order := &SubscriptionOrder{UserId: userId, PlanId: plan.Id, Money: plan.PriceAmount, TradeNo: fmt.Sprintf("SUBBAL%dNO%d", userId, now), PaymentMethod: PaymentMethodBalance, PaymentProvider: PaymentProviderBalance, Status: common.TopUpStatusSuccess, CreateTime: now, CompleteTime: now, ProviderPayload: fmt.Sprintf("charged_quota=%d", charge)}
+		return tx.Create(order).Error
+	})
+}
+
 func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")

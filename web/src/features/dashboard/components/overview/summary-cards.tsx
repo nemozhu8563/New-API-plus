@@ -20,6 +20,7 @@ import {
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import { getSelfSubscriptionFull } from '@/features/subscriptions/api'
 import { formatNumber, formatQuota } from '@/lib/format'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -45,6 +46,7 @@ export function SummaryCards() {
       'dashboard',
       'overview',
       'last-24h-usage',
+      user?.id,
       timeRange.start_timestamp,
       timeRange.end_timestamp,
     ],
@@ -58,15 +60,15 @@ export function SummaryCards() {
   })
 
   const performanceQuery = useQuery({
-    queryKey: ['dashboard', 'overview', 'error-rate', 24],
-    queryFn: () => getPerfMetricsSummary(24),
+    queryKey: ['dashboard', 'overview', 'error-rate', user?.id, 24],
+    queryFn: async () => requireServerSuccess(await getPerfMetricsSummary(24)),
     staleTime: 60 * 1000,
     retry: false,
   })
 
   const subscriptionQuery = useQuery({
     queryKey: ['dashboard', 'overview', 'subscription-quota', user?.id],
-    queryFn: getSelfSubscriptionFull,
+    queryFn: async () => requireServerSuccess(await getSelfSubscriptionFull()),
     enabled: Boolean(user),
     staleTime: 60 * 1000,
     retry: false,

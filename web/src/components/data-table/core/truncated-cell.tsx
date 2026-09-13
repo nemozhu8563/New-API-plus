@@ -15,6 +15,7 @@ type TruncatedCellProps = {
   side?: 'top' | 'bottom' | 'left' | 'right'
   tooltipClassName?: string
   tooltipContent?: React.ReactNode
+  tabIndex?: number
 }
 
 export function TruncatedCell({
@@ -25,12 +26,14 @@ export function TruncatedCell({
   side = 'top',
   tooltipClassName,
   tooltipContent,
+  tabIndex,
 }: TruncatedCellProps) {
   const content = tooltipContent ?? getTextContent(children)
 
   if (!content) {
     return (
       <div
+        tabIndex={tabIndex}
         className={cn(
           'block max-w-full min-w-0 truncate',
           cellClassName,
@@ -47,6 +50,7 @@ export function TruncatedCell({
       <TooltipTrigger
         render={
           <div
+            tabIndex={tabIndex}
             className={cn(
               'block max-w-full min-w-0 truncate',
               cellClassName,

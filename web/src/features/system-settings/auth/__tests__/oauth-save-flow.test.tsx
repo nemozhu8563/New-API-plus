@@ -36,6 +36,8 @@ const defaultValues = {
   'oidc.authorization_endpoint': '',
   'oidc.token_endpoint': '',
   'oidc.user_info_endpoint': '',
+  'telegram.client_id': '',
+  'telegram.client_secret': '',
   TelegramOAuthEnabled: false,
   TelegramBotToken: '',
   TelegramBotName: '',
