@@ -1,16 +1,18 @@
-# HeroHao Sub2API 渠道迁移手册
+# HeroHao Sub2API 渠道上线 SOP
 
 本文用于把 `https://sub2.herohao.top` 接入 new-api 的测试或正式环境，并在迁移后核对模型、Responses 接口和计费。文档不包含任何上游或下游密钥；密钥只能通过部署环境的密钥管理或管理后台填写。
 
+这份 SOP 对应当前已发布的 HeroHao 适配：渠道转发继续使用现有 Sub2API，价格同步由模型定价页的“上游价格同步”调用 HeroHao 专用价格接口。上线时不需要单独运行价格导入脚本，但每次价格变更仍必须由管理员在页面审核并点击应用。
+
 ## 结论
 
-HeroHao 当前返回标准 OpenAI 兼容协议，可以直接使用现有 **Sub2API（渠道类型 59）**，不需要修改 Go 代码，也不需要 Advanced Custom。已验证的上游接口包括：
+HeroHao 当前返回标准 OpenAI 兼容协议，可以直接使用现有 **Sub2API（渠道类型 59）**，不需要 Advanced Custom。当前代码已经包含 HeroHao 价格适配器，已验证的上游接口包括：
 
 - `GET /v1/models`：标准模型列表，返回 21 个模型；
 - `POST /v1/chat/completions`：返回标准 Chat Completions 和 `usage`；
 - `POST /v1/responses`：返回 `object: "response"`、`status: "completed"`、`output` 和 `usage.input_tokens/output_tokens/total_tokens`。
 
-当前代码的“从上游获取”只负责同步渠道模型列表；HeroHao 的价格页不会自动写入 new-api 的模型价格配置。价格需要先从价格接口读取，再通过管理后台的模型价格设置或受控脚本导入。
+模型列表和价格是两条独立链路：渠道的“从上游获取”读取 `/v1/models`；模型定价页的“上游价格同步”读取 `/pricing/api/pricing`，只取 `official` 字段，生成 `tiered_expr` 表达式，管理员确认后才写入本地模型价格。同步请求不会把 `selling`、`reference` 或其他上游售价覆盖到本地价格。
 
 ## 架构图
 
@@ -27,10 +29,20 @@ flowchart LR
     H --> J[usage]
     I --> J
     J --> K[预扣费 / 结算 / 使用日志]
-    P[GET /pricing/api/pricing] --> Q[人工审核价格]
-    Q --> R[new-api 模型价格配置]
-    R --> K
+    P[GET /pricing/api/pricing] --> Q[HeroHao official 适配器]
+    Q --> R[管理员审核差异]
+    R --> S[new-api 模型价格配置]
+    S --> K
 ```
+
+## 正式上线前置条件
+
+- 目标环境已运行包含 HeroHao 适配器的版本；可在 `/api/status` 查看服务健康状态，并在发布记录中核对镜像对应的 Git SHA。
+- 已准备 HeroHao 上游 Key 和正式环境管理员账号。Key 只在渠道管理页填写，不写入仓库、脚本、工单或日志。
+- 已从上游价格页保存一份价格快照，作为本次审核和回滚依据。
+- 已确认本地要公开的模型名称与 HeroHao `/v1/models` 返回的 `id` 完全一致；模型别名必须通过渠道模型映射维护。
+
+当前适配器随 new-api 构建版本发布；它不是独立的常驻同步进程，也不是上游定时任务。正式环境发布后，管理员需要在页面手动执行一次价格同步。若目标环境仍是未包含该适配器的旧镜像，先完成应用发布，再执行本 SOP 的价格步骤。
 
 ## 渠道配置
 
@@ -49,7 +61,7 @@ API 地址不要带 `/v1`。系统会根据请求格式拼接路径；填成 `ht
 
 保存后执行一次渠道测试，并在渠道详情确认模型列表和状态均为启用。若上游模型发生增删，可使用“检测上游模型变更”后再人工应用；不要在第一次接入时直接删除本地模型。
 
-## 价格导入规则
+## 价格同步规则
 
 价格接口：
 
@@ -66,7 +78,7 @@ GET https://sub2.herohao.top/pricing/api/pricing
 
 ### Token 价格字段映射
 
-对 `token.models[]` 逐个按模型名匹配：
+适配器会读取顶层 `models[]`；如果不存在，则读取 `token.models[]`。对每个启用模型按名称匹配：
 
 | HeroHao 字段 | new-api 含义 |
 | --- | --- |
@@ -75,11 +87,23 @@ GET https://sub2.herohao.top/pricing/api/pricing
 | `prices.output.official` | 输出 Token 价格（对外售价） |
 | `prices.cacheRead.official` | 缓存读价格（对外售价） |
 | `prices.cacheWrite.official` | 缓存写价格（对外售价）；缺失时按上游指南记为 0 |
-| `enabled` | 是否允许导入/启用 |
-| `manualOverride` | 人工覆盖标记；为 true 时不要用同步结果覆盖 |
-| `tiers` | 上下文长度分档；导入前必须检查区间和价格单调性 |
+| `enabled` | 为 `false` 时跳过该条目 |
+| `manualOverride` | 当前适配器不读取该字段；标记为 `true` 的模型由管理员人工跳过或单独复核 |
+| `tiers` | 当前适配器不会自动展开分档；需要人工转换为表达式后再保存 |
 
-建议第一次只导入一个 Token 计费模型（例如 `deepseek-v4-flash-0731`），先验证 Responses 的 usage 和额度变化，再批量导入其余模型。
+每条有效记录会生成类似下面的本地表达式（数值按接口原样保留）：
+
+```text
+p * <input.official> + c * <output.official> + cr * <cacheRead.official> + cc * <cacheWrite.official>
+```
+
+`official` 是对外展示和本地计费的价格来源；本项目约定把 HeroHao 返回的 CNY 数值直接作为 credit 数值使用，不做汇率换算。缺失或无法解析的价格条目会被跳过，不会生成免费价格。
+
+建议正式迁移先选一个 Token 计费模型（例如 `deepseek-v4-flash-0731`），验证 Responses 的 usage 和额度变化后，再批量应用其余模型。
+
+### DeepSeek 分时价格
+
+HeroHao 价格响应里的 `tiers` 不会由当前适配器自动转换为时间条件。需要高峰/平时两档时，先同步平时 `official` 价格，再在该模型的表达式编辑器中保存两档表达式，使用项目约定的北京时间条件。保存后重新发起一次同步预览，确认该模型显示为 `tiered_expr`，且没有被普通数字价格覆盖。
 
 ### 按次价格
 
@@ -100,9 +124,9 @@ GET https://sub2.herohao.top/pricing/api/pricing
 
 遇到这些情况，先保留人工配置或禁用该规则，并在价格核对表中记录原因。
 
-## 测试验收
+## 测试验收（正式环境照此执行）
 
-### 1. 创建下游测试 Key
+### 1. 创建下游临时 Key
 
 在测试环境管理后台创建一个临时下游 API Key，给足够但有限的测试额度，并记录：
 
@@ -111,7 +135,7 @@ GET https://sub2.herohao.top/pricing/api/pricing
 - 请求前 quota；
 - 创建时间。
 
-测试完成后禁用或删除该测试 Key，避免被其他流量使用。
+测试完成后先禁用；确认日志、计费和回滚检查完成后再删除。若需要保留排障窗口，记录 Key 名称和末四位即可，不能记录完整 Key。
 
 ### 2. 验证模型列表
 
@@ -177,16 +201,33 @@ curl -sS "$NEW_API_BASE/v1/responses" \
 - 使用日志生成 2 笔非流式和 4 笔流式消耗记录，显示模型、渠道、令牌、Token 数和价格档位均正确；非流式两笔合计费用约 `$0.000026`，页面当前时段累计用量显示约 `$0.000074`（流式调试请求包含重复读取事件流的验证请求）；
 - 另用此前未配置价格的 `MiniMax-M3` 创建临时 Key 做 Responses 验证：HTTP 200，`status=completed`，usage 为 `input_tokens=181`、`output_tokens=2`、`total_tokens=183`；额度从 `100000000` 减少到 `99999984`，使用日志 quota 为 `16`，`billing_mode=tiered_expr`、`matched_tier=base`、`request_path=/v1/responses`、`use_channel=["35"]`；验证后已删除 Key。未在仓库、文档或日志中保存完整密钥。
 
-本次批量导入的是价格接口当前快照中的普通 Token 价格，并将 4 个 DeepSeek 模型的工作日高峰时段 tiers 转换为北京时间请求条件表达式；其他模型的时段 tiers 尚未转换。正式迁移前应按“价格导入规则”逐模型审核是否需要保留时段差异，并保存新的价格快照。
+本次批量导入的是价格接口当前快照中的普通 Token 价格，并将 4 个 DeepSeek 模型的工作日高峰时段 tiers 转换为北京时间请求条件表达式；其他模型的时段 tiers 尚未转换。正式迁移前应按“价格同步规则”逐模型审核是否需要保留时段差异，并保存新的价格快照。
 
-## 正式环境迁移
+## 正式环境迁移步骤
+
+### 应用发布
+
+先发布包含 `controller/ratio_sync.go` HeroHao 适配的应用版本，再进行后台配置。测试环境使用 `ops/greencloud/publish-test.sh` 发布不可变镜像；该脚本的默认目标是测试主机，不得直接当作正式环境发布命令。正式环境应沿用现有发布流程，并在发布记录中保存最终镜像标签和 Git SHA。
 
 1. 导出测试环境已验收的渠道字段：类型、名称、Base URL、分组、模型、状态和价格配置；密钥单独通过正式环境密钥流程填写。
-2. 在正式环境创建同类型 Sub2API 渠道，Base URL 保持 `https://sub2.herohao.top`，填入正式上游 Key。
-3. 点击“从上游获取”，确认模型数量与测试环境一致，再按审核后的价格表导入。
-4. 先用正式环境临时下游 Key 做一次 `/v1/models`、Chat、Responses 小额请求。
-5. 对照请求日志、usage、quota 和上游用量完成四项核对后，再开放给正式分组。
-6. 迁移后保留渠道变更记录和价格快照，便于定位上游价格变化。
+2. 在正式环境创建同类型 Sub2API 渠道，Base URL 保持 `https://sub2.herohao.top`，填入正式上游 Key，先保持渠道禁用或仅绑定测试分组。
+3. 点击“从上游获取”，确认模型数量、模型 ID 和端点能力；首次接入不要直接删除本地已有模型。
+4. 打开“系统管理 → 计费与支付 → 模型定价 → 上游价格同步”，选择 HeroHao 渠道并执行同步。系统会自动把该域名的价格地址规范为 `https://sub2.herohao.top/pricing/api/pricing`。
+5. 只勾选审核通过的 `official` 价格，查看冲突预览后点击“应用同步”。`manualOverride` 模型和有分时规则的模型逐个复核；DeepSeek 高峰/平时价格按上一节手工保存。
+6. 用正式环境临时下游 Key 做一次 `/v1/models`、Chat Completions、非流式 Responses 和流式 Responses 小额请求。
+7. 对照请求日志、usage、quota 和价格档位完成核对，确认分组倍率为预期值后，再开放给正式分组。
+8. 保留渠道变更记录、价格快照、同步时间和发布 Git SHA，作为下一次价格刷新和回滚依据。
+
+### 管理后台操作清单
+
+| 顺序 | 页面 | 操作 | 通过标准 |
+| --- | --- | --- | --- |
+| 1 | 渠道管理 | 新建/编辑 Sub2API 渠道 | Base URL 无 `/v1`，Key 已填写，渠道测试通过 |
+| 2 | 渠道管理 | 从上游获取模型 | 模型数量与 `/v1/models` 一致，模型 ID 无误 |
+| 3 | 模型定价 → 上游价格同步 | 选择 HeroHao 渠道并获取价格 | 测试结果成功，价格来源显示 HeroHao |
+| 4 | 上游价格同步 | 逐条检查 `official`、缓存字段和分时模型 | 没有把 `selling/reference` 当成对外价格 |
+| 5 | 模型定价 | 应用同步并检查表达式 | 模式为 `tiered_expr`，表达式和快照一致 |
+| 6 | API/使用日志 | 发起四类请求并核对扣费 | HTTP 200、usage 完整、quota 和日志费用一致 |
 
 ## 回滚
 
