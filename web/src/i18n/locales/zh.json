@@ -6663,6 +6663,7 @@
     "Subscription activated: {{plan}}": "订阅已激活：{{plan}}",
     "Subscription plans": "订阅套餐",
     "Switch models without rebuilding your integration": "无需重建集成即可切换模型",
+    "Choose a plan, create an API key, and use the same API format across supported models.": "选择套餐、创建 API 密钥，并使用同一套 API 格式访问受支持的模型。",
     "Terms of Service": "服务协议",
     "Toggle Sidebar": "切换侧边栏",
     "Toggle password visibility": "切换密码可见性",
@@ -6694,6 +6695,21 @@
     "{{count}} items": "{{count}} 项",
     "{{count}} redemptions": "{{count}} 次兑换",
     "{{discount}}/10 price": "{{discount}} 折",
-    "{{rate}}% permanent cashback": "永久返现 {{rate}}%"
+    "{{rate}}% permanent cashback": "永久返现 {{rate}}%",
+    "Build against an OpenAI-compatible endpoint with broad model access and predictable monthly plans.": "基于兼容 OpenAI 的接口开发，获得广泛的模型访问能力和可预期的月度套餐。",
+    "OpenAI-compatible": "兼容 OpenAI",
+    "Use a familiar API format and keep your client integration focused.": "使用熟悉的 API 格式，让客户端集成更专注。",
+    "Choose from available models while keeping one consistent integration.": "从可用模型中选择，同时保持一致的集成方式。",
+    "Track your remaining monthly quota and billing period from the dashboard.": "在控制台查看剩余月度额度和计费周期。",
+    "Send your first request": "发送你的第一个请求",
+    "Contact us": "联系我们",
+    "About": "关于我们",
+    "Plans": "套餐",
+    "Open dashboard": "打开控制台",
+    "Start building": "开始构建",
+    "View plans": "查看套餐",
+    "API request example": "API 请求示例",
+    "Switch models without rebuilding your integration": "无需重建集成即可切换模型",
+    "Choose a plan, create an API key, and use the same API format across supported models.": "选择套餐、创建 API 密钥，并使用同一套 API 格式访问受支持的模型。"
   }
 }
