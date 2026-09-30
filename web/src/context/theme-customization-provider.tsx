@@ -1,32 +1,14 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { createContext, useContext, useEffect, useMemo } from 'react'
 
 import {
-  CONTENT_LAYOUT_VALUES,
   type ContentLayout,
-  DEFAULT_THEME_CUSTOMIZATION,
-  resolveThemeFont,
-  THEME_FONT_VALUES,
-  THEME_PRESET_VALUES,
-  THEME_RADIUS_VALUES,
-  THEME_SCALE_VALUES,
+  FIXED_THEME_CUSTOMIZATION,
   type ThemeCustomization,
   type ThemeFont,
   type ThemePreset,
   type ThemeRadius,
   type ThemeScale,
 } from '@/lib/theme-customization'
-import {
-  readThemePreference,
-  THEME_STORAGE_KEYS,
-  writeThemePreference,
-} from '@/lib/theme-storage'
 
 function applyAttribute(name: string, value: string | null) {
   if (typeof document === 'undefined') return
@@ -50,172 +32,44 @@ type ThemeCustomizationContextType = {
   resetCustomization: () => void
 }
 
-// Fallback used when a consumer renders outside the provider (e.g. an error
-// route mounted before providers are ready, or stale HMR boundaries). Keeping
-// it permissive prevents the whole tree from crashing — the UI just behaves
-// like the defaults until the real provider re-mounts.
-const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
-  defaults: DEFAULT_THEME_CUSTOMIZATION,
-  customization: DEFAULT_THEME_CUSTOMIZATION,
-  setPreset: () => {},
-  setFont: () => {},
-  setRadius: () => {},
-  setScale: () => {},
-  setContentLayout: () => {},
-  resetCustomization: () => {},
+// The fork pins the brand theme: the Anthropic preset (warm cream canvas with
+// the clay accent) plus the sans font and large radius/scale are part of the
+// product identity, so customization setters are intentionally no-ops.
+const ignoreCustomization = () => undefined
+
+const FIXED_THEME_CONTEXT: ThemeCustomizationContextType = {
+  defaults: FIXED_THEME_CUSTOMIZATION,
+  customization: FIXED_THEME_CUSTOMIZATION,
+  setPreset: ignoreCustomization,
+  setFont: ignoreCustomization,
+  setRadius: ignoreCustomization,
+  setScale: ignoreCustomization,
+  setContentLayout: ignoreCustomization,
+  resetCustomization: ignoreCustomization,
 }
 
 const ThemeCustomizationContext =
-  createContext<ThemeCustomizationContextType>(FALLBACK_CONTEXT)
+  createContext<ThemeCustomizationContextType>(FIXED_THEME_CONTEXT)
 
 export function ThemeCustomizationProvider(props: {
   children: React.ReactNode
 }) {
-  const [preset, _setPreset] = useState<ThemePreset>(() =>
-    readThemePreference<ThemePreset>(
-      THEME_STORAGE_KEYS.preset,
-      THEME_PRESET_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.preset
-    )
-  )
-  const [font, _setFont] = useState<ThemeFont>(() =>
-    readThemePreference<ThemeFont>(
-      THEME_STORAGE_KEYS.font,
-      THEME_FONT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.font
-    )
-  )
-  const [radius, _setRadius] = useState<ThemeRadius>(() =>
-    readThemePreference<ThemeRadius>(
-      THEME_STORAGE_KEYS.radius,
-      THEME_RADIUS_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.radius
-    )
-  )
-  const [scale, _setScale] = useState<ThemeScale>(() =>
-    readThemePreference<ThemeScale>(
-      THEME_STORAGE_KEYS.scale,
-      THEME_SCALE_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.scale
-    )
-  )
-  const [contentLayout, _setContentLayout] = useState<ContentLayout>(() =>
-    readThemePreference<ContentLayout>(
-      THEME_STORAGE_KEYS.contentLayout,
-      CONTENT_LAYOUT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.contentLayout
-    )
-  )
-
-  // Mirror state to the <body> via data-* attributes so theme-presets.css can
-  // override CSS variables at the right cascade layer.
+  // Mirror the fixed brand theme to the <body> via data-* attributes so
+  // theme-presets.css can override CSS variables at the right cascade layer.
   useEffect(() => {
+    applyAttribute('data-theme-preset', FIXED_THEME_CUSTOMIZATION.preset)
+    applyAttribute('data-theme-font', FIXED_THEME_CUSTOMIZATION.font)
+    applyAttribute('data-theme-radius', FIXED_THEME_CUSTOMIZATION.radius)
+    applyAttribute('data-theme-scale', FIXED_THEME_CUSTOMIZATION.scale)
     applyAttribute(
-      'data-theme-preset',
-      preset === DEFAULT_THEME_CUSTOMIZATION.preset ? null : preset
-    )
-  }, [preset])
-
-  // Font is the one axis where we resolve before writing the attribute:
-  // the persisted preference may be `default`, but CSS works in terms of
-  // the concrete `sans`/`serif` choice that should drive the cascade.
-  // Resolving here (instead of in CSS via `:not()` selectors) keeps the
-  // stylesheet to one simple `[data-theme-font='serif']` selector and lets
-  // future presets opt into typography via `PRESET_DEFAULT_FONT` alone.
-  useEffect(() => {
-    applyAttribute('data-theme-font', resolveThemeFont(font, preset))
-  }, [font, preset])
-
-  useEffect(() => {
-    applyAttribute(
-      'data-theme-radius',
-      radius === DEFAULT_THEME_CUSTOMIZATION.radius ? null : radius
-    )
-  }, [radius])
-
-  useEffect(() => {
-    applyAttribute(
-      'data-theme-scale',
-      scale === DEFAULT_THEME_CUSTOMIZATION.scale ? null : scale
-    )
-  }, [scale])
-
-  useEffect(() => {
-    applyAttribute('data-theme-content-layout', contentLayout)
-  }, [contentLayout])
-
-  const setPreset = useCallback((value: ThemePreset) => {
-    _setPreset(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.preset,
-      value === DEFAULT_THEME_CUSTOMIZATION.preset ? null : value
+      'data-theme-content-layout',
+      FIXED_THEME_CUSTOMIZATION.contentLayout
     )
   }, [])
-
-  const setFont = useCallback((value: ThemeFont) => {
-    _setFont(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.font,
-      value === DEFAULT_THEME_CUSTOMIZATION.font ? null : value
-    )
-  }, [])
-
-  const setRadius = useCallback((value: ThemeRadius) => {
-    _setRadius(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.radius,
-      value === DEFAULT_THEME_CUSTOMIZATION.radius ? null : value
-    )
-  }, [])
-
-  const setScale = useCallback((value: ThemeScale) => {
-    _setScale(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.scale,
-      value === DEFAULT_THEME_CUSTOMIZATION.scale ? null : value
-    )
-  }, [])
-
-  const setContentLayout = useCallback((value: ContentLayout) => {
-    _setContentLayout(value)
-    writeThemePreference(
-      THEME_STORAGE_KEYS.contentLayout,
-      value === DEFAULT_THEME_CUSTOMIZATION.contentLayout ? null : value
-    )
-  }, [])
-
-  const resetCustomization = useCallback(() => {
-    setPreset(DEFAULT_THEME_CUSTOMIZATION.preset)
-    setFont(DEFAULT_THEME_CUSTOMIZATION.font)
-    setRadius(DEFAULT_THEME_CUSTOMIZATION.radius)
-    setScale(DEFAULT_THEME_CUSTOMIZATION.scale)
-    setContentLayout(DEFAULT_THEME_CUSTOMIZATION.contentLayout)
-  }, [setPreset, setFont, setRadius, setScale, setContentLayout])
 
   const value = useMemo<ThemeCustomizationContextType>(
-    () => ({
-      defaults: DEFAULT_THEME_CUSTOMIZATION,
-      customization: { preset, font, radius, scale, contentLayout },
-      setPreset,
-      setFont,
-      setRadius,
-      setScale,
-      setContentLayout,
-      resetCustomization,
-    }),
-    [
-      preset,
-      font,
-      radius,
-      scale,
-      contentLayout,
-      setPreset,
-      setFont,
-      setRadius,
-      setScale,
-      setContentLayout,
-      resetCustomization,
-    ]
+    () => FIXED_THEME_CONTEXT,
+    []
   )
 
   return (
