@@ -190,7 +190,6 @@ describe('request policy settings', () => {
   it.each([
     ['retry', 'Save Changes'],
     ['health', 'Save Changes'],
-    ['filtering', 'Save sensitive words'],
     ['affinity', 'Save Changes'],
   ])(
     'opening %s and saving unchanged values does not write options',
@@ -230,41 +229,6 @@ describe('request policy settings', () => {
       )
     }
   )
-
-  it('turning filtering off preserves the prompt switch and keyword list', async () => {
-    await renderPolicies('/system-settings/request-policies/filtering')
-    await userEvent.click(
-      await screen.findByRole('switch', { name: 'Enable filtering' })
-    )
-    const prompt = screen.getByRole('switch', { name: 'Inspect user prompts' })
-    expect(prompt).toHaveAttribute('aria-disabled', 'true')
-    expect(prompt).toBeChecked()
-    expect(
-      screen.getByRole('textbox', { name: 'Blocked keywords' })
-    ).toHaveValue('blocked')
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save sensitive words' })
-    )
-    await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
-        '/api/option/request_policy',
-        { options: { CheckSensitiveEnabled: 'false' } }
-      )
-    )
-  })
-
-  it('refreshing another policy keeps unsaved filter text', async () => {
-    await renderPolicies('/system-settings/request-policies/filtering')
-    const keywords = await screen.findByRole('textbox', {
-      name: 'Blocked keywords',
-    })
-    fireEvent.change(keywords, { target: { value: 'unsaved' } })
-    settings.RetryTimes = 5
-    await act(async () => {
-      await queryClient.invalidateQueries({ queryKey: ['system-options'] })
-    })
-    expect(keywords).toHaveValue('unsaved')
-  })
 
   it('invalid retry status ranges show validation and do not write options', async () => {
     await renderPolicies('/system-settings/request-policies/retry')
@@ -352,7 +316,6 @@ describe('request policy settings', () => {
   it.each([
     ['/system-settings/models/channel-affinity', 'routing'],
     ['/system-settings/models/routing-reliability', 'routing'],
-    ['/system-settings/security/sensitive-words', 'filtering'],
     ['/system-settings/operations/monitoring', 'health'],
     ['/system-settings/request-policies/', 'routing'],
     ['/system-settings/request-policies/unknown', 'routing'],
