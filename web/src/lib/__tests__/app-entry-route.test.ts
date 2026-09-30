@@ -18,7 +18,7 @@ describe('application entry routing', () => {
   })
 
   test('sends authenticated landing-page visitors to the dashboard', () => {
-    assert.equal(resolveLandingPrimaryRoute(true), '/dashboard')
+    assert.equal(resolveLandingPrimaryRoute(true), '/dashboard/overview')
     assert.equal(DEFAULT_CONSOLE_ROUTE, '/dashboard/overview')
   })
 })

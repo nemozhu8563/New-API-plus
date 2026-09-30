@@ -1,8 +1,10 @@
+import type { SystemTaskFilters } from '@/features/system-settings/types'
 import { api } from '@/lib/api'
 
 import type {
   SystemInstanceDeleteResponse,
   SystemInstanceListResponse,
+  SystemTaskHistoryDeleteResponse,
 } from './types'
 
 export async function listSystemInstances() {
@@ -22,6 +24,16 @@ export async function deleteStaleSystemInstances() {
 export async function deleteStaleSystemInstance(nodeName: string) {
   const res = await api.delete<SystemInstanceDeleteResponse>(
     `/api/system-info/instances/${encodeURIComponent(nodeName)}`
+  )
+  return res.data
+}
+
+export async function deleteSystemTaskHistory(
+  filters: Pick<SystemTaskFilters, 'type' | 'status'>
+) {
+  const res = await api.delete<SystemTaskHistoryDeleteResponse>(
+    '/api/system-task/history',
+    { params: filters }
   )
   return res.data
 }

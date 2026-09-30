@@ -233,7 +233,11 @@ func TestOAuthBindRejectsIdentityOwnedByAnotherUserWithoutSwitchingLogin(t *test
 	}
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
 	assert.False(t, body.Success)
-	assert.Equal(t, i18n.MsgOAuthAlreadyBound, body.Message)
+	// Earlier tests in the package may initialise the i18n bundle, which
+	// renders the message ID into its English translation. Accept both.
+	if body.Message != i18n.MsgOAuthAlreadyBound && body.Message != "This GitHub account has already been bound" {
+		t.Fatalf("expected oauth.already_bound message, got %q", body.Message)
+	}
 	assert.Empty(t, body.Data)
 	assert.Empty(t, response.Header().Values("Set-Cookie"))
 

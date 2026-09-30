@@ -19,6 +19,7 @@ func setupGroupTagResolverTestDB(t *testing.T) *gorm.DB {
 	previousLogDB := model.LOG_DB
 	previousMainDatabaseType := common.MainDatabaseType()
 	previousLogDatabaseType := common.LogDatabaseType()
+	previousMemoryCacheEnabled := common.MemoryCacheEnabled
 
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.MemoryCacheEnabled = true
@@ -44,6 +45,7 @@ func setupGroupTagResolverTestDB(t *testing.T) *gorm.DB {
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
 		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
+		common.MemoryCacheEnabled = previousMemoryCacheEnabled
 	})
 
 	return db

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import assert from 'node:assert/strict'
 
 import { describe, test } from 'vitest'
@@ -129,6 +111,24 @@ describe('task billing expressions', () => {
     assert.equal(
       tryParseTaskVisualConfig('tier("base", u("unknown") * 0.4)', schema),
       null
+    )
+  })
+
+  test('drops tiers on enum values the schema no longer declares', () => {
+    const expression =
+      'u("mode") == "ultra" ? tier("ultra", u("seconds") * 1.2) : u("mode") == "pro" ? tier("pro", u("seconds") * 0.8) : tier("std", u("seconds") * 0.4)'
+    const parsed = tryParseTaskVisualConfig(expression, schema)
+    assert.ok(parsed)
+    assert.deepEqual(
+      parsed.tiers.map((tier) => [tier.label, tier.unitPrices.seconds]),
+      [
+        ['pro', 0.8],
+        ['std', 0.4],
+      ]
+    )
+    assert.deepEqual(
+      parseTaskTiersFromExpr(expression, schema).map((tier) => tier.label),
+      ['pro', 'std']
     )
   })
 })

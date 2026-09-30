@@ -306,6 +306,7 @@ const (
 	MsgOAuthTrustLevelLow          = "oauth.trust_level_low"
 	MsgOAuthGitHubConfigIncomplete = "oauth.github_config_incomplete"
 	MsgOAuthOIDCConfigIncomplete   = "oauth.oidc_config_incomplete"
+	MsgOAuthNotAutoLinked          = "oauth.not_auto_linked"
 )
 
 // Model layer error messages (for translation in controller)

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { createHash, webcrypto } from 'node:crypto'
 
 import {
@@ -120,8 +102,8 @@ test('loading keeps installation disabled and footer outside the bounded scroll 
   const dialog = screen.getByRole('dialog')
   expect(dialog).toHaveClass(
     'sm:max-w-3xl',
-    'max-h-[calc(100vh-2rem)]',
-    'overflow-hidden'
+    'max-h-[var(--dialog-available-height,calc(100dvh-2rem))]',
+    'overflow-y-auto'
   )
   const footer = dialog.querySelector('[data-slot=dialog-footer]')
   const body = [...dialog.children].find((element) =>
@@ -188,13 +170,11 @@ test('first install shows source on demand and disables repeat submission until 
       screen.getByRole('button', { name: 'Install and enable' })
     ).toBeEnabled()
   )
-  await waitFor(() =>
-    expect(document.querySelector('.cm-content')).toHaveTextContent('const')
-  )
-  expect(document.querySelector('.cm-content')).toHaveTextContent('"demo"')
-  expect(document.querySelector('.cm-content')).toHaveTextContent('// comment')
-  expect(document.querySelector('.cm-content')).toHaveTextContent('42')
-  expect(document.querySelector('.cm-content')).toHaveTextContent('run')
+  expect(screen.getByText('const')).toHaveClass('tok-keyword')
+  expect(screen.getByText('"demo"')).toHaveClass('tok-string')
+  expect(screen.getByText('// comment')).toHaveClass('tok-comment')
+  expect(screen.getByText('42')).toHaveClass('tok-number')
+  expect(screen.getByText('run')).toHaveClass('tok-definition')
   await user.click(screen.getByRole('button', { name: 'Install and enable' }))
   expect(
     await screen.findByRole('button', { name: 'Installing...' })
@@ -306,6 +286,31 @@ test('keyboard users can expand the full model list and inspect a protocol model
   expect(scope).toHaveAttribute('aria-expanded', 'true')
   const scopePanel = screen.getByRole('dialog', { name: 'Model scope' })
   expect(within(scopePanel).getByText('incho_music')).toBeVisible()
+})
+
+test('model constants show source models without an unreadable metadata warning', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(`
+      const MODELS = ['jev-1.13.0', 'jev-latest', 'jev-preview'];
+      export const meta = {models: MODELS};
+      function validate(model) { return MODELS.includes(model); }
+    `)
+    )
+  )
+  renderDialog()
+  const models = screen.getByRole('region', { name: 'Supported models' })
+  expect(await within(models).findByText('jev-1.13.0')).toBeVisible()
+  expect(within(models).getByText('jev-latest')).toBeVisible()
+  expect(within(models).getByText('jev-preview')).toBeVisible()
+  expect(
+    within(models).queryByText('From marketplace index')
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Some plugin information could not be read')
+  ).not.toBeInTheDocument()
 })
 
 test('unreadable metadata can be retried without preventing installation or inventing domain restrictions', async () => {
@@ -506,7 +511,7 @@ test('a late response for the previous version cannot replace the selected sourc
   })
   const { reopen } = renderDialog(false, undefined, true)
   const selector = screen.getByRole('combobox', { name: 'Select version' })
-  selector.focus()
+  await user.click(selector)
   await user.keyboard('1.0{ArrowDown}{Enter}')
   await waitFor(() =>
     expect(

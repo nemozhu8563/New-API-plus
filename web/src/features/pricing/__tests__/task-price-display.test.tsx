@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -100,6 +82,69 @@ const model: PricingModel = {
 }
 const clients: QueryClient[] = []
 
+it('shows nested task conditions and prices in detail and group tables without ambiguous log matches', () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const nestedModel: PricingModel = {
+    ...model,
+    billing_expr:
+      'tier("standard", u("seconds") * (hour("Asia/Shanghai") >= 18 && hour("Asia/Shanghai") < 22 ? (u("resolution") == "4K" ? 0.12 : 0.072) : (u("resolution") == "4K" ? 0.15 : 0.09)))',
+    billing_usage_schema: {
+      seconds: { type: 'number', unit: 'second' },
+      resolution: { enum: ['768P', '4K'] },
+    },
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <ModelCard model={nestedModel} onClick={vi.fn()} />
+      <ModelPriceCell model={nestedModel} />
+      <ModelDetailsContent
+        model={nestedModel}
+        groupRatio={{ default: 2 }}
+        usableGroup={{ default: { desc: '', ratio: 2 } }}
+        endpointMap={{}}
+        autoGroups={[]}
+        priceRate={1}
+        usdExchangeRate={1}
+        tokenUnit='M'
+      />
+      <DynamicPricingBreakdown
+        billingExpr={nestedModel.billing_expr}
+        usageSchema={nestedModel.billing_usage_schema}
+        matchedTierLabel='standard'
+        usageFacts={{ seconds: 10, resolution: '4K' }}
+      />
+    </QueryClientProvider>
+  )
+  expect(
+    screen.queryByText('Special billing expression')
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getAllByText(/resolution: 4K · 18:00–22:00 \(Asia\/Shanghai\)/)
+      .length
+  ).toBeGreaterThan(0)
+  expect(
+    screen.getAllByText(/resolution: 768P · Outside these times:/).length
+  ).toBeGreaterThan(0)
+  expect(screen.getByText('$0.072 – $0.15')).toBeVisible()
+  expect(screen.getAllByText('$0.24').length).toBeGreaterThan(0)
+  expect(screen.queryByText('Matched')).not.toBeInTheDocument()
+})
+
+it('explains missing task metadata while retaining the original expression', () => {
+  const expression = 'tier("base", u("seconds") * 0.09)'
+  render(<DynamicPricingBreakdown billingExpr={expression} />)
+  expect(
+    screen.getByText(
+      'Task usage metadata is unavailable. Pricing details cannot be displayed.'
+    )
+  ).toBeVisible()
+  expect(screen.getByText(expression)).toBeVisible()
+})
+
 it('falls back for omitted count labels and preserves canonical units for other quantities', () => {
   expect(taskUsageUnitLabel({ unit: 'count' }, 'zhCN', '次')).toBe('次')
   expect(
@@ -125,7 +170,7 @@ const imageModel: PricingModel = {
   },
 }
 
-it.skip.each([false, true])(
+it.each([false, true])(
   'shows localized image labels and units in base and group pricing when configured=%s',
   async (configured) => {
     vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
@@ -161,7 +206,7 @@ it.skip.each([false, true])(
   }
 )
 
-it.skip('updates count unit labels across cards, table cells and breakdowns with locale fallback', async () => {
+it('updates count unit labels across cards, table cells and breakdowns with locale fallback', async () => {
   render(
     <>
       <div data-testid='card'>
@@ -243,7 +288,7 @@ it('refreshes memoized provider prices when the group or display currency change
   }
 })
 
-it.skip('shows one standard task price and a localized group price without duplicate tiers', async () => {
+it('shows one standard task price and a localized group price without duplicate tiers', async () => {
   vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -279,7 +324,7 @@ it.skip('shows one standard task price and a localized group price without dupli
   ).toHaveLength(2)
 })
 
-it.skip('labels even a single task price on model cards', async () => {
+it('labels even a single task price on model cards', async () => {
   render(<ModelCard model={model} onClick={() => {}} />)
   expect(screen.getByText('Song generation unit price')).toBeVisible()
   await act(() => i18next.changeLanguage('zhCN'))
@@ -444,7 +489,7 @@ it('uses the same recharge conversion and token unit in task condition prices', 
   expect(screen.getAllByText('$3/1M token')).toHaveLength(2)
 })
 
-it.skip('switches provider group prices, localized conditions and examples, and shows unconfigured providers', async () => {
+it('switches provider group prices, localized conditions and examples, and shows unconfigured providers', async () => {
   vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -558,7 +603,7 @@ it.skip('switches provider group prices, localized conditions and examples, and 
   expect(within(panel).getByText('$0.5')).toBeVisible()
 })
 
-it.skip('shows provider count, price range and missing-price status in both list and card views', () => {
+it('shows provider count, price range and missing-price status in both list and card views', () => {
   const shared: PricingModel = {
     ...model,
     billing_mode: undefined,

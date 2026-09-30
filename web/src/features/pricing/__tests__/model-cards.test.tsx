@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   act,
@@ -106,7 +88,7 @@ describe('model cards', () => {
       '$0'
     )
   })
-  it.skip('shows fixed prices per request in both token display units', () => {
+  it('shows fixed prices per request in both token display units', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',
       billing_expr: 'tier("request", fixed(0.01))',
@@ -115,12 +97,12 @@ describe('model cards', () => {
       <ModelCard model={model} onClick={vi.fn()} tokenUnit='K' />
     )
     expect(screen.getByText('$0.01')).toBeVisible()
-    expect(screen.getByText(/\$0\.01\s*\/\s*request/)).toBeVisible()
+    expect(screen.getByText('/ request')).toBeVisible()
     rerender(<ModelCard model={model} onClick={vi.fn()} tokenUnit='M' />)
     expect(screen.getByText('$0.01')).toBeVisible()
     expect(screen.queryByText('/ 1M')).not.toBeInTheDocument()
   })
-  it.skip('updates the current time tier at a minute boundary and after returning to the page', () => {
+  it('updates the current time tier at a minute boundary and after returning to the page', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-07T08:59:59+08:00'))
     const model = pricingModel({
@@ -129,6 +111,7 @@ describe('model cards', () => {
         'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? tier("peak", p * 3 + c * 9) : tier("off_peak", p * 1.5 + c * 4.5)',
     })
     render(<ModelCard model={model} onClick={vi.fn()} tokenUnit='M' />)
+    expect(screen.getByText('Current period price')).toBeVisible()
     expect(screen.getByText('$1.5')).toBeVisible()
     act(() => vi.advanceTimersByTime(1000))
     expect(screen.getByText('$3')).toBeVisible()
@@ -139,7 +122,7 @@ describe('model cards', () => {
     expect(screen.getByText('$1.5')).toBeVisible()
   })
 
-  it.skip('copies the complete long model name without opening details', async () => {
+  it('copies the complete long model name without opening details', async () => {
     const user = userEvent.setup()
     const onClick = vi.fn()
     const name = 'provider/model-with-a-long-name-and-a-version-suffix-20260906'
@@ -147,11 +130,12 @@ describe('model cards', () => {
       <ModelCard model={pricingModel({ model_name: name })} onClick={onClick} />
     )
     expect(screen.getByRole('heading', { name })).toHaveAttribute('title', name)
-    await user.click(screen.getByTitle('Copy'))
+    await user.click(screen.getByRole('button', { name: 'Copy model name' }))
     expect(await navigator.clipboard.readText()).toBe(name)
     expect(onClick).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Details' }))
     expect(onClick).toHaveBeenCalledOnce()
+    expect(onClick).toHaveBeenCalledWith(name)
   })
 
   it('retains a neutral health strip and missing values when metrics are unavailable', () => {
@@ -159,7 +143,7 @@ describe('model cards', () => {
     const metrics = screen.getByLabelText(
       'Performance metrics for the last 24 hours'
     )
-    expect(within(metrics).getByText('—%')).toBeVisible()
+    expect(within(metrics).getByText('—')).toBeVisible()
     expect(within(metrics).getByText('—s')).toBeVisible()
     expect(within(metrics).getByText('—t/s')).toBeVisible()
     expect(within(metrics).queryByText(/100/)).not.toBeInTheDocument()
@@ -172,7 +156,16 @@ describe('model cards', () => {
     expect(screen.getByRole('button', { name: 'Details' })).toBeEnabled()
   })
 
-  it.skip('keeps group, endpoint and tag overflow counts with their own metadata', () => {
+  it('uses fixed spacing between hourly status bars', () => {
+    render(<ModelCard model={pricingModel()} onClick={vi.fn()} />)
+    const statusStrip = screen.getByRole('img', {
+      name: 'Recent success-rate samples; gray bars indicate missing data.',
+    })
+    expect(statusStrip).toHaveClass('gap-px')
+    expect(statusStrip).not.toHaveClass('justify-between')
+  })
+
+  it('keeps group, endpoint and tag overflow counts with their own metadata', () => {
     const groups = ['default-with-a-long-group-name', 'premium', 'internal']
     const endpoints = ['openai-response', 'openai', 'claude', 'gemini', 'jina']
     const tags = [
@@ -235,9 +228,9 @@ describe('model cards', () => {
   })
 
   it.each([
-    { success_rate: 0, expected: '0.0%' },
-    { success_rate: 99.8, expected: '99.8%' },
-    { success_rate: Number.NaN, expected: '—%' },
+    { success_rate: 0, expected: '0.00%' },
+    { success_rate: 99.8, expected: '99.80%' },
+    { success_rate: Number.NaN, expected: '—' },
   ])(
     'shows $expected for the reported request success rate $success_rate',
     ({ success_rate, expected }) => {
@@ -258,7 +251,7 @@ describe('model cards', () => {
     }
   )
 
-  it.skip('keeps group and recharge pricing correct when changing the token unit, including a free cache price', () => {
+  it('keeps group and recharge pricing correct when changing the token unit, including a free cache price', () => {
     const props = {
       model: pricingModel({ cache_ratio: 0 }),
       onClick: vi.fn(),
@@ -289,7 +282,7 @@ describe('model cards', () => {
     )
   })
 
-  it.skip('shows a per-request price with the selected group and recharge multiplier without a token unit', () => {
+  it('shows a per-request price with the selected group and recharge multiplier without a token unit', () => {
     render(
       <ModelCard
         model={pricingModel({ quota_type: 1, model_price: 0.4 })}
@@ -301,13 +294,13 @@ describe('model cards', () => {
         tokenUnit='K'
       />
     )
-    expect(screen.getByText(/\$0\.6\s*\/\s*request/)).toBeVisible()
+    expect(screen.getByText(/\$0.6/)).toHaveTextContent(/\$0.6\s*\/\s*request/)
     expect(screen.queryByText(/1K|1M/)).not.toBeInTheDocument()
     expect(screen.getAllByText('Per Request')).toHaveLength(1)
     expect(screen.queryByText('Per-request')).not.toBeInTheDocument()
   })
 
-  it.skip('preserves expression prices and makes the selected token unit explicit', () => {
+  it('preserves expression prices and makes the selected token unit explicit', () => {
     render(
       <ModelCard
         model={pricingModel({
@@ -330,7 +323,7 @@ describe('model cards', () => {
     )
   })
 
-  it.skip('keeps task price ranges in their actual usage unit instead of the selected token unit', () => {
+  it('keeps task price ranges in their actual usage unit instead of the selected token unit', () => {
     render(
       <ModelCard
         model={pricingModel({
@@ -351,7 +344,7 @@ describe('model cards', () => {
     expect(screen.queryByText(/1K|1M/)).not.toBeInTheDocument()
   })
 
-  it.skip('shows the unconfigured usage message without inventing a token price', () => {
+  it('shows the unconfigured usage message without inventing a token price', () => {
     render(
       <ModelCard
         model={pricingModel({
@@ -366,7 +359,7 @@ describe('model cards', () => {
     expect(screen.queryByText('Input')).not.toBeInTheDocument()
   })
 
-  it.skip('shows a spaced task token range with its unit when an example price is present', () => {
+  it('shows a spaced task token range with its unit when an example price is present', () => {
     render(
       <ModelCard
         model={pricingModel({
@@ -491,6 +484,7 @@ describe('model cards', () => {
           avg_latency_ms: 1200,
           avg_tps: 42,
           success_rate: 100,
+          window_start: currentHourStart - 23 * 3600,
           recent_success_series: [
             { ts: currentHourStart, success_rate: 100 },
             { ts: currentHourStart - 5 * 3600, success_rate: 80 },
@@ -528,6 +522,7 @@ describe('model cards', () => {
           avg_latency_ms: 1200,
           avg_tps: 42,
           success_rate: 100,
+          window_start: currentHourStart - 23 * 3600,
           recent_success_series: [
             { ts: currentHourStart - 24 * 3600, success_rate: 100 },
           ],
@@ -567,7 +562,7 @@ describe('model cards', () => {
     })
   })
 
-  it('places a five-hour-old point in slot 18 when now is mid-hour', () => {
+  it('uses the server window even when the browser clock is a day ahead', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-07T12:37:00.000Z'))
     const currentHourStart = Math.floor(Date.now() / 1000 / 3600) * 3600
@@ -580,8 +575,9 @@ describe('model cards', () => {
           avg_latency_ms: 1200,
           avg_tps: 42,
           success_rate: 80,
+          window_start: currentHourStart - 47 * 3600,
           recent_success_series: [
-            { ts: currentHourStart - 5 * 3600, success_rate: 80 },
+            { ts: currentHourStart - 29 * 3600, success_rate: 80 },
           ],
         }}
       />

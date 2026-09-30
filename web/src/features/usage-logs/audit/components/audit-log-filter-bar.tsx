@@ -1,6 +1,3 @@
-import type { Table } from '@tanstack/react-table'
-import { useTranslation } from 'react-i18next'
-
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -20,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Combobox } from '@/components/ui/combobox'
+import type { Table } from '@tanstack/react-table'
+import { useTranslation } from 'react-i18next'
 
 import { CompactDateTimeRangePicker } from '../../components/compact-date-time-range-picker'
 import {

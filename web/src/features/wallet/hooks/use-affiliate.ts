@@ -10,6 +10,7 @@ import {
 } from '@/features/affiliates'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getSelf } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { getAffiliateCode, transferAffiliateQuota } from '../api'
 import { generateAffiliateLink } from '../lib'
@@ -45,8 +46,7 @@ export function useAffiliate() {
         setSummary(summaryResponse.data)
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to fetch affiliate data:', error)
+      handleServerError(error)
     } finally {
       setLoading(false)
     }
@@ -69,10 +69,10 @@ export function useAffiliate() {
         return true
       }
 
-      toast.error(response.message || i18next.t('Transfer failed'))
+      handleServerError(response, i18next.t('Transfer failed'))
       return false
-    } catch {
-      toast.error(i18next.t('Transfer failed'))
+    } catch (_error) {
+      handleServerError(_error, i18next.t('Transfer failed'))
       return false
     } finally {
       setTransferring(false)

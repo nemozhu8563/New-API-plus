@@ -491,6 +491,12 @@ export function isAdvancedCustomIncomingPathAllowed(
   return isConverterPathAllowed(incomingPath, converter)
 }
 
+export function isAdvancedCustomPassThroughAllowed(
+  converter: AdvancedCustomConverter
+): boolean {
+  return converter === 'none'
+}
+
 export function getAdvancedCustomConverterOptions(
   incomingPath: string
 ): typeof ADVANCED_CUSTOM_CONVERTER_OPTIONS {
@@ -638,6 +644,12 @@ export function validateAdvancedCustomConfig(
           message: `${routeLabel} upstream path must not contain {model}`,
         }
       }
+      if (route.pass_through_body_enabled) {
+        return {
+          routeIndex: index,
+          message: `${routeLabel} route does not support pass-through`,
+        }
+      }
     }
     const routeModelsError = validateAdvancedCustomRouteModels(
       index,
@@ -665,6 +677,15 @@ export function validateAdvancedCustomConfig(
       return {
         routeIndex: index,
         message: 'Converter does not match incoming path',
+      }
+    }
+    if (
+      route.pass_through_body_enabled &&
+      !isAdvancedCustomPassThroughAllowed(converter)
+    ) {
+      return {
+        routeIndex: index,
+        message: 'Pass-through requires native forwarding',
       }
     }
 
@@ -762,6 +783,9 @@ function normalizeAdvancedCustomRoute(
   const models = normalizeAdvancedCustomRouteModels(route.models)
   if (models.length > 0) {
     nextRoute.models = models
+  }
+  if (route.pass_through_body_enabled === true) {
+    nextRoute.pass_through_body_enabled = true
   }
   if (route.auth) {
     nextRoute.auth = {

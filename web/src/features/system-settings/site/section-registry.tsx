@@ -22,8 +22,12 @@ const SITE_SECTIONS = [
           Logo: settings.Logo,
           Footer: settings.Footer,
           About: settings.About,
+          HomePageContent: settings.HomePageContent,
           ServerAddress: settings.ServerAddress,
           TaskPublicAddress: settings.TaskPublicAddress,
+          general_setting: {
+            docs_link: settings['general_setting.docs_link'],
+          },
           legal: {
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],

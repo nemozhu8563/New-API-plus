@@ -1,25 +1,8 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   act,
-  render as testingRender,
+  cleanup,
+  render,
   screen,
   waitFor,
   within,
@@ -31,6 +14,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { OAUTH_POPUP_CALLBACK_MESSAGE } from '@/features/auth/constants'
 import type { UserProfile } from '@/features/profile/types'
 import { api } from '@/lib/api'
+import { STATUS_QUERY_KEY } from '@/lib/status-query'
 
 import { AccountBindings } from '../components/account-bindings'
 import { PasskeyCard } from '../components/passkey-card'
@@ -55,7 +39,11 @@ const credential = {
   getClientExtensionResults: () => ({}),
 }
 
+let client: QueryClient
 beforeEach(() => {
+  client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   vi.stubGlobal(
     'PublicKeyCredential',
     class {
@@ -74,6 +62,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
+  client.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   if (credentialsDescriptor) {
@@ -179,9 +169,6 @@ it('refreshes Telegram bindings from the server result after the callback popup 
   })
   const onUpdate = vi.fn()
   const user = userEvent.setup()
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
   render(
     <QueryClientProvider client={client}>
       <AccountBindings
@@ -347,7 +334,12 @@ it('consumes Passkey authorization at setup and activates using only the dedicat
   })
   const success = vi.spyOn(toast, 'success')
   const user = userEvent.setup()
-  render(<TwoFACard loading={false} />)
+  client.setQueryData(STATUS_QUERY_KEY, { passkey_rp_ids: ['localhost'] })
+  render(
+    <QueryClientProvider client={client}>
+      <TwoFACard loading={false} />
+    </QueryClientProvider>
+  )
   await user.click(await screen.findByRole('button', { name: 'Enable' }))
   await screen.findByText(
     'We will prompt your device to confirm using biometrics or your hardware key.'
@@ -719,12 +711,3 @@ it.each(['wrong code', 'response lost'] as const)(
     ).not.toBeInTheDocument()
   }
 )
-
-function render(ui: React.ReactNode) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  return testingRender(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>
-  )
-}

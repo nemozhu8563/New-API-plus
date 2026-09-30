@@ -434,17 +434,7 @@ func UpdateCompletionRatioByJSONString(jsonStr string) error {
 }
 
 func GetCompletionRatio(name string) float64 {
-	name = FormatMatchingModelName(name)
-
-	if ratio, ok := completionRatioMap.Get(name); ok {
-		return ratio
-	}
-
-	hardCodedRatio, contain := getHardcodedCompletionModelRatio(name)
-	if contain {
-		return hardCodedRatio
-	}
-	return hardCodedRatio
+	return GetCompletionRatioInfo(name).Ratio
 }
 
 type CompletionRatioInfo struct {
@@ -454,25 +444,32 @@ type CompletionRatioInfo struct {
 
 func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 	name = FormatMatchingModelName(name)
-
+	var configured *float64
 	if ratio, ok := completionRatioMap.Get(name); ok {
-		return CompletionRatioInfo{
-			Ratio:  ratio,
-			Locked: false,
-		}
+		configured = &ratio
+	}
+	return ResolveCompletionRatio(name, configured)
+}
+
+// ResolveCompletionRatio applies relay's enforced and fallback ratios to a
+// configuration snapshot or draft without consulting mutable saved settings.
+func ResolveCompletionRatio(name string, configured *float64) CompletionRatioInfo {
+	name = FormatMatchingModelName(name)
+	if strings.Contains(name, "/") && configured != nil {
+		return CompletionRatioInfo{Ratio: *configured}
 	}
 
 	hardCodedRatio, locked := getHardcodedCompletionModelRatio(name)
 	if locked {
 		return CompletionRatioInfo{
 			Ratio:  hardCodedRatio,
-			Locked: !isEditableHardcodedCompletionModel(name),
+			Locked: true,
 		}
 	}
 
-	if ratio, ok := completionRatioMap.Get(name); ok {
+	if configured != nil {
 		return CompletionRatioInfo{
-			Ratio:  ratio,
+			Ratio:  *configured,
 			Locked: false,
 		}
 	}
@@ -637,16 +634,6 @@ func ContainsAudioRatio(name string) bool {
 	return ok
 }
 
-// ResolveCompletionRatio applies enforced and configured completion ratios.
-func ResolveCompletionRatio(name string, configured *float64) CompletionRatioInfo {
-	name = FormatMatchingModelName(name)
-	if configured != nil {
-		return CompletionRatioInfo{Ratio: *configured, Locked: false}
-	}
-	ratio, locked := getHardcodedCompletionModelRatio(name)
-	return CompletionRatioInfo{Ratio: ratio, Locked: locked && !isEditableHardcodedCompletionModel(name)}
-}
-
 func ContainsAudioCompletionRatio(name string) bool {
 	name = FormatMatchingModelName(name)
 	_, ok := audioCompletionRatioMap.Get(name)
@@ -677,7 +664,7 @@ const DefaultImageRatio = 1.0
 func GetImageRatio(name string) (float64, bool) {
 	ratio, ok := imageRatioMap.Get(name)
 	if !ok {
-		return DefaultImageRatio, false // Default to 1 if not found
+		return DefaultImageRatio, false
 	}
 	return ratio, true
 }

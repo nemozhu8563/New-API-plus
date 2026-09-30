@@ -6,6 +6,7 @@ import type {
   LogCleanupTask,
   SystemOptionsResponse,
   SystemTaskListResponse,
+  SystemTaskFilters,
   SystemTaskResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
@@ -75,9 +76,12 @@ export async function getSystemTask(taskId: string) {
   return res.data
 }
 
-export async function listSystemTasks(limit = 20) {
+export async function listSystemTasks(
+  limit = 20,
+  filters: SystemTaskFilters = {}
+) {
   const res = await api.get<SystemTaskListResponse>('/api/system-task/list', {
-    params: { limit },
+    params: { limit, ...filters },
   })
   return res.data
 }

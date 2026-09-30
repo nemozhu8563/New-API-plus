@@ -20,6 +20,7 @@ import { FormNavigationGuard } from '../components/form-navigation-guard'
 import {
   SettingsForm,
   SettingsFormGrid,
+  SettingsFormGridItem,
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
@@ -34,6 +35,10 @@ const _systemInfoSchema = z.object({
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
   About: z.string().optional(),
+  HomePageContent: z.string().optional(),
+  general_setting: z.object({
+    docs_link: z.string(),
+  }),
   legal: z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
@@ -62,6 +67,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
+    HomePageContent: normalizeValue(defaultValues.HomePageContent),
+    general_setting: {
+      docs_link: normalizeValue(defaultValues.general_setting?.docs_link),
+    },
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
@@ -82,6 +91,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Logo: z.string().url().optional().or(z.literal('')),
     Footer: z.string().optional(),
     About: z.string().optional(),
+    HomePageContent: z.string().optional(),
+    general_setting: z.object({
+      docs_link: z.string(),
+    }),
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
@@ -205,6 +218,26 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
 
               <FormField
                 control={form.control}
+                name='general_setting.docs_link'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Documentation Link')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('https://docs.example.com')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Link to your documentation site')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name='Footer'
                 render={({ field }) => (
                   <FormItem>
@@ -251,12 +284,37 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 )}
               />
 
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='HomePageContent'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Home Page Content')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={t('Welcome to our New API...')}
+                          rows={6}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Content displayed on the home page (supports Markdown)'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
               <FormField
                 control={form.control}
                 name='legal.user_agreement'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Terms of Service')}</FormLabel>
+                    <FormLabel>{t('User Agreement')}</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder={t(

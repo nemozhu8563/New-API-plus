@@ -1,27 +1,10 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import assert from 'node:assert/strict'
 
 import { describe, test } from 'vitest'
 
 import {
   getSafePluginAuthorUrl,
+  parseLegacyAudioClips,
   parseTaskArtifactsResponse,
   resolveTaskPreviewMode,
   shouldLoadTaskArtifacts,
@@ -338,6 +321,32 @@ describe('legacy task preview compatibility', () => {
   })
 })
 
+describe('synchronous results the gateway did not retain', () => {
+  test('given result_discarded on a successful task, the viewer explains instead of loading artifacts', () => {
+    const discarded = taskFixture({ result_discarded: true })
+
+    assert.equal(resolveTaskPreviewMode(discarded), 'discarded')
+    assert.equal(resolveTaskPreviewMode(discarded, true), 'discarded')
+    assert.equal(shouldLoadTaskArtifacts(discarded, true), false)
+  })
+
+  test('given result_discarded on a failed task, the failed state still wins', () => {
+    assert.equal(
+      resolveTaskPreviewMode(
+        taskFixture({ status: 'FAILURE', result_discarded: true })
+      ),
+      'none'
+    )
+  })
+
+  test('given a retained result, plugin previews load as before', () => {
+    const retained = taskFixture({ result_discarded: false })
+
+    assert.equal(resolveTaskPreviewMode(retained), 'plugin')
+    assert.equal(shouldLoadTaskArtifacts(retained, true), true)
+  })
+})
+
 describe('plugin author links', () => {
   test('allows HTTP authors and rejects executable URL schemes', () => {
     assert.equal(
@@ -353,6 +362,47 @@ describe('plugin author links', () => {
         url: 'javascript:alert(1)',
       }),
       undefined
+    )
+  })
+})
+
+describe('legacy Suno audio clips', () => {
+  test('keeps only playable clips from array or JSON string snapshots', () => {
+    const clips = [
+      { id: 'a', title: 'Song A', audio_url: 'https://media.example/a.mp3' },
+      { id: 'b', title: 'No audio' },
+      'not a clip',
+    ]
+    const expected = [
+      { id: 'a', title: 'Song A', audio_url: 'https://media.example/a.mp3' },
+    ]
+    assert.deepEqual(parseLegacyAudioClips(clips), expected)
+    assert.deepEqual(parseLegacyAudioClips(JSON.stringify(clips)), expected)
+    assert.deepEqual(parseLegacyAudioClips('{not json'), [])
+    assert.deepEqual(parseLegacyAudioClips(undefined), [])
+  })
+
+  test('projects legacy_audio_clips from the artifacts response', () => {
+    assert.deepEqual(
+      parseTaskArtifactsResponse({
+        success: true,
+        data: {
+          artifacts: [],
+          legacy_audio_clips: [
+            { audio_url: 'https://media.example/a.mp3', title: 'Song A' },
+          ],
+        },
+      }),
+      {
+        artifacts: [],
+        legacyAudioClips: [
+          { audio_url: 'https://media.example/a.mp3', title: 'Song A' },
+        ],
+      }
+    )
+    assert.deepEqual(
+      parseTaskArtifactsResponse({ success: true, data: { artifacts: [] } }),
+      { artifacts: [] }
     )
   })
 })
